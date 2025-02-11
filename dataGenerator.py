@@ -153,7 +153,10 @@ def save_to_excel(df, start_date, end_date):
         f"stock_demand_{start_date.replace('-', '')}_{end_date.replace('-', '')}.xlsx"
     )
     filepath = os.path.join(save_dir, filename)
-    df.to_excel(filepath)
+
+    with pd.ExcelWriter(filepath, engine="xlsxwriter") as writer:
+        df.to_excel(writer, sheet_name="Sheet1", index=True)
+
     print(f"Data saved successfully to: {filepath}")
 
 
