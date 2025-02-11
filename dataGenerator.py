@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import os
 
 # Hyperparameters
-START_DATE = "2018-01-01"
+START_DATE = "2019-01-03"
 END_DATE = "2024-12-31"
 NUM_PRODUCTS = 10
 BASE_DEMAND_RANGE = (100, 500)  # Adjusted for a broader range of daily sales volumes
@@ -21,6 +21,8 @@ STOCK_TICKERS = [
     "IWV",  # Russell 3000 ETF
     "SCHX",  # Schwab U.S. Large-Cap ETF
     "IXUS",  # Total International Stock ETF
+    "FIS",  # Fidelity Info Tech ETF
+    "ORIENTTECH",  # Orient Tech ETF
 ]
 STOCK_INFLUENCE_STRENGTH = 0.85
 WEEKLY_VARIATION_RANGE = (
@@ -56,11 +58,10 @@ def generate_synthetic_data(
     # Fetch stock market data
     stock_data = {}
     for ticker in set(product_stocks):
-        stock_data[ticker] = (
-            yf.download(ticker, start=start_date, end=end_date)["Close"]
-            .reindex(dates)
-            .ffill()
-        )
+        # Download stock data
+        stock_prices = yf.download(ticker, start=start_date, end=end_date)["Close"]
+        # Reindex to match the desired date range and forward-fill missing values
+        stock_data[ticker] = stock_prices.reindex(dates).ffill()
 
     # Base demand per product
     base_demand = np.random.randint(*base_demand_range, size=num_products)
@@ -109,6 +110,13 @@ def generate_synthetic_data(
     columns = [f"Product_{i+1} ({product_stocks[i]})" for i in range(num_products)]
     df = pd.DataFrame(demand_matrix, index=dates, columns=columns)
 
+    # Check for any missing values in the DataFrame
+    if df.isnull().values.any():
+        print(
+            "Warning: Missing values detected in the DataFrame. Forward-filling missing data."
+        )
+        df.ffill(inplace=True)
+
     return df, base_demand, noise_levels
 
 
@@ -155,7 +163,7 @@ def save_to_excel(df, start_date, end_date):
     filepath = os.path.join(save_dir, filename)
 
     with pd.ExcelWriter(filepath, engine="xlsxwriter") as writer:
-        df.to_excel(writer, sheet_name="Sheet1", index=True)
+        df.to_excel(writer, sheet_name="Sheet1", index=True, index_label="Date")
 
     print(f"Data saved successfully to: {filepath}")
 
