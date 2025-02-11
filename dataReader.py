@@ -29,7 +29,7 @@ def visualize_data(df):
 
 if __name__ == "__main__":
     # Define the expected file path (modify as needed)
-    filepath = "./data/stock_demand_20180101_20241231.xlsx"
+    filepath = "data/stock_demand_20190102_20241231.xlsx"
 
     try:
         data = read_excel(filepath)

@@ -11,18 +11,16 @@ NUM_PRODUCTS = 10
 BASE_DEMAND_RANGE = (100, 500)  # Adjusted for a broader range of daily sales volumes
 NOISE_STD_RANGE = (10, 30)  # Reflecting typical daily sales fluctuations
 STOCK_TICKERS = [
-    "SPY",  # S&P 500 ETF
-    "QQQ",  # Nasdaq-100 ETF
-    "DIA",  # Dow Jones Industrial Average ETF
-    "VTI",  # Total Stock Market ETF
-    "VEU",  # FTSE All-World ex-US ETF
-    "EFA",  # MSCI EAFE ETF
-    "EEM",  # MSCI Emerging Markets ETF
-    "IWV",  # Russell 3000 ETF
-    "SCHX",  # Schwab U.S. Large-Cap ETF
-    "IXUS",  # Total International Stock ETF
-    "FIS",  # Fidelity Info Tech ETF
-    "ORIENTTECH",  # Orient Tech ETF
+    "AMZN",  # Amazon.com Inc.
+    "WMT",  # Walmart Inc.
+    "COST",  # Costco Wholesale Corporation
+    "HD",  # The Home Depot, Inc.
+    "TGT",  # Target Corporation
+    "LOW",  # Lowe's Companies, Inc.
+    "TJX",  # The TJX Companies, Inc.
+    "ROST",  # Ross Stores, Inc.
+    "BURL",  # Burlington Stores, Inc.
+    "BBY",  # Best Buy Co., Inc.
 ]
 STOCK_INFLUENCE_STRENGTH = 0.85
 WEEKLY_VARIATION_RANGE = (
