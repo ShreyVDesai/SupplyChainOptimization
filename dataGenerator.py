@@ -8,8 +8,8 @@ import os
 START_DATE = "2018-01-01"
 END_DATE = "2024-12-31"
 NUM_PRODUCTS = 10
-BASE_DEMAND_RANGE = (50, 200)
-NOISE_STD_RANGE = (5, 20)
+BASE_DEMAND_RANGE = (100, 500)  # Adjusted for a broader range of daily sales volumes
+NOISE_STD_RANGE = (10, 30)  # Reflecting typical daily sales fluctuations
 STOCK_TICKERS = [
     "SPY",  # S&P 500 ETF
     "QQQ",  # Nasdaq-100 ETF
@@ -22,10 +22,16 @@ STOCK_TICKERS = [
     "SCHX",  # Schwab U.S. Large-Cap ETF
     "IXUS",  # Total International Stock ETF
 ]
-STOCK_INFLUENCE_STRENGTH = 0.85  # Stock market as primary driver
-WEEKLY_VARIATION_RANGE = (0.9, 1.1)  # Variability in weekly demand patterns
-SHOCK_MAGNITUDE_RANGE = (0.99, 1.01)  # Magnitude of demand shocks
-SHOCK_PROBABILITY = 0.5  # Probability of a demand shock occurring on weekends
+STOCK_INFLUENCE_STRENGTH = 0.85
+WEEKLY_VARIATION_RANGE = (
+    0.8,
+    1.2,
+)
+SHOCK_MAGNITUDE_RANGE = (
+    0.9,
+    1.3,
+)
+SHOCK_PROBABILITY = 0.1  # Shocks for weekends
 
 
 def generate_synthetic_data(
@@ -103,18 +109,37 @@ def generate_synthetic_data(
     columns = [f"Product_{i+1} ({product_stocks[i]})" for i in range(num_products)]
     df = pd.DataFrame(demand_matrix, index=dates, columns=columns)
 
-    return df
+    return df, base_demand, noise_levels
 
 
-def visualize_data(df):
+def visualize_data(df, base_demand, noise_levels):
     """Plot the generated demand data."""
     plt.figure(figsize=(12, 6))
-    for column in df.columns:
-        plt.plot(df.index, df[column], label=column, alpha=0.7)
+    for i, column in enumerate(df.columns):
+        plt.plot(df.index, df[column], label=f"{column}", alpha=0.7)
     plt.title("Synthetic Demand Driven by Stock Market")
     plt.xlabel("Date")
     plt.ylabel("Demand")
-    plt.legend(loc="upper left", bbox_to_anchor=(1, 1))
+    legend_labels = [
+        f"{column} | Base: {base_demand[i]}, Noise STD: {noise_levels[i]:.2f}"
+        for i, column in enumerate(df.columns)
+    ]
+    plt.legend(
+        legend_labels,
+        loc="upper left",
+        bbox_to_anchor=(1, 1),
+        title="Product Info",
+        fontsize=8,
+    )
+
+    # Add product metadata as text at the bottom of the graph
+    metadata_text = "\n".join(
+        [
+            f"{column}: Base={base_demand[i]}, Noise STD={noise_levels[i]:.2f}"
+            for i, column in enumerate(df.columns)
+        ]
+    )
+
     plt.grid(True)
     plt.tight_layout()
     plt.show()
@@ -134,6 +159,6 @@ def save_to_excel(df, start_date, end_date):
 
 # Example usage
 if __name__ == "__main__":
-    synthetic_data = generate_synthetic_data()
-    visualize_data(synthetic_data)
+    synthetic_data, base_demand, noise_levels = generate_synthetic_data()
+    visualize_data(synthetic_data, base_demand, noise_levels)
     save_to_excel(synthetic_data, START_DATE, END_DATE)
