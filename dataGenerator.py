@@ -23,14 +23,8 @@ STOCK_TICKERS = [
     "BBY",  # Best Buy Co., Inc.
 ]
 STOCK_INFLUENCE_STRENGTH = 0.85
-WEEKLY_VARIATION_RANGE = (
-    0.8,
-    1.2,
-)
-SHOCK_MAGNITUDE_RANGE = (
-    0.9,
-    1.3,
-)
+WEEKLY_VARIATION_RANGE = (0.8, 1.2)
+SHOCK_MAGNITUDE_RANGE = (0.9, 1.3)
 SHOCK_PROBABILITY = 0.1  # Shocks for weekends
 
 
@@ -56,9 +50,7 @@ def generate_synthetic_data(
     # Fetch stock market data
     stock_data = {}
     for ticker in set(product_stocks):
-        # Download stock data
         stock_prices = yf.download(ticker, start=start_date, end=end_date)["Close"]
-        # Reindex to match the desired date range and forward-fill missing values
         stock_data[ticker] = stock_prices.reindex(dates).ffill()
 
     # Base demand per product
@@ -101,8 +93,9 @@ def generate_synthetic_data(
             + noise[:, i]
         )
 
-    # Ensure no negative values
+    # Ensure no negative values and round the demand to integers
     demand_matrix = np.maximum(demand_matrix, 0)
+    demand_matrix = np.round(demand_matrix).astype(int)
 
     # Create DataFrame with product-stock mapping in column names
     columns = [f"Product_{i+1} ({product_stocks[i]})" for i in range(num_products)]
