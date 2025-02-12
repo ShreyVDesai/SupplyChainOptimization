@@ -8,7 +8,7 @@ import uuid
 
 # File Paths
 SAVE_DIR = "./transaction/"
-DEMAND_FILEPATH = "./data/stock_demand_20190103_20241231.xlsx"
+DEMAND_FILEPATH = "./data/commodity_demand_20190103_20241231.xlsx"
 
 # Pricing & Transactions
 BASE_PRICE_RANGE = (5.00, 50.00)  # Base price in USD
@@ -91,6 +91,11 @@ def generate_transactions(demand_df):
 
     start_year = demand_df.index.min().year  # Determine earliest year in demand data
 
+    # Mapping product index to product name
+    product_index_to_name = {
+        i + 1: product for i, product in enumerate(demand_df.columns)
+    }
+
     for date, row in demand_df.iterrows():
         current_year = date.year
         daily_transactions = []
@@ -129,6 +134,7 @@ def generate_transactions(demand_df):
                         np.random.randint(*PRODUCER_ID_RANGE),  # Producer ID
                         np.random.choice(STORE_LOCATIONS),  # Store location
                         int(product_index),  # Product ID
+                        product_index_to_name[product_index],  # Product Name
                     ]
                 )
 
@@ -152,7 +158,7 @@ def generate_transactions(demand_df):
                 loc=4 * 3600, scale=std_dev * 3600, size=num_transactions
             )
 
-            # Clip times to ensure they stay within the 9 AM - 5 PM window
+            # Clip times to ensure they stay within the 8 AM - 8 PM window
             random_offsets = np.clip(
                 random_offsets, 0, (end_time - start_time).total_seconds()
             )
@@ -175,6 +181,7 @@ def generate_transactions(demand_df):
             "Producer ID",
             "Store Location",
             "Product ID",
+            "Product Name",  # New column added
         ],
     )
 
