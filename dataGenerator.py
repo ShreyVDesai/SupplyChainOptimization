@@ -21,10 +21,9 @@ PRODUCTS_TO_ETFS = {
     "Soybeans": "SOYB",  # Teucrium Soybean Fund
     "Sugar": "CANE",  # Teucrium Sugar Fund
     "Coffee": "JO",  # iPath Series B Bloomberg Coffee Subindex Total Return ETN
-    "Cattle": "COW",  # iPath Series B Bloomberg Livestock Subindex Total Return ETN
+    "Beef": "COW",  # iPath Series B Bloomberg Livestock Subindex Total Return ETN
     "Milk": "MOO",  # VanEck Agribusiness ETF (proxy for dairy)
     "Chocolate": "NIB",  # iPath Bloomberg Cocoa Subindex Total Return ETN
-    "Beef": "COW",  # iPath Series B Bloomberg Livestock Subindex Total Return ETN
 }
 
 
@@ -38,7 +37,10 @@ def generate_synthetic_data(
     weekly_variation_range=WEEKLY_VARIATION_RANGE,
     shock_magnitude_range=SHOCK_MAGNITUDE_RANGE,
     shock_probability=SHOCK_PROBABILITY,
+    fixed_base_demand=None,  # New parameter for user-specified demand
 ):
+    """Generate synthetic demand data for products influenced by commodity ETFs, with optional fixed demand values."""
+
     # Date range
     dates = pd.date_range(start=start_date, end=end_date, freq="D")
     num_days = len(dates)
@@ -49,9 +51,14 @@ def generate_synthetic_data(
         stock_prices = yf.download(ticker, start=start_date, end=end_date)["Close"]
         stock_data[product] = stock_prices.reindex(dates).ffill()
 
-    # Base demand per product
+    # Base demand per product (fixed values take precedence)
     base_demand = {
-        product: np.random.randint(*base_demand_range) for product in products_to_etfs
+        product: (
+            fixed_base_demand.get(product, np.random.randint(*base_demand_range))
+            if fixed_base_demand
+            else np.random.randint(*base_demand_range)
+        )
+        for product in products_to_etfs
     }
 
     # Noise: Random variations in demand
@@ -154,6 +161,21 @@ def save_to_excel(df, start_date, end_date):
 
 # Example usage
 if __name__ == "__main__":
-    synthetic_data, base_demand, noise_levels = generate_synthetic_data()
+    # Specify fixed demand values for some products (others remain random)
+    fixed_base_demand = {
+        "Corn": 75,
+        "Wheat": 250,
+        "Soybeans": 40,
+        "Sugar": 60,
+        "Coffee": 125,
+        "Beef": 75,
+        "Milk": 200,
+        "Chocolate": 90,
+    }
+
+    synthetic_data, base_demand, noise_levels = generate_synthetic_data(
+        fixed_base_demand=fixed_base_demand
+    )
+
     visualize_data(synthetic_data, base_demand, noise_levels)
     save_to_excel(synthetic_data, START_DATE, END_DATE)
