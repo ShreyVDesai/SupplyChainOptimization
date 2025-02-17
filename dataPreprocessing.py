@@ -103,10 +103,19 @@ def filter_valid_records(df, col_names):
     return df
 
 
+def calculate_total_price(df):
+    """Calculating total price of the transaction"""
+    df = df.with_columns(
+        (pl.col("Cost Price") * pl.col("Quantity")).alias("Total Price")
+    )
+
+    return df
+
 
 def save_cleaned_data(df, output_file):
     """Saves the cleaned data to a CSV file."""
     df.write_csv(output_file)
+
 
 def main(input_file, output_file):
     """Executes all cleaning steps."""
@@ -119,10 +128,13 @@ def main(input_file, output_file):
     df = clean_product_names(df)
     
     print("Filtering Valid Records...")
-    df = filter_valid_records(df, ["Quantity", "Cost Price"])
+    df = filter_valid_records(df, ["Quantity", "Cost Price", "Producer ID"])
     
     print("Cleaning Date Data...")
     df = clean_dates(df)
+
+    print("Calculating Total Price...")
+    df = calculate_total_price(df)
     
     print("Saving Cleaned Data...")
     save_cleaned_data(df, output_file)
@@ -130,73 +142,6 @@ def main(input_file, output_file):
     print(f"Cleaned data saved to {output_file}")
 
 if __name__ == "__main__":
-    input_file = "messy_transactions_20190103_20241231.xlsx"  # Change to actual file
+    input_file = "messy_transactions_20190103_20241231.xlsx"
     output_file = "cleaned_data.csv"
     main(input_file, output_file)
-
-
-# def validate_data_types(df):
-#     expected_data_types = {
-#         'TransactionID': str,
-#         'Date': 'datetime64[ns]',
-#         'CostPrice': float,
-#         'Quantity': int,
-#         'ProductID': str,
-#         'Store Location': str
-#     }
-
-#     for col, expected_type in expected_data_types.items():
-#         if col in df.columns:
-#             if expected_type == 'datetime64[ns]':
-#                 df[col] = pd.to_datetime(df[col], errors='coerce')
-#             else:
-#                 df[col] = df[col].astype(expected_type)
-
-#     return df
-
-
-# def remove_empty_records(df):
-#     '''Removes records where either Quantity or ProductID are empty.'''
-#     return df.dropna(subset=['Quantity', 'ProductID'], how='any')
-
-# def impute_cost_price(df):
-#     pass
-
-# def convert_date_format(df):
-#     df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-#     return df
-
-# def extract_date_features(df):
-#     df['Year'] = df['Date'].dt.year
-#     df['Month'] = df['Date'].dt.month
-#     df['Day'] = df['Date'].dt.day
-#     df['DayOfWeek'] = df['Date'].dt.day_name()
-#     df['IsWeekend'] = df['DayOfWeek'].isin(['Saturday', 'Sunday'])
-#     return df
-
-
-# def remove_duplicates(df):
-#     return df.drop_duplicates(subset=['TransactionID'])
-
-
-# def standardize_categorical_features(df):
-#     df['Store Location'] = df['Store Location'].str.strip().str.title()
-#     df['ProductID'] = df['ProductID'].str.strip().str.upper()
-#     return df
-
-
-# def preprocess_data(file_path, save_path):
-#     df = load_data(file_path)
-#     # df = validate_data_types(df)
-#     df = remove_empty_records(df)
-#     df = convert_date_format(df)
-#     df = extract_date_features(df)
-#     df = remove_duplicates(df)
-#     df = standardize_categorical_features(df)
-#     df.to_excel(save_path, index=False)
-#     print(f"Data Preprocessing Completed and file is stored at {save_path}")
-
-
-# input_file = 'synthetic_transaction_data.xlsx'
-# output_file = 'processed_transaction_data.xlsx'
-# preprocess_data(input_file, output_file)
