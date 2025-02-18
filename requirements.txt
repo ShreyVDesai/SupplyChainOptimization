@@ -1,0 +1,10 @@
+numpy
+pandas
+yfinance
+matplotlib
+google-cloud-storage
+google-api-core
+tqdm
+polars
+python-dotenv
+fastexcel

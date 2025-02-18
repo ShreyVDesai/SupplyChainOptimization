@@ -8,8 +8,8 @@ from tqdm import tqdm
 # ============================ CONSTANTS ============================
 
 # File Paths
-SAVE_DIR = "./transaction/"
-DEMAND_FILEPATH = "./data/commodity_demand_20190103_20241231.xlsx"
+SAVE_DIR = "../../transaction/"
+DEMAND_FILEPATH = "../../data/commodity_demand_20190103_20241231.xlsx"
 
 # Pricing & Transactions
 BASE_PRICE_RANGE = (5.00, 50.00)  # Base price in USD

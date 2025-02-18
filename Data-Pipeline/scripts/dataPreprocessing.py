@@ -1,6 +1,14 @@
 import numpy as np
 import pandas as pd
 import polars as pl
+import io
+from google.cloud import storage
+
+def load_bucket_data(metadata):
+    bucket = storage.Client().get_bucket(metadata['bucket'])
+    blob = bucket.blob(metadata['name'])
+    blob_content = blob.download_as_string()
+    return pl.read_excel(io.BytesIO(blob_content))
 
 def load_data(file_path):
     """Loads the dataset from the given file path."""
@@ -24,7 +32,7 @@ def convert_feature_types(df):
     # Define expected data types
     expected_dtypes = {
         "Date": pl.Datetime,
-        "Cost Price": pl.Float64,
+        "Unit Price": pl.Float64,
         "Quantity": pl.Int64, 
         "Total Price": pl.Float64, 
         "Transaction ID": pl.Utf8,
@@ -136,32 +144,32 @@ def extract_datetime_features(df):
 
 def compute_most_frequent_price(df, time_granularity):
     """
-    Computes the most frequent cost price for each product at different time granularities.
+    Computes the most frequent unit price for each product at different time granularities.
     
     Parameters:
         df (pl.DataFrame): Input dataframe
         time_granularity (list): List of time-based features for grouping (e.g., ["Year", "Month", "Week"])
     
     Returns:
-        pl.DataFrame: Mapping of (time + product) → most frequent cost price
+        pl.DataFrame: Mapping of (time + product) → most frequent unit price
     """
 
     return (
-        df.drop_nulls(["Cost Price"])
+        df.drop_nulls(["Unit Price"])
         .group_by(time_granularity + ["Product Name"])
-        .agg(pl.col("Cost Price").mode().first().alias("Most_Frequent_Cost"))
+        .agg(pl.col("Unit Price").mode().first().alias("Most_Frequent_Cost"))
     )
 
 
 def filling_missing_cost_price(df):
     """
-    Fills missing 'Cost Price' values based on the most frequent price at different time granularities.
+    Fills missing 'Unit Price' values based on the most frequent price at different time granularities.
 
     Parameters:
         df (pl.DataFrame): Input dataframe
 
     Returns:
-        pl.DataFrame: Updated dataframe with missing cost prices filled.
+        pl.DataFrame: Updated dataframe with missing unit prices filled.
     """
     # Extract time features dynamically
     df = extract_datetime_features(df)
@@ -175,34 +183,34 @@ def filling_missing_cost_price(df):
     # Merge with original dataframe to fill missing values
     df = df.join(price_by_week, on=["Year", "Month", "Week_of_year", "Product Name"], how="left")
     df = df.with_columns(
-        pl.when(pl.col("Cost Price").is_null())
+        pl.when(pl.col("Unit Price").is_null())
         .then(pl.col("Most_Frequent_Cost"))
-        .otherwise(pl.col("Cost Price"))
-        .alias("Cost Price")
+        .otherwise(pl.col("Unit Price"))
+        .alias("Unit Price")
     ).drop("Most_Frequent_Cost")
 
 
     df = df.join(price_by_month, on=["Year", "Month", "Product Name"], how="left")
     df = df.with_columns(
-        pl.when(pl.col("Cost Price").is_null())
+        pl.when(pl.col("Unit Price").is_null())
         .then(pl.col("Most_Frequent_Cost"))
-        .otherwise(pl.col("Cost Price"))
-        .alias("Cost Price")
+        .otherwise(pl.col("Unit Price"))
+        .alias("Unit Price")
     ).drop("Most_Frequent_Cost")
 
 
     df = df.join(price_by_year, on=["Year", "Product Name"], how="left")
     df = df.with_columns(
-        pl.when(pl.col("Cost Price").is_null())
+        pl.when(pl.col("Unit Price").is_null())
         .then(pl.col("Most_Frequent_Cost"))
-        .otherwise(pl.col("Cost Price"))
-        .alias("Cost Price")
+        .otherwise(pl.col("Unit Price"))
+        .alias("Unit Price")
     ).drop("Most_Frequent_Cost")
 
 
     # If still null, set to "Unknown" or a default value (e.g., 0)
     df = df.with_columns(
-        pl.col("Cost Price").fill_null(0)
+        pl.col("Unit Price").fill_null(0)
     )
 
     return df
@@ -254,9 +262,12 @@ def save_cleaned_data(df, output_file):
 
 
 
-def main(input_file, output_file):
+def main(imput, output_file, cloud=True):
     """Executes all cleaning steps."""
-    df = load_data(input_file)
+    if cloud:
+        df = load_bucket_data(input)
+    else:
+        df = load_data(input)
 
     df = clean_dates(df)
 
@@ -279,7 +290,7 @@ def main(input_file, output_file):
     # df = clean_product_names(df)
     
     # print("Filtering Valid Records...")
-    # df = filter_valid_records(df, ["Quantity", "Cost Price"])
+    # df = filter_valid_records(df, ["Quantity", "Unit Price"])
     
     # print("Cleaning Date Data...")
     # df = clean_dates(df)
@@ -291,5 +302,5 @@ def main(input_file, output_file):
 
 if __name__ == "__main__":
     input_file = "messy_transactions_20190103_20241231.xlsx"  # Change to actual file
-    output_file = "cleaned_data.csv"
-    main(input_file, output_file)
+    output_file = "../../data/cleaned_data.csv"
+    main(input_file, output_file, False)
