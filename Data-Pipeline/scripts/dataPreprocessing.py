@@ -261,6 +261,21 @@ def save_cleaned_data(df, output_file):
     df.write_csv(output_file)
 
 
+def upload_df_to_gcs(bucket_name, df, destination_blob_name):
+    """
+    Uploads a Polars DataFrame as a CSV file to a specified Google Cloud Storage bucket.
+    
+    :param bucket_name: Name of the GCS bucket
+    :param df: The Polars DataFrame to upload
+    :param destination_blob_name: Destination path in GCS where the file will be stored
+    """
+
+    bucket = storage.Client().get_bucket(bucket_name)
+    blob = bucket.blob(destination_blob_name)
+    csv_data = df.write_csv()
+    blob.upload_from_string(csv_data, content_type='text/csv')
+
+
 
 def main(imput, output_file, cloud=True):
     """Executes all cleaning steps."""
@@ -296,8 +311,13 @@ def main(imput, output_file, cloud=True):
     # df = clean_dates(df)
     
     print("Saving Cleaned Data...")
-    save_cleaned_data(df, output_file)
-    
+    if cloud:
+        bucket_name = 'mlops-data-storage-000'  # Replace with your GCS bucket name
+        destination_blob_name = 'cleaned_data/cleanedData.csv'  # GCS destination path
+        upload_df_to_gcs(bucket_name, df, destination_blob_name)
+    else:
+        save_cleaned_data(df, output_file)
+
     print(f"Cleaned data saved to {output_file}")
 
 if __name__ == "__main__":

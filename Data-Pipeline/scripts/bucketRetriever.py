@@ -23,7 +23,7 @@ def fetch_data_from_gcs(bucket_name, file_name):
 
 # Example usage
 bucket_name = 'mlops-data-storage-000'
-file_name = 'generated-training-data/transactions_20190103_20241231.xlsx'
+file_name = 'generated_training_data/transactions_20190103_20241231.xlsx'
 output_file = "cleaned_data.csv"
 
 df = fetch_data_from_gcs(bucket_name, file_name)
@@ -35,6 +35,8 @@ df = convert_string_columns_to_lowercase(df)
 df = filling_missing_cost_price(df)
 df = remove_invalid_records(df)
 print("Saving Cleaned Data...")
-save_cleaned_data(df, output_file)
+bucket_name = 'mlops-data-storage-000'  # Replace with your GCS bucket name
+destination_blob_name = 'cleaned_data/cleanedData_20190103_20241231.csv'  # GCS destination path
+upload_df_to_gcs(bucket_name, df, destination_blob_name)
 print(f"Cleaned data saved to {output_file}")
 
