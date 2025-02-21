@@ -1,12 +1,15 @@
-import numpy as np
-import pandas as pd
 import polars as pl
 import io
 from google.cloud import storage
+from dotenv import load_dotenv
+from typing import Dict, Tuple
+from sendMail import send_email
 
-def load_bucket_data(metadata):
-    bucket = storage.Client().get_bucket(metadata['bucket'])
-    blob = bucket.blob(metadata['name'])
+load_dotenv()
+
+def load_bucket_data(bucket_name, file_name):
+    bucket = storage.Client().get_bucket(bucket_name)
+    blob = bucket.blob(file_name)
     blob_content = blob.download_as_string()
     return pl.read_excel(io.BytesIO(blob_content))
 
@@ -261,7 +264,7 @@ def save_cleaned_data(df, output_file):
     df.write_csv(output_file)
 
 
-def upload_df_to_gcs(bucket_name, df, destination_blob_name):
+def upload_df_to_gcs(df, bucket_name, destination_blob_name):
     """
     Uploads a Polars DataFrame as a CSV file to a specified Google Cloud Storage bucket.
     
@@ -275,12 +278,172 @@ def upload_df_to_gcs(bucket_name, df, destination_blob_name):
     csv_data = df.write_csv()
     blob.upload_from_string(csv_data, content_type='text/csv')
 
+def calculate_zscore(series: pl.Series) -> pl.Series:
+    """Calculate Z-score for a series"""
+    mean = series.mean()
+    std = series.std()
+    if std == 0:
+        return pl.Series([0] * len(series))
+    return (series - mean) / std
+    
+def iqr_bounds(series: pl.Series) -> Tuple[float, float]:
+    """Calculate IQR bounds for a series"""
+    q1 = series.quantile(0.25)
+    q3 = series.quantile(0.75)
+    iqr = q3 - q1
+    lower_bound = q1 - 3.0 * iqr
+    upper_bound = q3 + 3.0 * iqr
+    return max(0, lower_bound), upper_bound
+
+def detect_anomalies(df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
+    """
+    Detect anomalies in transaction data using both IQR and Z-score methods.
+    
+    Parameters:
+    df (pl.DataFrame): DataFrame containing transaction data with columns:
+        - Date
+        - Unit Price
+        - Transaction ID
+        - Quantity
+        - Producer ID
+        - Store Location
+        - Product Name
+    
+    Returns:
+    Dict[str, pl.DataFrame]: Dictionary containing different types of anomalies detected
+    """
+    
+    anomalies = {}
+    clean_df = df.clone()
+    anomaly_transaction_ids = set() 
+    
+    # 1. Missing Values
+    missing_counts = []
+    for col in df.columns:
+        null_count = df[col].null_count()
+        if null_count > 0:
+            missing_counts.append({"column": col, "null_count": null_count})
+            null_rows = df.filter(pl.col(col).is_null())
+            anomaly_transaction_ids.update(null_rows['Transaction ID'].to_list())
+    
+    anomalies['missing_values'] = pl.DataFrame(missing_counts)
+    
+    # 3. Price Anomalies (by Product)
+    price_anomalies = []
+    for product in df['Product Name'].unique():
+        product_data = df.filter(pl.col('Product Name') == product)
+        
+        # Z-score method
+        # zscore_prices = calculate_zscore(product_data['Unit Price'])
+        # zscore_anomalies = product_data.filter(
+        #     (zscore_prices.abs() > 3)
+        # )
+        
+        # IQR method
+        lower_bound, upper_bound = iqr_bounds(product_data['Unit Price'])
+        iqr_anomalies = product_data.filter(
+            (pl.col('Unit Price') < lower_bound) | 
+            (pl.col('Unit Price') > upper_bound)
+        )
+        
+        # Combine both methods
+        # combined_anomalies = pl.concat([zscore_anomalies, iqr_anomalies]).unique()
+        # if len(combined_anomalies) > 0:
+        #     price_anomalies.append(combined_anomalies)
+        price_anomalies.append(iqr_anomalies)
+        anomaly_transaction_ids.update(iqr_anomalies['Transaction ID'].to_list())
+    
+    if price_anomalies:
+        anomalies['price_anomalies'] = pl.concat(price_anomalies)
+    else:
+        anomalies['price_anomalies'] = pl.DataFrame()
+    
+    # 4. Quantity Anomalies (by Product)
+    quantity_anomalies = []
+    for product in df['Product Name'].unique():
+        product_data = df.filter(pl.col('Product Name') == product)
+        
+        # Z-score method
+        # zscore_quantities = calculate_zscore(product_data['Quantity'])
+        # zscore_anomalies = product_data.filter(
+        #     (zscore_quantities.abs() > 3)
+        # )
+        
+        # IQR method
+        lower_bound, upper_bound = iqr_bounds(product_data['Quantity'])
+
+        iqr_anomalies = product_data.filter(
+            (pl.col('Quantity') < lower_bound) | 
+            (pl.col('Quantity') > upper_bound)
+        )
+        
+        # Combine both methods
+        # combined_anomalies = pl.concat([zscore_anomalies, iqr_anomalies]).unique()
+        # if len(combined_anomalies) > 0:
+        #     quantity_anomalies.append(combined_anomalies)
+        quantity_anomalies.append(iqr_anomalies)
+        anomaly_transaction_ids.update(iqr_anomalies['Transaction ID'].to_list())
+    
+    if quantity_anomalies:
+        anomalies['quantity_anomalies'] = pl.concat(quantity_anomalies)
+    else:
+        anomalies['quantity_anomalies'] = pl.DataFrame()
+    
+    # 5. Time Pattern Anomalies
+    df = df.with_columns([
+        pl.col('Date').cast(pl.Datetime).alias('datetime'),
+        pl.col('Date').cast(pl.Datetime).dt.hour().alias('hour')
+    ])
+    
+    # Detect transactions outside normal business hours (assuming 6AM-10PM)
+    time_anomalies = df.filter(
+        (pl.col('hour') < 6) | (pl.col('hour') > 22)
+    )
+    anomalies['time_anomalies'] = time_anomalies
+    anomaly_transaction_ids.update(time_anomalies['Transaction ID'].to_list())
+    
+    # 6. Invalid Format Checks
+    format_anomalies = df.filter(
+        # Check for negative prices
+        (pl.col('Unit Price') <= 0) |
+        # Check for negative quantities
+        (pl.col('Quantity') <= 0)
+    )
+    anomalies['format_anomalies'] = format_anomalies
+    anomaly_transaction_ids.update(format_anomalies['Transaction ID'].to_list())
+    
+    clean_df = clean_df.filter(~pl.col('Transaction ID').is_in(list(anomaly_transaction_ids)))
+    
+    return anomalies, clean_df
+    
 
 
-def main(imput, output_file, cloud=True):
+def aggregate_daily_products(df: pl.DataFrame) -> pl.DataFrame:
+    """
+    Aggregates transaction data to show total quantity per product per day.
+    
+    Parameters:
+    df (pl.DataFrame): Input DataFrame with columns Date, Unit Price, Quantity, and Product Name
+    
+    Returns:
+    pl.DataFrame: Aggregated DataFrame with daily totals per product
+    """
+    return (
+        df.group_by(["Date", "Product Name", "Unit Price"])
+        .agg(
+            pl.col("Quantity").sum().alias("Total Quantity")
+        )
+        .sort(["Date", "Product Name"])
+    )
+
+
+def main(input, output_file, cloud=True):
     """Executes all cleaning steps."""
+    bucket_name = 'mlops-data-storage-000' 
+    source_blob_name = 'generated_training_data/transactions_20190103_20241231.xlsx'
+    destination_blob_name = 'cleaned_data/cleanedData.csv'
     if cloud:
-        df = load_bucket_data(input)
+        df = load_bucket_data(bucket_name, source_blob_name)
     else:
         df = load_data(input)
 
@@ -297,6 +460,8 @@ def main(imput, output_file, cloud=True):
     df = filling_missing_cost_price(df)
 
     df = remove_invalid_records(df)
+
+    anomalies, df = detect_anomalies(df)
     
     # print("Cleaning Store Location Data...")
     # df = clean_store_location(df)
@@ -309,18 +474,30 @@ def main(imput, output_file, cloud=True):
     
     # print("Cleaning Date Data...")
     # df = clean_dates(df)
-    
-    print("Saving Cleaned Data...")
-    if cloud:
-        bucket_name = 'mlops-data-storage-000'  # Replace with your GCS bucket name
-        destination_blob_name = 'cleaned_data/cleanedData.csv'  # GCS destination path
-        upload_df_to_gcs(bucket_name, df, destination_blob_name)
-    else:
-        save_cleaned_data(df, output_file)
 
-    print(f"Cleaned data saved to {output_file}")
+    message_parts = ["Hi, we removed the following data from your excel:"]
+    for anomaly_type, anomaly_df in anomalies.items():
+        if not anomaly_df.is_empty():
+            message_parts.append(f"\n{anomaly_type}:")
+            message_parts.append(anomaly_df)
+    
+    message_parts.append("Thank you!")
+    # send_email("anusheelvs5050@gmail.com", message_parts, subject="Anomaly Data")
+
+    df = df.with_columns(pl.col("Date").dt.date().alias("Date"))
+    df = aggregate_daily_products(df)
+
+
+    
+    # print("Saving Cleaned Data...")
+    # if cloud:
+    #     upload_df_to_gcs(bucket_name, df, destination_blob_name)
+    # else:
+    #     save_cleaned_data(df, output_file)
+
+    # print(f"Cleaned data saved to {output_file}")
 
 if __name__ == "__main__":
     input_file = "messy_transactions_20190103_20241231.xlsx"  # Change to actual file
     output_file = "../../data/cleaned_data.csv"
-    main(input_file, output_file, False)
+    main(input_file, output_file, True)
