@@ -69,7 +69,6 @@ def convert_feature_types(df: pl.DataFrame) -> pl.DataFrame:
     }
 
     try:
-
         # Ensure required columns exist
         missing_columns = [col for col in expected_dtypes if col not in df.columns]
         if missing_columns:
@@ -83,8 +82,8 @@ def convert_feature_types(df: pl.DataFrame) -> pl.DataFrame:
         logging.info("Feature types converted successfully.")
         return df
     except Exception as e:
-        logging.error(f"Unexpected error during feature type conversion.")
-        raise e
+        logging.error(f"Unexpected error during feature type conversion.", exc_info=True)
+        raise
 
 
 def fill_missing_value_with_unknown(df: pl.DataFrame, features: list) -> pl.DataFrame:
@@ -447,7 +446,7 @@ def remove_invalid_records(df: pl.DataFrame) -> pl.DataFrame:
     """
     try:
         return df.filter(
-            (pl.col("Quantity") > 0) &
+            # (pl.col("Quantity") > 0) &
             pl.col("Quantity").is_not_null() &
             pl.col("Product Name").is_not_null()
         )
@@ -518,7 +517,7 @@ def apply_fuzzy_correction(df: pl.DataFrame, reference_list: list, threshold: in
         df = df.with_columns(
             pl.col("Product Name").replace(name_mapping).alias("Product Name")
         )
-        logging.info("Fuzzy matching completed. {len(name_mapping)} product names corrected.")
+        logging.info(f"Fuzzy matching completed. {len(name_mapping)} product names corrected.")
         return df
     
     except Exception as e:
@@ -575,6 +574,24 @@ def save_cleaned_data(df: pl.DataFrame, output_file: str) -> None:
         raise e
 
 
+def remove_duplicate_records(df: pl.DataFrame) -> pl.DataFrame:
+    """
+    Removes duplicate transaction records if exists.
+
+    Parameters:
+        df (pl.DataFrame): Input DataFrame
+
+    Returns:
+        pl.DataFrame: DataFrame without duplicate records.
+    """
+    try:
+        logging.info("Removing duplicate records...")
+        df = df.unique(subset=["Transaction ID"], maintain_order=True)
+        logging.info("Duplicate records removed.")
+        return df
+    except Exception as e:
+        logging.error(f"Error while removing duplicate records: {e}")
+        raise e
 
 
 def main(input_file: str, output_file: str) -> None:
@@ -615,6 +632,9 @@ def main(input_file: str, output_file: str) -> None:
 
         logging.info("Standardizing and correcting product names...")
         df = clean_and_correct_product_names(df)
+
+        logging.info("Removing Duplicate Records...")
+        df = remove_duplicate_records(df)
         
         logging.info("Saving cleaned data...")
         save_cleaned_data(df, output_file)
