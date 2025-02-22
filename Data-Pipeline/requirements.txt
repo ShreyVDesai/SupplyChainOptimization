@@ -8,3 +8,4 @@ tqdm
 polars
 python-dotenv
 fastexcel
+apache-airflow
