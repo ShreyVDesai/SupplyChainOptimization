@@ -5,10 +5,10 @@ FROM python:3.10
 WORKDIR /app/scripts
 
 # Copy only the necessary files (improves build speed)
-COPY ./scripts /app/scripts
+COPY . .
 
 # Install dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r "requirements.txt"
 
 # Default command to run (can be overridden by docker-compose)
-CMD ["python", "main.py"]
+# CMD ["python", "main.py"]
