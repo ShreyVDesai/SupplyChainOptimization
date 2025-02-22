@@ -77,7 +77,7 @@ services:
     volumes:
      - ./Data-Pipeline/scripts:/app/scripts
     working_dir: /app/scripts
-    command: python main.py
+    # command: python main.py
     restart: always
   postgres:
     image: postgres:13
