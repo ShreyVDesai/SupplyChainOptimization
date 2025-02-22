@@ -7,4 +7,8 @@ transaction/*
 /messy_transactions_20190103_20241231.xlsx
 /cleaned_data.csv
 /data_processing.ipynb
+__pycache__/
+__init__.py
+.coverage
+.vscode
 .env

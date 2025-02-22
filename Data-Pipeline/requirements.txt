@@ -8,3 +8,7 @@ tqdm
 polars
 python-dotenv
 fastexcel
+coverage
+openpyxl
+RapidFuzz
+scipy
