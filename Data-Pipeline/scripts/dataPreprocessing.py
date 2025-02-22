@@ -4,7 +4,13 @@ from datetime import datetime
 from rapidfuzz import process, fuzz
 import polars as pl
 import logging
+import io
+from google.cloud import storage
+from dotenv import load_dotenv
+from typing import Dict, Tuple
+from sendMail import send_email
 
+load_dotenv()
 
 # Configure Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -14,6 +20,13 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 REFERENCE_PRODUCT_NAMES = [
     "milk", "coffee", "wheat", "chocolate", "beef", "sugar", "corn", "soybeans"
 ]
+
+
+def load_bucket_data(bucket_name, file_name):
+    bucket = storage.Client().get_bucket(bucket_name)
+    blob = bucket.blob(file_name)
+    blob_content = blob.download_as_string()
+    return pl.read_excel(io.BytesIO(blob_content))
 
 
 def load_data(file_path: str) -> pl.DataFrame:
@@ -60,7 +73,7 @@ def convert_feature_types(df: pl.DataFrame) -> pl.DataFrame:
     # Define expected data types
     expected_dtypes = {
         "Date": pl.Datetime,
-        "Cost Price": pl.Float64,
+        "Unit Price": pl.Float64,
         "Quantity": pl.Int64,
         "Transaction ID": pl.Utf8,
         "Store Location": pl.Utf8,
@@ -349,39 +362,39 @@ def extract_datetime_features(df: pl.DataFrame) -> pl.DataFrame:
 
 def compute_most_frequent_price(df: pl.DataFrame, time_granularity: list) -> pl.DataFrame:
     """
-    Computes the most frequent cost price for each product at different time granularities.
+    Computes the most frequent unit price for each product at different time granularities.
     
     Parameters:
         df (pl.DataFrame): Input dataframe
         time_granularity (list): List of time-based features for grouping (e.g., ["Year", "Month", "Week"])
     
     Returns:
-        pl.DataFrame: Mapping of (time + product) → most frequent cost price
+        pl.DataFrame: Mapping of (time + product) → most frequent unit price
     """
     try:
         return (
-            df.drop_nulls(["Cost Price"])
+            df.drop_nulls(["Unit Price"])
             .group_by(time_granularity + ["Product Name"])
-            .agg(pl.col("Cost Price").mode().first().alias("Most_Frequent_Cost"))
+            .agg(pl.col("Unit Price").mode().first().alias("Most_Frequent_Cost"))
         )
     except Exception as e:
         logging.error(f"Error computing most frequent price: {e}")
-        raise e
+
 
 
 def filling_missing_cost_price(df: pl.DataFrame) -> pl.DataFrame:
     """
-    Fills missing 'Cost Price' values based on the most frequent price at different time granularities.
+    Fills missing 'Unit Price' values based on the most frequent price at different time granularities.
 
     Parameters:
         df (pl.DataFrame): Input dataframe
 
     Returns:
-        pl.DataFrame: Updated dataframe with missing cost prices filled.
+        pl.DataFrame: Updated dataframe with missing unit prices filled.
     """
     
     try:
-        logging.info("Filling missing cost price values...")
+        logging.info("Filling missing Unit Price values...")
 
         # Extract time features dynamically
         df = extract_datetime_features(df)
@@ -395,40 +408,40 @@ def filling_missing_cost_price(df: pl.DataFrame) -> pl.DataFrame:
         # Merge with original dataframe to fill missing values
         df = df.join(price_by_week, on=["Year", "Month", "Week_of_year", "Product Name"], how="left")
         df = df.with_columns(
-            pl.when(pl.col("Cost Price").is_null())
+            pl.when(pl.col("Unit Price").is_null())
             .then(pl.col("Most_Frequent_Cost"))
-            .otherwise(pl.col("Cost Price"))
-            .alias("Cost Price")
+            .otherwise(pl.col("Unit Price"))
+            .alias("Unit Price")
         ).drop("Most_Frequent_Cost")
 
 
         df = df.join(price_by_month, on=["Year", "Month", "Product Name"], how="left")
         df = df.with_columns(
-            pl.when(pl.col("Cost Price").is_null())
+            pl.when(pl.col("Unit Price").is_null())
             .then(pl.col("Most_Frequent_Cost"))
-            .otherwise(pl.col("Cost Price"))
-            .alias("Cost Price")
+            .otherwise(pl.col("Unit Price"))
+            .alias("Unit Price")
         ).drop("Most_Frequent_Cost")
 
 
         df = df.join(price_by_year, on=["Year", "Product Name"], how="left")
         df = df.with_columns(
-            pl.when(pl.col("Cost Price").is_null())
+            pl.when(pl.col("Unit Price").is_null())
             .then(pl.col("Most_Frequent_Cost"))
-            .otherwise(pl.col("Cost Price"))
-            .alias("Cost Price")
+            .otherwise(pl.col("Unit Price"))
+            .alias("Unit Price")
         ).drop("Most_Frequent_Cost")
 
 
         # If still null, set to "Unknown" or a default value (e.g., 0)
         df = df.with_columns(
-            pl.col("Cost Price").fill_null(0)
+            pl.col("Unit Price").fill_null(0)
         )
         
-        logging.info("Cost price filling completed successfully.")
+        logging.info("Unit Price filling completed successfully.")
         return df
     except Exception as e:
-        logging.error(f"Unexpected error while filling missing cost prices: {e}")
+        logging.error(f"Unexpected error while filling missing Unit Prices: {e}")
         raise e
 
 
@@ -565,14 +578,179 @@ def clean_and_correct_product_names(df: pl.DataFrame) -> pl.DataFrame:
 
 
 
-def save_cleaned_data(df: pl.DataFrame, output_file: str) -> None:
-    """Saves the cleaned data to a CSV file."""
-    try:
-        df.write_csv(output_file)
-    except Exception as e:
-        logging.error(f"Error saving processed DataFrame: {e}")
-        raise e
 
+
+def upload_df_to_gcs(df, bucket_name, destination_blob_name):
+    """
+    Uploads a Polars DataFrame as a CSV file to a specified Google Cloud Storage bucket.
+    
+    :param bucket_name: Name of the GCS bucket
+    :param df: The Polars DataFrame to upload
+    :param destination_blob_name: Destination path in GCS where the file will be stored
+    """
+
+    bucket = storage.Client().get_bucket(bucket_name)
+    blob = bucket.blob(destination_blob_name)
+    csv_data = df.write_csv()
+    blob.upload_from_string(csv_data, content_type='text/csv')
+
+def calculate_zscore(series: pl.Series) -> pl.Series:
+    """Calculate Z-score for a series"""
+    mean = series.mean()
+    std = series.std()
+    if std == 0:
+        return pl.Series([0] * len(series))
+    return (series - mean) / std
+    
+def iqr_bounds(series: pl.Series) -> Tuple[float, float]:
+    """Calculate IQR bounds for a series"""
+    q1 = series.quantile(0.25)
+    q3 = series.quantile(0.75)
+    iqr = q3 - q1
+    lower_bound = q1 - 3.0 * iqr
+    upper_bound = q3 + 3.0 * iqr
+    return max(0, lower_bound), upper_bound
+
+def detect_anomalies(df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
+    """
+    Detect anomalies in transaction data using both IQR and Z-score methods.
+    
+    Parameters:
+    df (pl.DataFrame): DataFrame containing transaction data with columns:
+        - Date
+        - Unit Price
+        - Transaction ID
+        - Quantity
+        - Producer ID
+        - Store Location
+        - Product Name
+    
+    Returns:
+    Dict[str, pl.DataFrame]: Dictionary containing different types of anomalies detected
+    """
+    
+    anomalies = {}
+    clean_df = df.clone()
+    anomaly_transaction_ids = set() 
+    
+    # 1. Missing Values
+    missing_counts = []
+    for col in df.columns:
+        null_count = df[col].null_count()
+        if null_count > 0:
+            missing_counts.append({"column": col, "null_count": null_count})
+            null_rows = df.filter(pl.col(col).is_null())
+            anomaly_transaction_ids.update(null_rows['Transaction ID'].to_list())
+    
+    anomalies['missing_values'] = pl.DataFrame(missing_counts)
+    
+    # 3. Price Anomalies (by Product)
+    price_anomalies = []
+    for product in df['Product Name'].unique():
+        product_data = df.filter(pl.col('Product Name') == product)
+        
+        # Z-score method
+        # zscore_prices = calculate_zscore(product_data['Unit Price'])
+        # zscore_anomalies = product_data.filter(
+        #     (zscore_prices.abs() > 3)
+        # )
+        
+        # IQR method
+        lower_bound, upper_bound = iqr_bounds(product_data['Unit Price'])
+        iqr_anomalies = product_data.filter(
+            (pl.col('Unit Price') < lower_bound) | 
+            (pl.col('Unit Price') > upper_bound)
+        )
+        
+        # Combine both methods
+        # combined_anomalies = pl.concat([zscore_anomalies, iqr_anomalies]).unique()
+        # if len(combined_anomalies) > 0:
+        #     price_anomalies.append(combined_anomalies)
+        price_anomalies.append(iqr_anomalies)
+        anomaly_transaction_ids.update(iqr_anomalies['Transaction ID'].to_list())
+    
+    if price_anomalies:
+        anomalies['price_anomalies'] = pl.concat(price_anomalies)
+    else:
+        anomalies['price_anomalies'] = pl.DataFrame()
+    
+    # 4. Quantity Anomalies (by Product)
+    quantity_anomalies = []
+    for product in df['Product Name'].unique():
+        product_data = df.filter(pl.col('Product Name') == product)
+        
+        # Z-score method
+        # zscore_quantities = calculate_zscore(product_data['Quantity'])
+        # zscore_anomalies = product_data.filter(
+        #     (zscore_quantities.abs() > 3)
+        # )
+        
+        # IQR method
+        lower_bound, upper_bound = iqr_bounds(product_data['Quantity'])
+
+        iqr_anomalies = product_data.filter(
+            (pl.col('Quantity') < lower_bound) | 
+            (pl.col('Quantity') > upper_bound)
+        )
+        
+        # Combine both methods
+        # combined_anomalies = pl.concat([zscore_anomalies, iqr_anomalies]).unique()
+        # if len(combined_anomalies) > 0:
+        #     quantity_anomalies.append(combined_anomalies)
+        quantity_anomalies.append(iqr_anomalies)
+        anomaly_transaction_ids.update(iqr_anomalies['Transaction ID'].to_list())
+    
+    if quantity_anomalies:
+        anomalies['quantity_anomalies'] = pl.concat(quantity_anomalies)
+    else:
+        anomalies['quantity_anomalies'] = pl.DataFrame()
+    
+    # 5. Time Pattern Anomalies
+    df = df.with_columns([
+        pl.col('Date').cast(pl.Datetime).alias('datetime'),
+        pl.col('Date').cast(pl.Datetime).dt.hour().alias('hour')
+    ])
+    
+    # Detect transactions outside normal business hours (assuming 6AM-10PM)
+    time_anomalies = df.filter(
+        (pl.col('hour') < 6) | (pl.col('hour') > 22)
+    )
+    anomalies['time_anomalies'] = time_anomalies
+    anomaly_transaction_ids.update(time_anomalies['Transaction ID'].to_list())
+    
+    # 6. Invalid Format Checks
+    format_anomalies = df.filter(
+        # Check for negative prices
+        (pl.col('Unit Price') <= 0) |
+        # Check for negative quantities
+        (pl.col('Quantity') <= 0)
+    )
+    anomalies['format_anomalies'] = format_anomalies
+    anomaly_transaction_ids.update(format_anomalies['Transaction ID'].to_list())
+    
+    clean_df = clean_df.filter(~pl.col('Transaction ID').is_in(list(anomaly_transaction_ids)))
+    
+    return anomalies, clean_df
+    
+
+
+def aggregate_daily_products(df: pl.DataFrame) -> pl.DataFrame:
+    """
+    Aggregates transaction data to show total quantity per product per day.
+    
+    Parameters:
+    df (pl.DataFrame): Input DataFrame with columns Date, Unit Price, Quantity, and Product Name
+    
+    Returns:
+    pl.DataFrame: Aggregated DataFrame with daily totals per product
+    """
+    return (
+        df.group_by(["Date", "Product Name", "Unit Price"])
+        .agg(
+            pl.col("Quantity").sum().alias("Total Quantity")
+        )
+        .sort(["Date", "Product Name"])
+    )
 
 def remove_duplicate_records(df: pl.DataFrame) -> pl.DataFrame:
     """
@@ -580,7 +758,6 @@ def remove_duplicate_records(df: pl.DataFrame) -> pl.DataFrame:
 
     Parameters:
         df (pl.DataFrame): Input DataFrame
-
     Returns:
         pl.DataFrame: DataFrame without duplicate records.
     """
@@ -594,7 +771,15 @@ def remove_duplicate_records(df: pl.DataFrame) -> pl.DataFrame:
         raise e
 
 
-def main(input_file: str, output_file: str) -> None:
+def save_cleaned_data(df: pl.DataFrame, output_file: str) -> None:
+    """Saves the cleaned data to a CSV file."""
+    try:
+        df.write_csv(output_file)
+    except Exception as e:
+        logging.error(f"Error saving processed DataFrame: {e}")
+        raise e
+
+def main(input_file: str, output_file: str, cloud: bool) -> None:
     """
     Executes all data cleaning steps in sequence.
 
@@ -605,9 +790,17 @@ def main(input_file: str, output_file: str) -> None:
     Raises:
         RuntimeError: If any step fails during execution.
     """
+    bucket_name = 'mlops-data-storage-000' 
+    source_blob_name = 'generated_training_data/transactions_20190103_20241231.xlsx'
+    destination_blob_name = 'cleaned_data/cleanedData.csv'
+    
+
     try:
         logging.info("Loading data...")
-        df = load_data(input_file)
+        if cloud:
+            df = load_bucket_data(bucket_name, source_blob_name)
+        else:
+            df = load_data(input_file)
 
         # logging.info("Standardizing date formats...")
         # df = standardize_date_format(df)
@@ -624,7 +817,7 @@ def main(input_file: str, output_file: str) -> None:
         logging.info("Converting string columns to lowercase...")
         df = convert_string_columns_to_lowercase(df)
 
-        logging.info("Filling missing cost prices using most frequent price...")
+        logging.info("Filling missing Unit Prices using most frequent price...")
         df = filling_missing_cost_price(df)
 
         logging.info("Removing invalid records...")
@@ -635,6 +828,20 @@ def main(input_file: str, output_file: str) -> None:
 
         logging.info("Removing Duplicate Records...")
         df = remove_duplicate_records(df)
+
+        anomalies, df = detect_anomalies(df)
+
+        message_parts = ["Hi, we removed the following data from your excel:"]
+        for anomaly_type, anomaly_df in anomalies.items():
+            if not anomaly_df.is_empty():
+                message_parts.append(f"\n{anomaly_type}:")
+                message_parts.append(anomaly_df)
+        
+        message_parts.append("Thank you!")
+        send_email("patelmit640@gmail.com", message_parts, subject="Anomaly Data")
+
+        df = df.with_columns(pl.col("Date").dt.date().alias("Date"))
+        df = aggregate_daily_products(df)
         
         logging.info("Saving cleaned data...")
         save_cleaned_data(df, output_file)
@@ -647,5 +854,5 @@ def main(input_file: str, output_file: str) -> None:
 
 if __name__ == "__main__":
     input_file = "messy_transactions_20190103_20241231.xlsx"  # Change to actual file
-    output_file = "cleaned_data.csv"
-    main(input_file, output_file)
+    output_file = "../../data/cleaned_data.csv"
+    main(input_file, output_file, False)

@@ -148,7 +148,7 @@ def visualize_data(df, base_demand, noise_levels):
 
 def save_to_excel(df, start_date, end_date):
     """Save generated data to an Excel file."""
-    save_dir = "./data/"
+    save_dir = "../../data/"
     os.makedirs(save_dir, exist_ok=True)
     filename = f"commodity_demand_{start_date.replace('-', '')}_{end_date.replace('-', '')}.xlsx"
     filepath = os.path.join(save_dir, filename)
