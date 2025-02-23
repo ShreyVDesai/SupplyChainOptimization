@@ -10,7 +10,7 @@ __init__.py
 .coverage
 .vscode
 .env
-/Data-Pipeline/logs/
+.dvc
 /data
 /transaction
 /logs
