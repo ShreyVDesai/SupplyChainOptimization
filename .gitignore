@@ -1,7 +1,5 @@
 # Ignore all files in the 'secret' directory - GCP Key
 secret/*
-data/*
-transaction/*
 logs/*
 /temp_env/
 /transactions_20190103_20241231.xlsx
@@ -14,3 +12,5 @@ __init__.py
 .vscode
 .env
 /Data-Pipeline/logs/
+/data
+/transaction
