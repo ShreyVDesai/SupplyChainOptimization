@@ -2,6 +2,7 @@
 secret/*
 data/*
 transaction/*
+logs/*
 /temp_env/
 /transactions_20190103_20241231.xlsx
 /messy_transactions_20190103_20241231.xlsx

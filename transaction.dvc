@@ -1,0 +1,6 @@
+outs:
+- md5: 230bccbf483b9cea6c2abf3c15b5178c.dir
+  size: 59241002
+  nfiles: 1
+  hash: md5
+  path: transaction
