@@ -8,7 +8,8 @@ import io
 from google.cloud import storage
 from dotenv import load_dotenv
 from typing import Dict, Tuple
-from sendMail import send_email
+# from sendMail import send_email
+from scripts.sendMail import send_email
 
 load_dotenv()
 
@@ -83,9 +84,9 @@ def convert_feature_types(df: pl.DataFrame) -> pl.DataFrame:
 
     try:
         # Ensure required columns exist
-        missing_columns = [col for col in expected_dtypes if col not in df.columns]
-        if missing_columns:
-            raise KeyError(f"Missing columns in DataFrame: {missing_columns}")
+        # missing_columns = [col for col in expected_dtypes if col not in df.columns]
+        # if missing_columns:
+        #     raise KeyError(f"Missing columns in DataFrame: {missing_columns}")
             
         # Convert columns to expected data types
         for col, dtype in expected_dtypes.items():
@@ -99,8 +100,8 @@ def convert_feature_types(df: pl.DataFrame) -> pl.DataFrame:
         raise
 
 
-def fill_missing_value_with_unknown(df: pl.DataFrame, features: list) -> pl.DataFrame:
-    """Fills missing values in specified columns with the string 'Unknown'.
+def fill_missing_value_with_Nan(df: pl.DataFrame, features: list) -> pl.DataFrame:
+    """Fills missing values in specified columns with the string Nan.
     
     Parameters:
         df (pl.DataFrame): Input DataFrame
@@ -110,30 +111,26 @@ def fill_missing_value_with_unknown(df: pl.DataFrame, features: list) -> pl.Data
         pl.DataFrame: Updated DataFrame with missing values replaced
     """
     try:
-        logging.info(f"Filling missing values with unknown for given features: {features}")
-
-        missing_features = [feature for feature in features if feature not in df.columns]
-        if missing_features:
-            raise KeyError(f"Features missing from the dataframe: {missing_features}")
+        logging.info(f"Filling missing values with Nan for given features: {features}")
 
         for feature in features:
             try:
                 df = df.with_columns(
                     pl.col(feature)
-                    .cast(pl.Utf8)
-                    .fill_null("Unknown")
+                    .fill_null(np.nan)
                 )
                 
 
             except Exception as e:
                 logging.error(f"Error filling missing values in: {feature}")
+                raise
         
-        logging.info("Sucessfully filled missing values with 'unknown'")
+        logging.info("Sucessfully filled missing values with 'None'")
         return df
     
     except Exception as e:
-        logging.error("Error filling missing values with unknown.")
-        raise e
+        logging.error("Error filling missing values with None.")
+        raise
 
 
 
@@ -247,22 +244,31 @@ def detect_date_order(df: pl.DataFrame, date_column: str = "Date") -> str:
     try:
         if date_column not in df.columns:
             logging.error(f"Column '{date_column}' not found in DataFrame.")
-            return "Unknown"
+            raise AttributeError("Date column not found.")
         
+
         # Ensure Date column is in Datetime format
         df = df.with_columns(pl.col(date_column).cast(pl.Datetime))
 
+        # Extracting only date to detect order.
+        temp_df = (
+            df.with_columns(pl.col(date_column).dt.date().alias(date_column))
+        )
+
         # Extract the non-null date series
-        date_series = df.drop_nulls(date_column)[date_column].to_list()
+        date_series = temp_df.drop_nulls(date_column)[date_column].to_list()
+
+        if len(date_series) < 2:
+            return "Random"
         
         # Compute the number of ascending and descending transitions efficiently
-        asc_count = sum(1 for i in range(len(date_series) - 1) if date_series[i] <= date_series[i + 1])
-        desc_count = sum(1 for i in range(len(date_series) - 1) if date_series[i] >= date_series[i + 1])
+        is_ascending = all(date_series[i] <= date_series[i + 1] for i in range(len(date_series) - 1))
+        is_descending = all(date_series[i] >= date_series[i + 1] for i in range(len(date_series) - 1))
 
         # Determine the dominant ordering
-        if asc_count > desc_count:
+        if is_ascending:
             return "Ascending"
-        elif desc_count > asc_count:
+        elif is_descending:
             return "Descending"
         else:
             return "Random"
@@ -288,29 +294,28 @@ def filling_missing_dates(df: pl.DataFrame, date_column: str = "Date") -> pl.Dat
         # Ensure Date column is in correct format before filling
         df = standardize_date_format(df, date_column)
         
-        order_type = detect_date_order(df, date_column)
-        
         if df[date_column].null_count() > 0:
+            order_type = detect_date_order(df, date_column)
             logging.warning(f"{df[date_column].null_count()} missing date values before filling.")
 
-        if order_type == "Ascending":
-            logging.info("Ascending Order Detected: Using Forward-Fill")
-            # df = df.with_columns(pl.col(date_column).fill_null(strategy="forward"))
-            df = df.with_columns(
-                pl.col(date_column).interpolate()
-            )
-        elif order_type == "Descending":
-            logging.info("Descending Order Detected: Using Backward-Fill")
-            # df = df.with_columns(pl.col(date_column).fill_null(strategy="backward"))
-            df = df.with_columns(
-                pl.col(date_column).reverse().interpolate().reverse()
-            )
+            if order_type == "Ascending":
+                logging.info("Ascending Order Detected: Using Forward-Fill")
+                # df = df.with_columns(pl.col(date_column).fill_null(strategy="forward"))
+                df = df.with_columns(
+                    pl.col(date_column).interpolate()
+                )
+            elif order_type == "Descending":
+                logging.info("Descending Order Detected: Using Backward-Fill")
+                # df = df.with_columns(pl.col(date_column).fill_null(strategy="backward"))
+                df = df.with_columns(
+                    pl.col(date_column).interpolate()
+                )
+            else:
+                logging.warning("Random Order Detected: Dropping Missing Dates")
+                df = df.filter(pl.col(date_column).is_not_null())
+
         else:
-            logging.warning("Random Order Detected: Dropping Missing Dates")
-            df = df.filter(pl.col(date_column).is_not_null())
-        
-        if df[date_column].null_count() > 0:
-            logging.warning(f"{df[date_column].null_count()} missing date values remain after filling.")
+            logging.info("No null values found in Date feature.")
         
         return df
     
@@ -337,7 +342,7 @@ def remove_future_dates(df: pl.DataFrame) -> pl.DataFrame:
 
         # Keeping only today's data
         return df.filter(
-            pl.col("Date").dt.date() <= today 
+            pl.col("Date").dt.date() <= today
         )
     except Exception as e:
         logging.error(f"Unexpected error during removing future dates: {e}")
@@ -379,6 +384,7 @@ def compute_most_frequent_price(df: pl.DataFrame, time_granularity: list) -> pl.
         )
     except Exception as e:
         logging.error(f"Error computing most frequent price: {e}")
+        raise e
 
 
 
@@ -459,7 +465,6 @@ def remove_invalid_records(df: pl.DataFrame) -> pl.DataFrame:
     """
     try:
         return df.filter(
-            # (pl.col("Quantity") > 0) &
             pl.col("Quantity").is_not_null() &
             pl.col("Product Name").is_not_null()
         )
@@ -559,7 +564,6 @@ def clean_and_correct_product_names(df: pl.DataFrame) -> pl.DataFrame:
 
 
 
-
 # def filter_valid_records(df, col_names):
 #     """
 #     Filters out invalid records useful for demand forecasting.
@@ -610,6 +614,7 @@ def iqr_bounds(series: pl.Series) -> Tuple[float, float]:
     lower_bound = q1 - 3.0 * iqr
     upper_bound = q3 + 3.0 * iqr
     return max(0, lower_bound), upper_bound
+
 
 def detect_anomalies(df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
     """
@@ -778,6 +783,7 @@ def save_cleaned_data(df: pl.DataFrame, output_file: str) -> None:
     except Exception as e:
         logging.error(f"Error saving processed DataFrame: {e}")
         raise e
+    
 
 def main(input_file: str, output_file: str, cloud: bool) -> None:
     """
@@ -802,17 +808,20 @@ def main(input_file: str, output_file: str, cloud: bool) -> None:
         else:
             df = load_data(input_file)
 
-        # logging.info("Standardizing date formats...")
-        # df = standardize_date_format(df)
-
         logging.info("Filling missing dates...")
         df = filling_missing_dates(df)
 
         logging.info("Converting feature types...")
         df = convert_feature_types(df)
 
-        logging.info("Filling missing values with 'Unknown'...")
-        df = fill_missing_value_with_unknown(df, ["Producer ID", "Store Location", "Transaction ID"])
+        logging.info("Standardizing and correcting product names...")
+        df = clean_and_correct_product_names(df)
+
+        ### Anomaly detection function.
+
+
+        # logging.info("Filling missing values with Nan...")
+        # df = fill_missing_value_with_Nan(df, ["Producer ID", "Store Location", "Transaction ID"])
 
         logging.info("Converting string columns to lowercase...")
         df = convert_string_columns_to_lowercase(df)
@@ -823,25 +832,23 @@ def main(input_file: str, output_file: str, cloud: bool) -> None:
         logging.info("Removing invalid records...")
         df = remove_invalid_records(df)
 
-        logging.info("Standardizing and correcting product names...")
-        df = clean_and_correct_product_names(df)
-
         logging.info("Removing Duplicate Records...")
         df = remove_duplicate_records(df)
 
+        logging.info("Detecting Anomalies...")
         anomalies, df = detect_anomalies(df)
 
-        message_parts = ["Hi, we removed the following data from your excel:"]
-        for anomaly_type, anomaly_df in anomalies.items():
-            if not anomaly_df.is_empty():
-                message_parts.append(f"\n{anomaly_type}:")
-                message_parts.append(anomaly_df)
+        # message_parts = ["Hi, we removed the following data from your excel:"]
+        # for anomaly_type, anomaly_df in anomalies.items():
+        #     if not anomaly_df.is_empty():
+        #         message_parts.append(f"\n{anomaly_type}:")
+        #         message_parts.append(anomaly_df)
         
-        message_parts.append("Thank you!")
-        send_email("patelmit640@gmail.com", message_parts, subject="Anomaly Data")
+        # message_parts.append("Thank you!")
+        # send_email("patelmit640@gmail.com", message_parts, subject="Anomaly Data")
 
-        df = df.with_columns(pl.col("Date").dt.date().alias("Date"))
-        df = aggregate_daily_products(df)
+        # df = df.with_columns(pl.col("Date").dt.date().alias("Date"))
+        # df = aggregate_daily_products(df)
         
         logging.info("Saving cleaned data...")
         save_cleaned_data(df, output_file)
@@ -853,6 +860,10 @@ def main(input_file: str, output_file: str, cloud: bool) -> None:
 
 
 if __name__ == "__main__":
-    input_file = "messy_transactions_20190103_20241231.xlsx"  # Change to actual file
-    output_file = "../../data/cleaned_data.csv"
+    input_file = "messy_transactions_20190103_20241231.xlsx"
+    output_file = "cleaned_data.csv"
     main(input_file, output_file, False)
+
+
+
+
