@@ -646,11 +646,11 @@ def calculate_zscore(series: pl.Series) -> pl.Series:
 def iqr_bounds(series: pl.Series) -> Tuple[float, float]:
     """Calculate IQR bounds for a series"""
     try:
-        q1 = series.quantile(0.25)
-        q3 = series.quantile(0.75)
+        q1 = np.percentile(series, 25)
+        q3 = np.percentile(series, 75)
         iqr = q3 - q1
-        lower_bound = q1 - 3.0 * iqr
-        upper_bound = q3 + 3.0 * iqr
+        lower_bound = q1 - (1.5 * iqr)
+        upper_bound = q3 + (2.0 * iqr)
 
         # Log bounds
         logging.debug(f"Lower Bound: {lower_bound}, Upper Bound: {upper_bound}")
@@ -661,9 +661,10 @@ def iqr_bounds(series: pl.Series) -> Tuple[float, float]:
         logging.error(f"Error calculating IQR bounds: {e}")
         raise
 
+
 def detect_anomalies(df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
     """
-    Detect anomalies in transaction data using both IQR and Z-score methods.
+    Detect anomalies in transaction data per product per day using IQR.
     
     Parameters:
     df (pl.DataFrame): DataFrame containing transaction data.
@@ -674,98 +675,110 @@ def detect_anomalies(df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
     
     anomalies = {}
     clean_df = df.clone()
-    anomaly_transaction_ids = set() 
+    anomaly_transaction_ids = set()
     
     try:
-        # 1. Missing Values
-        missing_counts = []
-        for col in df.columns:
-            null_count = df[col].null_count()
-            if null_count > 0:
-                missing_counts.append({"column": col, "null_count": null_count})
-                null_rows = df.filter(pl.col(col).is_null())
-                anomaly_transaction_ids.update(null_rows['Transaction ID'].to_list())
+        # Ensure Date column is in the correct format
+        df = df.with_columns([
+            pl.col('Date').cast(pl.Datetime).alias('datetime'),
+            pl.col('Date').cast(pl.Datetime).dt.date().alias('date_only'),
+            pl.col('Date').cast(pl.Datetime).dt.hour().alias('hour')
+        ])
         
-        anomalies['missing_values'] = pl.DataFrame(missing_counts)
-        logging.debug(f"Missing values detected in columns: {missing_counts}")
-
-        # 3. Price Anomalies (by Product)
+        # 1. Price Anomalies (by Product and Date)
         price_anomalies = []
-        for product in df['Product Name'].unique():
-            product_data = df.filter(pl.col('Product Name') == product)
+        # Get unique combinations of product and date
+        product_date_combinations = df.select(['Product Name', 'date_only']).unique()
+        
+        for row in product_date_combinations.iter_rows(named=True):
+            product = row['Product Name']
+            date = row['date_only']
             
-            # IQR method
-            lower_bound, upper_bound = iqr_bounds(product_data['Unit Price'])
-            iqr_anomalies = product_data.filter(
-                (pl.col('Unit Price') < lower_bound) | 
-                (pl.col('Unit Price') > upper_bound)
+            # Filter data for specific product and date
+            product_date_data = df.filter(
+                (pl.col('Product Name') == product) & 
+                (pl.col('date_only') == date)
             )
             
-            price_anomalies.append(iqr_anomalies)
-            anomaly_transaction_ids.update(iqr_anomalies['Transaction ID'].to_list())
+            # Only proceed if we have enough data points for this product/date combination
+            if len(product_date_data) >= 4:  # Minimum sample size for meaningful IQR
+                # IQR method
+                lower_bound, upper_bound = iqr_bounds(product_date_data['Unit Price'])
+                iqr_anomalies = product_date_data.filter(
+                    (pl.col('Unit Price') < lower_bound) | 
+                    (pl.col('Unit Price') > upper_bound)
+                )
+                
+                if len(iqr_anomalies) > 0:
+                    price_anomalies.append(iqr_anomalies)
+                    anomaly_transaction_ids.update(iqr_anomalies['Transaction ID'].to_list())
         
         if price_anomalies:
             anomalies['price_anomalies'] = pl.concat(price_anomalies)
         else:
             anomalies['price_anomalies'] = pl.DataFrame()
-
         logging.debug(f"Price anomalies detected: {len(price_anomalies)} products.")
-
-        # 4. Quantity Anomalies (by Product)
+        
+        # 2. Quantity Anomalies (by Product and Date)
         quantity_anomalies = []
-        for product in df['Product Name'].unique():
-            product_data = df.filter(pl.col('Product Name') == product)
+        
+        for row in product_date_combinations.iter_rows(named=True):
+            product = row['Product Name']
+            date = row['date_only']
             
-            # IQR method
-            lower_bound, upper_bound = iqr_bounds(product_data['Quantity'])
-            iqr_anomalies = product_data.filter(
-                (pl.col('Quantity') < lower_bound) | 
-                (pl.col('Quantity') > upper_bound)
+            # Filter data for specific product and date
+            product_date_data = df.filter(
+                (pl.col('Product Name') == product) & 
+                (pl.col('date_only') == date)
             )
             
-            quantity_anomalies.append(iqr_anomalies)
-            anomaly_transaction_ids.update(iqr_anomalies['Transaction ID'].to_list())
+            # Only proceed if we have enough data points for this product/date combination
+            if len(product_date_data) >= 4:  # Minimum sample size for meaningful IQR
+                # IQR method
+                lower_bound, upper_bound = iqr_bounds(product_date_data['Quantity'])
+                iqr_anomalies = product_date_data.filter(
+                    (pl.col('Quantity') < lower_bound) | 
+                    (pl.col('Quantity') > upper_bound)
+                )
+                
+                if len(iqr_anomalies) > 0:
+                    quantity_anomalies.append(iqr_anomalies)
+                    anomaly_transaction_ids.update(iqr_anomalies['Transaction ID'].to_list())
         
         if quantity_anomalies:
             anomalies['quantity_anomalies'] = pl.concat(quantity_anomalies)
         else:
             anomalies['quantity_anomalies'] = pl.DataFrame()
-
         logging.debug(f"Quantity anomalies detected: {len(quantity_anomalies)} products.")
 
-        # 5. Time Pattern Anomalies
-        df = df.with_columns([
-            pl.col('Date').cast(pl.Datetime).alias('datetime'),
-            pl.col('Date').cast(pl.Datetime).dt.hour().alias('hour')
-        ])
-        
-        # Detect transactions outside normal business hours (assuming 6AM-10PM)
+        # 3. Time Pattern Anomalies
         time_anomalies = df.filter(
             (pl.col('hour') < 6) | (pl.col('hour') > 22)
         )
         anomalies['time_anomalies'] = time_anomalies
         anomaly_transaction_ids.update(time_anomalies['Transaction ID'].to_list())
-
         logging.debug(f"Time anomalies detected: {len(time_anomalies)} transactions.")
-
-        # 6. Invalid Format Checks
+        
+        # 4. Invalid Format Checks
         format_anomalies = df.filter(
             (pl.col('Unit Price') <= 0) |
             (pl.col('Quantity') <= 0)
         )
         anomalies['format_anomalies'] = format_anomalies
         anomaly_transaction_ids.update(format_anomalies['Transaction ID'].to_list())
-
+        
         logging.debug(f"Format anomalies detected: {len(format_anomalies)} transactions.")
 
         clean_df = clean_df.filter(~pl.col('Transaction ID').is_in(list(anomaly_transaction_ids)))
         logging.info(f"Clean data size after anomaly removal: {clean_df.shape[0]} rows.")
-
+    
     except Exception as e:
         logging.error(f"Error detecting anomalies: {e}")
         raise
-
+    
     return anomalies, clean_df
+
+
     
 
 
@@ -814,7 +827,12 @@ def save_cleaned_data(df: pl.DataFrame, output_file: str) -> None:
         logging.error(f"Error saving processed DataFrame: {e}")
         raise e
 
-def main(input_file: str, output_file: str, cloud: bool) -> None:
+def main(input_file: str = "../../transaction/transactions_20190103_20241231.xlsx", 
+         output_file: str  = "../../data/cleaned_data.csv", 
+         bucket_name: str = 'mlops-data-storage-000', 
+         source_blob_name: str = 'generated_training_data/transactions_20190103_20241231.xlsx', 
+         destination_blob_name: str = 'cleaned_data/cleanedData.csv', 
+         cloud: bool = False) -> None:
     """
     Executes all data cleaning steps in sequence.
 
@@ -825,10 +843,6 @@ def main(input_file: str, output_file: str, cloud: bool) -> None:
     Raises:
         RuntimeError: If any step fails during execution.
     """
-    bucket_name = 'mlops-data-storage-000' 
-    source_blob_name = 'generated_training_data/transactions_20190103_20241231.xlsx'
-    destination_blob_name = 'cleaned_data/cleanedData.csv'
-    
 
     try:
         logging.info("Loading data...")
@@ -879,7 +893,10 @@ def main(input_file: str, output_file: str, cloud: bool) -> None:
         df = aggregate_daily_products(df)
         
         logging.info("Saving cleaned data...")
-        save_cleaned_data(df, output_file)
+        if cloud:
+            upload_df_to_gcs(df, bucket_name, destination_blob_name)
+        else:
+            save_cleaned_data(df, output_file)
         logging.info(f"Data cleaning completed! Cleaned data saved to: {output_file}")
 
     except Exception as e:
@@ -888,6 +905,4 @@ def main(input_file: str, output_file: str, cloud: bool) -> None:
 
 
 if __name__ == "__main__":
-    input_file = "messy_transactions_20190103_20241231.xlsx"  # Change to actual file
-    output_file = "../../data/cleaned_data.csv"
-    main(input_file, output_file, False)
+    main()
