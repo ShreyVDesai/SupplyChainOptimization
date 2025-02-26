@@ -13,3 +13,5 @@ __init__.py
 .vscode
 .env
 /Data-Pipeline/logs/
+secrets/
+SCO_LOG/

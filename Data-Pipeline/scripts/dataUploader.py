@@ -72,8 +72,12 @@ def upload_json_to_gcs(bucket_name, json_data, destination_blob_name):
     blob = bucket.blob(destination_blob_name)
 
     # Upload the JSON data to GCS
-    blob.upload_from_string(json_data, content_type="application/json")
-    print(f"JSON data uploaded to bucket '{bucket_name}' as '{destination_blob_name}'.")
+    try:
+        blob.upload_from_string(json_data, content_type="application/json")
+        print(f"JSON data uploaded to bucket '{bucket_name}' as '{destination_blob_name}'.")
+    except Exception as e:
+        print(f"Error uploading JSON data: {e}")
+        raise e
 
 
 def process_all_excel_files_in_data_folder(data_folder):

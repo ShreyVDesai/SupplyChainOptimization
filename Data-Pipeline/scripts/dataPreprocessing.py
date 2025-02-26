@@ -3,19 +3,14 @@ import pandas as pd
 from datetime import datetime
 from rapidfuzz import process, fuzz
 import polars as pl
-import logging
+from logger import logger
 import io
 from google.cloud import storage
 from dotenv import load_dotenv
 from typing import Dict, Tuple
-# from sendMail import send_email
-from scripts.sendMail import send_email
+# from scripts.sendMail import send_email
 
 load_dotenv()
-
-# Configure Logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-
 
 # Reference product names (correct names from the dataset)
 REFERENCE_PRODUCT_NAMES = [
@@ -44,34 +39,34 @@ def load_data(file_path: str) -> pl.DataFrame:
         if file_path.lower().endswith(".xlsx"):
             df = pl.read_excel(file_path)
         
-        logging.info(f"Data successfully loaded with {df.shape[0]} rows and {df.shape[1]} columns.")
+        logger.info(f"Data successfully loaded with {df.shape[0]} rows and {df.shape[1]} columns.")
         return df
     
     except FileNotFoundError:
-        logging.error(f"File Not Found: {file_path}")
+        logger.error(f"File Not Found: {file_path}")
 
     except Exception as e:
-        logging.error(f"Fail to load data due to: {e}")
+        logger.error(f"Fail to load data due to: {e}")
         raise e
 
         
 
 
 def convert_feature_types(df: pl.DataFrame) -> pl.DataFrame:
-    """Converts columns to their appropriate data types for consistency.
-    
+    """
+    Converts columns to their appropriate data types for consistency.
+
     - Converts 'Date' to `Datetime`
     - Converts numeric features to `Float64` or `Int64`
     - Ensures categorical features remain as `Utf8`
 
     Parameters:
         df (pl.DataFrame): Input DataFrame
-    
+
     Returns:
-        pl.DataFrame: Updated DataFrame with corrected types
+        pl.DataFrame: Updated DataFrame with corrected types.
     """
-    
-    # Define expected data types
+    # Define expected data types.
     expected_dtypes = {
         "Date": pl.Datetime,
         "Unit Price": pl.Float64,
@@ -79,63 +74,27 @@ def convert_feature_types(df: pl.DataFrame) -> pl.DataFrame:
         "Transaction ID": pl.Utf8,
         "Store Location": pl.Utf8,
         "Product Name": pl.Utf8,
-        "Producer ID": pl.Utf8
+        "Producer ID": pl.Utf8,
     }
 
     try:
-        # Ensure required columns exist
-        # missing_columns = [col for col in expected_dtypes if col not in df.columns]
-        # if missing_columns:
-        #     raise KeyError(f"Missing columns in DataFrame: {missing_columns}")
-            
-        # Convert columns to expected data types
+        # Convert columns to expected data types.
         for col, dtype in expected_dtypes.items():
             if col in df.columns:
                 df = df.with_columns(pl.col(col).cast(dtype))
 
-        logging.info("Feature types converted successfully.")
+        logger.info("Feature types converted successfully.")
         return df
+
     except Exception as e:
-        logging.error(f"Unexpected error during feature type conversion.", exc_info=True)
-        raise
-
-
-def fill_missing_value_with_Nan(df: pl.DataFrame, features: list) -> pl.DataFrame:
-    """Fills missing values in specified columns with the string Nan.
-    
-    Parameters:
-        df (pl.DataFrame): Input DataFrame
-        features (list): List of feature names to process
-
-    Returns:
-        pl.DataFrame: Updated DataFrame with missing values replaced
-    """
-    try:
-        logging.info(f"Filling missing values with Nan for given features: {features}")
-
-        for feature in features:
-            try:
-                df = df.with_columns(
-                    pl.col(feature)
-                    .fill_null(np.nan)
-                )
-                
-
-            except Exception as e:
-                logging.error(f"Error filling missing values in: {feature}")
-                raise
-        
-        logging.info("Sucessfully filled missing values with 'None'")
-        return df
-    
-    except Exception as e:
-        logging.error("Error filling missing values with None.")
-        raise
+        logger.error("Unexpected error during feature type conversion.", exc_info=True)
+        raise e
 
 
 
 def convert_string_columns_to_lowercase(df: pl.DataFrame) -> pl.DataFrame:
-    """Converts all string-type columns to lowercase for consistency.
+    """
+    Converts all string-type columns to lowercase for consistency.
     
     Parameters:
         df (pl.DataFrame): Input DataFrame
@@ -145,20 +104,20 @@ def convert_string_columns_to_lowercase(df: pl.DataFrame) -> pl.DataFrame:
     """
     try:
         # Detect all string-type columns dynamically
-        logging.info("Converting all string-type columns to lowercase...")
+        logger.info("Converting all string-type columns to lowercase...")
         string_features = [col for col, dtype in zip(df.columns, df.dtypes) if dtype == pl.Utf8]
 
         if not string_features:
-            logging.warning("No string columns detected. Skipping conversion.")
+            logger.warning("No string columns detected. Skipping conversion.")
             return df
 
         df = df.with_columns(
             [pl.col(feature).str.to_lowercase() for feature in string_features]
         )
-
         return df
+    
     except Exception as e:
-        logging.error(f"Unexpected error during string conversion: {e}")
+        logger.error(f"Unexpected error during string conversion: {e}")
         raise e
 
 
@@ -178,10 +137,10 @@ def standardize_date_format(df: pl.DataFrame, date_column: str = "Date") -> pl.D
         pl.DataFrame: Updated DataFrame with standardized date formats.
     """
     try:
-        logging.info("Standardizing date formats...")
+        logger.info("Standardizing date formats...")
         
         if date_column not in df.columns:
-            logging.error(f"Column '{date_column}' not found in DataFrame.")
+            logger.error(f"Column '{date_column}' not found in DataFrame.")
             return df
         
         # Ensure 'Date' column is a string before processing
@@ -216,13 +175,13 @@ def standardize_date_format(df: pl.DataFrame, date_column: str = "Date") -> pl.D
         # Log any null values after standardization
         null_count = df[date_column].null_count()
         if null_count > 0:
-            logging.warning(f"Date column '{date_column}' has {null_count} null values after conversion. Check data format.")
+            logger.warning(f"Date column '{date_column}' has {null_count} null values after conversion. Check data format.")
         
-        logging.info("Date standardization completed successfully.")
+        logger.info("Date standardization completed successfully.")
         return df
     
     except Exception as e:
-        logging.error(f"Unexpected error during date processing: {e}")
+        logger.error(f"Unexpected error during date processing: {e}")
         raise e
 
 
@@ -243,7 +202,7 @@ def detect_date_order(df: pl.DataFrame, date_column: str = "Date") -> str:
     """
     try:
         if date_column not in df.columns:
-            logging.error(f"Column '{date_column}' not found in DataFrame.")
+            logger.error(f"Column '{date_column}' not found in DataFrame.")
             raise AttributeError("Date column not found.")
         
 
@@ -274,7 +233,7 @@ def detect_date_order(df: pl.DataFrame, date_column: str = "Date") -> str:
             return "Random"
     
     except Exception as e:
-        logging.error(f"Error detecting date order: {e}")
+        logger.error(f"Error detecting date order: {e}")
         raise e
 
         
@@ -296,31 +255,50 @@ def filling_missing_dates(df: pl.DataFrame, date_column: str = "Date") -> pl.Dat
         
         if df[date_column].null_count() > 0:
             order_type = detect_date_order(df, date_column)
-            logging.warning(f"{df[date_column].null_count()} missing date values before filling.")
+            logger.warning(f"{df[date_column].null_count()} missing date values before filling.")
+
+            df = df.with_columns([
+                pl.col(date_column).fill_null(strategy="forward").alias("prev_valid"),
+                pl.col(date_column).fill_null(strategy="backward").alias("next_valid")
+            ])
+
+            original_count = df.height
+
+            # Remove records with missing date values whose previous and next
+            df = df.filter(
+                pl.col(date_column).is_not_null() |
+                (
+                    (pl.col("prev_valid").dt.truncate("1d") == pl.col("next_valid").dt.truncate("1d"))
+                )
+            )
+
+            dropped_count = original_count - df.height
+            logger.info(f"Dropped {dropped_count} records due to mismatched date boundaries.")
+
+            # Drop helper columns.
+            df = df.drop(["prev_valid", "next_valid"])
+
 
             if order_type == "Ascending":
-                logging.info("Ascending Order Detected: Using Forward-Fill")
-                # df = df.with_columns(pl.col(date_column).fill_null(strategy="forward"))
+                logger.info("Ascending Order Detected: Using Forward-Fill")
                 df = df.with_columns(
                     pl.col(date_column).interpolate()
                 )
             elif order_type == "Descending":
-                logging.info("Descending Order Detected: Using Backward-Fill")
-                # df = df.with_columns(pl.col(date_column).fill_null(strategy="backward"))
+                logger.info("Descending Order Detected: Using Backward-Fill")
                 df = df.with_columns(
                     pl.col(date_column).interpolate()
                 )
             else:
-                logging.warning("Random Order Detected: Dropping Missing Dates")
+                logger.warning("Random Order Detected: Dropping Missing Dates")
                 df = df.filter(pl.col(date_column).is_not_null())
 
         else:
-            logging.info("No null values found in Date feature.")
-        
+            logger.info("No null values found in Date feature.")
         return df
     
     except Exception as e:
-        logging.error(f"Error filling missing dates: {e}")
+        logger.error(f"Error filling missing dates: {e}")
         raise e
 
 
@@ -345,7 +323,7 @@ def remove_future_dates(df: pl.DataFrame) -> pl.DataFrame:
             pl.col("Date").dt.date() <= today
         )
     except Exception as e:
-        logging.error(f"Unexpected error during removing future dates: {e}")
+        logger.error(f"Unexpected error during removing future dates: {e}")
         raise e
 
 
@@ -361,7 +339,7 @@ def extract_datetime_features(df: pl.DataFrame) -> pl.DataFrame:
             pl.col("Date").dt.week().alias("Week_of_year")
         )
     except Exception as e:
-        logging.error(f"Error extracting datetime feature.")
+        logger.error(f"Error extracting datetime feature.")
         raise e
 
 
@@ -383,7 +361,7 @@ def compute_most_frequent_price(df: pl.DataFrame, time_granularity: list) -> pl.
             .agg(pl.col("Unit Price").mode().first().alias("Most_Frequent_Cost"))
         )
     except Exception as e:
-        logging.error(f"Error computing most frequent price: {e}")
+        logger.error(f"Error computing most frequent price: {e}")
         raise e
 
 
@@ -400,7 +378,7 @@ def filling_missing_cost_price(df: pl.DataFrame) -> pl.DataFrame:
     """
     
     try:
-        logging.info("Filling missing Unit Price values...")
+        logger.info("Filling missing Unit Price values...")
 
         # Extract time features dynamically
         df = extract_datetime_features(df)
@@ -443,11 +421,12 @@ def filling_missing_cost_price(df: pl.DataFrame) -> pl.DataFrame:
         df = df.with_columns(
             pl.col("Unit Price").fill_null(0)
         )
-        
-        logging.info("Unit Price filling completed successfully.")
+
+        logger.info("Unit Price filling completed successfully.")
         return df
+    
     except Exception as e:
-        logging.error(f"Unexpected error while filling missing Unit Prices: {e}")
+        logger.error(f"Unexpected error while filling missing Unit Prices: {e}")
         raise e
 
 
@@ -468,8 +447,9 @@ def remove_invalid_records(df: pl.DataFrame) -> pl.DataFrame:
             pl.col("Quantity").is_not_null() &
             pl.col("Product Name").is_not_null()
         )
+    
     except Exception as e:
-        logging.error(f"Error handling remove_invalid_records function: {e}")
+        logger.error(f"Error handling remove_invalid_records function: {e}")
         raise e
 
 
@@ -489,7 +469,7 @@ def standardize_product_name(df: pl.DataFrame) -> pl.DataFrame:
         pl.DataFrame: Updated DataFrame with standardized product names.
     """
     try:
-        logging.info("Standardizing product name.")
+        logger.info("Standardizing product name.")
         df = df.with_columns(
             pl.col("Product Name")
             .cast(pl.Utf8)
@@ -499,10 +479,10 @@ def standardize_product_name(df: pl.DataFrame) -> pl.DataFrame:
             .str.replace_all("0", "o")
             .alias("Product Name")
         )
-
         return df
+    
     except Exception as e:
-        logging.error(f"Error standardizing product name: {e}")
+        logger.error(f"Error standardizing product name: {e}")
         raise e
 
 
@@ -520,7 +500,7 @@ def apply_fuzzy_correction(df: pl.DataFrame, reference_list: list, threshold: in
         pl.DataFrame: DataFrame with corrected product names.
     """
     try:
-        product_names = df["Product Name"].unique().to_list()
+        product_names = df["Product Name"].unique(maintain_order=True).to_list()
 
         name_mapping = {}
 
@@ -535,52 +515,12 @@ def apply_fuzzy_correction(df: pl.DataFrame, reference_list: list, threshold: in
         df = df.with_columns(
             pl.col("Product Name").replace(name_mapping).alias("Product Name")
         )
-        logging.info(f"Fuzzy matching completed. {len(name_mapping)} product names corrected.")
+        logger.info(f"Fuzzy matching completed. {len(name_mapping)} product names corrected.")
         return df
     
     except Exception as e:
-        logging.error(f"Unexpected error during fuzzy matching: {e}")
+        logger.error(f"Unexpected error during fuzzy matching: {e}")
         raise e
-
-
-def clean_and_correct_product_names(df: pl.DataFrame) -> pl.DataFrame:
-    """
-    Full pipeline to standardize and correct product names.
-    
-    Steps:
-    - Standardize case and fix typos.
-    - Apply fuzzy matching for near-duplicate correction.
-    
-    Parameters:
-        df (pl.DataFrame): Input DataFrame
-    
-    Returns:
-        pl.DataFrame: Cleaned and corrected DataFrame.
-    """
-    df = standardize_product_name(df)
-    df = apply_fuzzy_correction(df, REFERENCE_PRODUCT_NAMES)
-    
-    return df
-
-
-
-# def filter_valid_records(df, col_names):
-#     """
-#     Filters out invalid records useful for demand forecasting.
-#     Ensures values are not null and greater than 0 for multiple columns.
-
-#     Parameters:
-#         df (pl.DataFrame): Input Polars DataFrame
-#         col_names (list): List of column names to filter
-
-#     Returns:
-#         pl.DataFrame: Filtered DataFrame
-#     """
-#     for col_name in col_names:
-#         df = df.filter(pl.col(col_name).is_not_null() & (pl.col(col_name) > 0))
-#     return df
-
-
 
 
 
@@ -636,7 +576,13 @@ def detect_anomalies(df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
     
     anomalies = {}
     clean_df = df.clone()
-    anomaly_transaction_ids = set() 
+    anomaly_transaction_ids = set()
+
+    # Features Input Validation
+    # feature_input_anomalies = validate_feature_inputs(df)
+    # if feature_input_anomalies is not None:
+    #     anomalies["feature_input_anomalies"] = feature_input_anomalies
+    #     anomaly_transaction_ids.update(feature_input_anomalies["Transaction ID"].to_list())
     
     # 1. Missing Values
     missing_counts = []
@@ -767,12 +713,17 @@ def remove_duplicate_records(df: pl.DataFrame) -> pl.DataFrame:
         pl.DataFrame: DataFrame without duplicate records.
     """
     try:
-        logging.info("Removing duplicate records...")
+        logger.info("Removing duplicate records...")
+        original_count = df.height
         df = df.unique(subset=["Transaction ID"], maintain_order=True)
-        logging.info("Duplicate records removed.")
+        removed_count = original_count - df.height
+        if removed_count:
+            logger.info(f"Duplicate records found: {removed_count} duplicate record(s) removed.")
+        else:
+            logger.info("No duplicate records found.")
         return df
     except Exception as e:
-        logging.error(f"Error while removing duplicate records: {e}")
+        logger.error(f"Error while removing duplicate records: {e}")
         raise e
 
 
@@ -781,7 +732,7 @@ def save_cleaned_data(df: pl.DataFrame, output_file: str) -> None:
     try:
         df.write_csv(output_file)
     except Exception as e:
-        logging.error(f"Error saving processed DataFrame: {e}")
+        logger.error(f"Error saving processed DataFrame: {e}")
         raise e
     
 
@@ -796,46 +747,43 @@ def main(input_file: str, output_file: str, cloud: bool) -> None:
     Raises:
         RuntimeError: If any step fails during execution.
     """
-    bucket_name = 'mlops-data-storage-000' 
+    bucket_name = 'mlops-data-storage-000'
     source_blob_name = 'generated_training_data/transactions_20190103_20241231.xlsx'
     destination_blob_name = 'cleaned_data/cleanedData.csv'
     
 
     try:
-        logging.info("Loading data...")
+        logger.info("Loading data...")
         if cloud:
             df = load_bucket_data(bucket_name, source_blob_name)
         else:
             df = load_data(input_file)
 
-        logging.info("Filling missing dates...")
+        logger.info("Filling missing dates...")
         df = filling_missing_dates(df)
 
-        logging.info("Converting feature types...")
+        logger.info("Converting feature types...")
         df = convert_feature_types(df)
 
-        logging.info("Standardizing and correcting product names...")
-        df = clean_and_correct_product_names(df)
-
-        ### Anomaly detection function.
-
-
-        # logging.info("Filling missing values with Nan...")
-        # df = fill_missing_value_with_Nan(df, ["Producer ID", "Store Location", "Transaction ID"])
-
-        logging.info("Converting string columns to lowercase...")
+        logger.info("Converting string columns to lowercase...")
         df = convert_string_columns_to_lowercase(df)
 
-        logging.info("Filling missing Unit Prices using most frequent price...")
+        logger.info("Standardizing on Product Names...")
+        df = standardize_product_name(df)
+
+        logger.info("Applying Fuzzy Correction on Product Name...")
+        df = apply_fuzzy_correction(df, REFERENCE_PRODUCT_NAMES)
+
+        logger.info("Filling missing Unit Prices using most frequent price...")
         df = filling_missing_cost_price(df)
 
-        logging.info("Removing invalid records...")
+        logger.info("Removing invalid records...")
         df = remove_invalid_records(df)
 
-        logging.info("Removing Duplicate Records...")
+        logger.info("Removing Duplicate Records...")
         df = remove_duplicate_records(df)
 
-        logging.info("Detecting Anomalies...")
+        logger.info("Detecting Anomalies...")
         anomalies, df = detect_anomalies(df)
 
         # message_parts = ["Hi, we removed the following data from your excel:"]
@@ -847,23 +795,25 @@ def main(input_file: str, output_file: str, cloud: bool) -> None:
         # message_parts.append("Thank you!")
         # send_email("patelmit640@gmail.com", message_parts, subject="Anomaly Data")
 
-        # df = df.with_columns(pl.col("Date").dt.date().alias("Date"))
-        # df = aggregate_daily_products(df)
+        df = df.with_columns(pl.col("Date").dt.date().alias("Date"))
+        df = aggregate_daily_products(df)
         
-        logging.info("Saving cleaned data...")
+        logger.info("Saving cleaned data...")
         save_cleaned_data(df, output_file)
-        logging.info(f"Data cleaning completed! Cleaned data saved to: {output_file}")
+        logger.info(f"Data cleaning completed! Cleaned data saved to: {output_file}")
 
     except Exception as e:
-        logging.error(f"Processing failed due to: {e}")
+        logger.error(f"Processing failed due to: {e}")
         raise e
 
 
 if __name__ == "__main__":
-    input_file = "messy_transactions_20190103_20241231.xlsx"
+    input_file = "temp_messy_transactions_20190103_20241231.xlsx"
     output_file = "cleaned_data.csv"
     main(input_file, output_file, False)
 
 
 
 
+# 4. Test modules for Data Validation, Data Uploader.
+# 5. Check flow of dataPreprocessing.

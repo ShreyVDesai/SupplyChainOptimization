@@ -4,7 +4,7 @@ from datetime import datetime
 import io
 import unittest
 from unittest.mock import MagicMock, patch
-from scripts.dataPreprocessing import convert_feature_types, compute_most_frequent_price, standardize_date_format, detect_date_order, filling_missing_dates, remove_future_dates, extract_datetime_features
+from scripts.dataPreprocessing import convert_feature_types, remove_duplicate_records, apply_fuzzy_correction, remove_invalid_records, standardize_product_name, filling_missing_cost_price, convert_string_columns_to_lowercase, compute_most_frequent_price, standardize_date_format, detect_date_order, filling_missing_dates, remove_future_dates, extract_datetime_features
 
 class TestDataPreprocessing(unittest.TestCase):
 
@@ -43,6 +43,26 @@ class TestDataPreprocessing(unittest.TestCase):
         self.assertEqual(df_converted.schema["Store Location"], pl.Utf8, "Store Location is not Utf8")
         self.assertEqual(df_converted.schema["Product Name"], pl.Utf8, "Product Name is not Utf8")
         self.assertEqual(df_converted.schema["Producer ID"], pl.Utf8, "Producer ID is not Utf8")
+
+    @patch("polars.Expr.cast", side_effect=Exception("Test exception"))
+    def test_exception_during_conversion(self, mock_cast):
+        # Setup
+        df = pl.DataFrame({
+            "Date": ["2020-01-01"],
+            "Unit Price": ["10.5"],
+            "Quantity": ["1"],
+            "Transaction ID": ["T001"],
+            "Store Location": ["NY"],
+            "Product Name": ["milk"],
+            "Producer ID": ["P001"]
+        })
+
+        # Test
+        with self.assertRaises(Exception) as context:
+            convert_feature_types(df)
+
+        # Assert
+        self.assertIn("Test exception", str(context.exception))
 
 
 
@@ -650,6 +670,671 @@ class TestDataPreprocessing(unittest.TestCase):
             compute_most_frequent_price(df, ["Year", "Month"])
 
     
+
+    ### Unit Tests for convert_string_columns_to_lowercase function.
+
+    # Test case where all features are string.
+    def test_convert_string_columns_to_lowercase_all_features_string(self):
+        # Setup
+        df = pl.DataFrame({
+            "Product Name": ["Milk", "Beans", "CoFFEE"],
+            "Transaction ID": ["XyZ", "12LMN", "OPQ"]
+        })
+
+        # Test
+        df_result = convert_string_columns_to_lowercase(df)
+
+        # Assert
+        self.assertEqual(df_result["Product Name"].to_list(), ["milk", "beans", "coffee"])
+        self.assertEqual(df_result["Transaction ID"].to_list(), ["xyz", "12lmn", "opq"])
+
+
+    # Test case where no features are string.
+    def test_convert_string_columns_to_lowercase_no_string(self):
+        # Setup
+        df = pl.DataFrame({
+            "num": [1, 2, 3],
+            "flag": [True, False, True]
+        })
+
+        # Test
+        result_df = convert_string_columns_to_lowercase(df)
+
+        # Assert
+        self.assertEqual(df.to_dicts(), result_df.to_dicts())
+
+
+    # Test case where mix of string and non-string feature.
+    def test_convert_string_columns_to_lowercase_mixed_string_features(self):
+        # Setup
+        df = pl.DataFrame({
+            "Product Name": ["MILK", "COFFee"],
+            "Unit Price": [30, 25]
+        })
+
+        # Test
+        result_df = convert_string_columns_to_lowercase(df)
+
+        # Assert
+        self.assertEqual(result_df["Product Name"].to_list(), ["milk", "coffee"])
+        self.assertEqual(result_df["Unit Price"].to_list(), [30, 25])
+
+
+    # Test case where empty dataframe.
+    def test_convert_string_columns_to_lowercase_empty_dataframe(self):
+        # Setup
+        df = pl.DataFrame({
+            "Product Name": [],
+            "Unit Price": []
+        })
+
+        # Test
+        df_result = convert_string_columns_to_lowercase(df)
+
+        # Assert
+        self.assertEqual(df_result.shape, (0, 2))
+
+
+    # Test case where exception raised
+    @patch("polars.Expr.str")
+    def test_convert_string_column_to_lowercase_exception(self, mock_str):
+        # Setup
+        mock_str.to_lowercase.side_effect = Exception("Test error")
+        df = pl.DataFrame({
+            "Product Name": ["MILK", "COFFee"]
+        })
+
+        # Test
+        with self.assertRaises(Exception) as context:
+            convert_string_columns_to_lowercase(df)
+
+        # Assert
+        self.assertIn("Test error", str(context.exception))
+
+
+
+    
+    ### Unit tests for filling_missing_cost_price functions.
+
+    
+    # Test case where cost price filled by Week.
+    @patch("scripts.dataPreprocessing.extract_datetime_features")
+    @patch("scripts.dataPreprocessing.compute_most_frequent_price")
+    def test_cost_price_filled_by_week(self, mock_compute_most_frequent_price, mock_extract_datetime_features):
+        # Setup
+        df = pl.DataFrame({
+            "Year": [2023, 2023],
+            "Month": [1, 1],
+            "Week_of_year": [2, 3],
+            "Product Name": ["milk", "bread"],
+            "Unit Price": [None, 20.0]
+        })
+
+        # Patch extract_datetime_features to return the same DataFrame
+        mock_extract_datetime_features.return_value = df
+
+        # Created a valid week-level aggregation for "milk"
+        price_by_week_df = pl.DataFrame({
+            "Year": [2023],
+            "Month": [1],
+            "Week_of_year": [2],
+            "Product Name": ["milk"],
+            "Most_Frequent_Cost": [15.0]
+        })
+        
+        price_by_month_df = pl.DataFrame({
+            "Year": pl.Series("Year", [], dtype=pl.Int64),
+            "Month": pl.Series("Month", [], dtype=pl.Int64),
+            "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
+            "Most_Frequent_Cost": pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64)
+        })
+
+        price_by_year_df = pl.DataFrame({
+            "Year": pl.Series("Year", [], dtype=pl.Int64),
+            "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
+            "Most_Frequent_Cost": pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64)
+        })
+
+
+        mock_compute_most_frequent_price.side_effect = [
+            price_by_week_df, price_by_month_df, price_by_year_df
+        ]
+
+        # Test
+        df_result = filling_missing_cost_price(df)
+
+        # Assert
+        self.assertEqual(df_result["Unit Price"].to_list(), [15.0, 20.0])
+
+
+
+    # Test case where cost price filled by Week, Month.
+    @patch("scripts.dataPreprocessing.extract_datetime_features")
+    @patch("scripts.dataPreprocessing.compute_most_frequent_price")
+    def test_cost_price_filled_by_week_month(self, mock_compute_most_frequent_price, mock_extract_datetime_features):
+        # Setup
+        df = pl.DataFrame({
+            "Year": [2023, 2023],
+            "Month": [1, 1],
+            "Week_of_year": [2, 3],
+            "Product Name": ["milk", "bread"],
+            "Unit Price": [None, None]
+        })
+        
+
+        mock_extract_datetime_features.return_value = df
+
+        # Week-level aggregation returns a value for "milk"
+        price_by_week = pl.DataFrame({
+            "Year": [2023],
+            "Month": [1],
+            "Week_of_year": [2],
+            "Product Name": ["milk"],
+            "Most_Frequent_Cost": [15.0]
+        })
+        # Month-level aggregation returns a value for "bread"
+        price_by_month = pl.DataFrame({
+            "Year": [2023],
+            "Month": [1],
+            "Product Name": ["bread"],
+            "Most_Frequent_Cost": [18.0]
+        })
+        # Year-level aggregation: return an empty DataFrame with proper schema.
+        price_by_year = pl.DataFrame({
+            "Year": pl.Series("Year", [], dtype=pl.Int64),
+            "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
+            "Most_Frequent_Cost": pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64)
+        })
+        mock_compute_most_frequent_price.side_effect = [price_by_week, price_by_month, price_by_year]
+
+
+        # Test
+        df_result = filling_missing_cost_price(df)
+
+        # Assert
+        self.assertEqual(df_result["Unit Price"].to_list(), [15.0, 18.0])
+
+
+    # Test case where cost price filled by Week, Month, Year.
+    @patch("scripts.dataPreprocessing.extract_datetime_features")
+    @patch("scripts.dataPreprocessing.compute_most_frequent_price")
+    def test_cost_price_filled_by_week_month_year(self, mock_compute_most_frequent_price, mock_extract_datetime_features):
+        # Setup
+        df = pl.DataFrame({
+            "Year": [2023],
+            "Month": [1],
+            "Week_of_year": [2],
+            "Product Name": ["milk"],
+            "Unit Price": [None]
+        })
+        mock_extract_datetime_features.return_value = df
+
+        # Week-level: empty DataFrame with correct schema.
+        price_by_week = pl.DataFrame({
+            "Year": pl.Series("Year", [], dtype=pl.Int64),
+            "Month": pl.Series("Month", [], dtype=pl.Int64),
+            "Week_of_year": pl.Series("Week_of_year", [], dtype=pl.Int64),
+            "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
+            "Most_Frequent_Cost": pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64)
+        })
+        # Month-level: empty.
+        price_by_month = pl.DataFrame({
+            "Year": pl.Series("Year", [], dtype=pl.Int64),
+            "Month": pl.Series("Month", [], dtype=pl.Int64),
+            "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
+            "Most_Frequent_Cost": pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64)
+        })
+        # Year-level: returns a value.
+        price_by_year = pl.DataFrame({
+            "Year": [2023],
+            "Product Name": ["milk"],
+            "Most_Frequent_Cost": [20.0]
+        })
+        mock_compute_most_frequent_price.side_effect = [price_by_week, price_by_month, price_by_year]
+
+        # Test
+        df_result = filling_missing_cost_price(df)
+
+        # Assert
+        self.assertEqual(df_result["Unit Price"].to_list(), [20.0])
+
+
+
+    # Test case where no missing cost price.
+    @patch("scripts.dataPreprocessing.extract_datetime_features")
+    @patch("scripts.dataPreprocessing.compute_most_frequent_price")
+    def test_cost_price_filled_no_missing_cost_price(self, mock_compute_most_frequent_price, mock_extract_datetime_features):
+        # Setup
+        df = pl.DataFrame({
+            "Year": [2023, 2023],
+            "Month": [1, 1],
+            "Week_of_year": [2, 3],
+            "Product Name": ["milk", "bread"],
+            "Unit Price": [10.0, 20.0]
+        })
+        mock_extract_datetime_features.return_value = df
+        
+        empty_week = pl.DataFrame({
+            "Year": pl.Series("Year", [], dtype=pl.Int64),
+            "Month": pl.Series("Month", [], dtype=pl.Int64),
+            "Week_of_year": pl.Series("Week_of_year", [], dtype=pl.Int64),
+            "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
+            "Most_Frequent_Cost": pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64)
+        })
+
+        empty_month = pl.DataFrame({
+            "Year": pl.Series("Year", [], dtype=pl.Int64),
+            "Month": pl.Series("Month", [], dtype=pl.Int64),
+            "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
+            "Most_Frequent_Cost": pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64)
+        })
+
+        empty_year = pl.DataFrame({
+            "Year": pl.Series("Year", [], dtype=pl.Int64),
+            "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
+            "Most_Frequent_Cost": pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64)
+        })
+        mock_compute_most_frequent_price.side_effect = [empty_week, empty_month, empty_year]
+
+
+        # Test
+        df_result = filling_missing_cost_price(df)
+
+        # Assert
+        self.assertEqual(df_result["Unit Price"].to_list(), [10.0, 20.0])
+
+
+
+
+    # Test case where cost price filled by default value.
+    @patch("scripts.dataPreprocessing.extract_datetime_features")
+    @patch("scripts.dataPreprocessing.compute_most_frequent_price")
+    def test_cost_price_filled_by_default_value(self, mock_compute_most_frequent_price, mock_extract_datetime_features):
+        # Setup
+        df = pl.DataFrame({
+            "Year": [2023, 2023],
+            "Month": [1, 1],
+            "Week_of_year": [2, 3],
+            "Product Name": ["milk", "bread"],
+            "Unit Price": [None, None]
+        })
+        mock_extract_datetime_features.return_value = df
+
+        empty_week = pl.DataFrame({
+            "Year": pl.Series("Year", [], dtype=pl.Int64),
+            "Month": pl.Series("Month", [], dtype=pl.Int64),
+            "Week_of_year": pl.Series("Week_of_year", [], dtype=pl.Int64),
+            "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
+            "Most_Frequent_Cost": pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64)
+        })
+
+        empty_month = pl.DataFrame({
+            "Year": pl.Series("Year", [], dtype=pl.Int64),
+            "Month": pl.Series("Month", [], dtype=pl.Int64),
+            "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
+            "Most_Frequent_Cost": pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64)
+        })
+
+        empty_year = pl.DataFrame({
+            "Year": pl.Series("Year", [], dtype=pl.Int64),
+            "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
+            "Most_Frequent_Cost": pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64)
+        })
+
+        mock_compute_most_frequent_price.side_effect = [empty_week, empty_month, empty_year]
+
+        
+        # Test
+        df_result = filling_missing_cost_price(df)
+
+        # Assert
+        self.assertEqual(df_result["Unit Price"].to_list(), [0, 0])
+
+
+
+    
+    # Test case where exception handle.
+    @patch("scripts.dataPreprocessing.extract_datetime_features", side_effect=Exception("Test Exception"))
+    def test_cost_price_filled_throws_exception(self, mock_extract_datetime_features):
+        # Setup
+        df = pl.DataFrame({
+            "Year": [2023],
+            "Month": [1],
+            "Week_of_year": [2],
+            "Product Name": ["milk"],
+            "Unit Price": [None]
+        })
+
+
+        # Test
+        with self.assertRaises(Exception) as context:
+            filling_missing_cost_price(df)
+        
+
+        # Assert
+        self.assertIn("Test Exception", str(context.exception))
+
+
+
+    ### Unit tests remove_invalid_records functions.
+
+    # Test case where records are valid.
+    def test_remove_invalid_records_valid_records(self):
+        # Setup
+        df = pl.DataFrame({
+            "Quantity": [10, 20, 30],
+            "Product Name": ["milk", "bread", "cheese"],
+            "Unit Price": [1, 2, 3]
+        })
+
+        # Test
+        result_df = remove_invalid_records(df)
+
+        # Assert
+        self.assertEqual(result_df.to_dicts(), df.to_dicts())
+
+    # Test case where missing Quantity.
+    def test_remove_invalid_records_missing_Quantity(self):
+        # Setup
+        df = pl.DataFrame({
+            "Quantity": [10, None, 30],
+            "Product Name": ["milk", "bread", "cheese"]
+        })
+
+        expected_df = pl.DataFrame({
+            "Quantity": [10, 30],
+            "Product Name": ["milk", "cheese"]
+        })
+
+        # Test
+        result_df = remove_invalid_records(df)
+
+        # Assert
+        self.assertEqual(result_df.to_dicts(), expected_df.to_dicts())
+
+
+
+    # Test case where missing Product Name.
+    def test_remove_invalid_records_missing_Product_Name(self):
+        # Setup
+        df = pl.DataFrame({
+            "Quantity": [10, 20, 30],
+            "Product Name": ["milk", None, "cheese"]
+        })
+        expected_df = pl.DataFrame({
+            "Quantity": [10, 30],
+            "Product Name": ["milk", "cheese"]
+        })
+
+        # Test
+        result_df = remove_invalid_records(df)
+
+        # Assert
+        self.assertEqual(expected_df.to_dicts(), result_df.to_dicts())
+
+
+    # Test case where missing both Quantity and Product Name.
+    def test_remove_invalid_records_missing_both_Quantity_Product_Name(self):
+        # Setup
+        df = pl.DataFrame({
+            "Quantity": [10, None, 30, None],
+            "Product Name": ["milk", "bread", None, None]
+        })
+
+        expected_df = pl.DataFrame({
+            "Quantity": [10],
+            "Product Name": ["milk"]
+        })
+
+        # Test
+        result_df = remove_invalid_records(df)
+
+        # Assert
+        self.assertEqual(result_df.to_dicts(), expected_df.to_dicts())
+
+
+    # Test case where empty dataframe.
+    def test_remove_invalid_records_empty_dataframe(self):
+        # Setup
+        df = pl.DataFrame({
+            "Quantity": [],
+            "Product Name": []
+        })
+
+
+        # Test
+        result_df = remove_invalid_records(df)
+
+        # Assert
+        self.assertEqual(result_df.shape, (0,2))
+
+
+    # Test case where it handles any exception.
+    def test_remove_invalid_records_handles_exception(self):
+        # Setup
+        df = pl.DataFrame({
+            "Quantity": [10, 20, 30]
+        }) 
+
+        # Test
+        with self.assertRaises(Exception) as context:
+            remove_invalid_records(df)
+
+        # Assert
+        self.assertIn("Product Name", str(context.exception))
+
+
+    
+    ### Unit tests for standardize_product_name function.
+
+    # Test case where standardize_product_name executes successfully.
+    def test_standardize_product_name_executes_successfully(self):
+        # Setup
+        df = pl.DataFrame({
+            "Product Name": ["  MILK  ", "C0FFEE", "Bread@Home", "T0M@TO"]
+        })
+
+        expected_df = ["milk", "coffee", "breadahome", "tomato"]
+
+        # Test
+        result_df = standardize_product_name(df)
+
+        # Assert
+        self.assertEqual(result_df["Product Name"].to_list(), expected_df)
+
+
+    # Test case where empty string.
+    def test_standardize_product_name_with_empty_string(self):
+        # Setup
+        df = pl.DataFrame({
+            "Product Name": [""]
+        })
+
+        # Test
+        result_df = standardize_product_name(df)
+
+        # Assert
+        self.assertEqual(result_df["Product Name"].to_list(), [""])
+
+
+    # Test case where None value.
+    def test_standardize_product_name_with_None_value(self):
+        # Setup
+        df = pl.DataFrame({
+            "Product Name": [None]
+        })
+
+        # Test
+        result_df = standardize_product_name(df)
+
+        # Assert
+        self.assertTrue(result_df["Product Name"][0] is None)
+
+
+    # Test case where exception handling is done.
+    @patch("scripts.dataPreprocessing.pl.col", side_effect=Exception("Test error"))
+    def test_standardize_product_name_with_exception_handling(self, mock_to_lowercase):
+        # Setup
+        df = pl.DataFrame({
+            "Product Name": ["MILK"]
+        })
+
+        # Test
+        with self.assertRaises(Exception) as context:
+            standardize_product_name(df)
+
+        # Assert
+        self.assertIn("Test error", str(context.exception))
+
+
+
+
+    ### Unit tests for apply_fuzzy_correction function.
+
+    # Test case where match is found.
+    @patch("scripts.dataPreprocessing.process.extractOne")
+    def test_apply_fuzzy_correction_match_found(self, mock_extractOne):
+        # Setup
+        df = pl.DataFrame({
+            "Product Name": ["MILK", "BRED", "coffee"]  # "coffee" should remain unchanged.
+        })
+        reference_list = ["milk", "bread", "coffee"]
+
+        mock_extractOne.side_effect = [
+            ("milk", 95, 0),
+            ("bread", 85, 1), 
+            ("coffee", 100, 2)
+        ]
+
+        expected_df = ["milk", "bread", "coffee"]
+
+        # Test
+        result_df = apply_fuzzy_correction(df, reference_list, threshold=80)
+
+        # Assert
+        self.assertEqual(result_df["Product Name"].to_list(), expected_df)
+
+    
+    # Test case where below threshold with no correction
+    @patch("scripts.dataPreprocessing.process.extractOne")
+    def test_apply_fuzzy_correction_below_threshold_with_no_correction(self, mock_extractOne):
+        # Setup
+        df = pl.DataFrame({
+            "Product Name": ["mlk"]
+        })
+        reference_list = ["milk"]
+
+        mock_extractOne.return_value = ("milk", 95, 0)
+
+        # Test
+        result_df = apply_fuzzy_correction(df, reference_list, threshold=100)
+
+        # Assert
+        self.assertEqual(result_df["Product Name"].to_list(), ["mlk"])
+
+
+    # Test case where empty dataframe.
+    @patch("scripts.dataPreprocessing.process.extractOne")
+    def test_apply_fuzzy_correction_no_dataframe(self, mock_extractOne):
+        # Setup
+        df = pl.DataFrame({"Product Name": []})
+        reference_list = ["milk", "bread"]
+
+        # Test
+        result_df = apply_fuzzy_correction(df, reference_list)
+
+        # Assert
+        self.assertEqual(result_df.height, 0)
+
+
+    # Test case where exception is handled.
+    @patch("scripts.dataPreprocessing.process.extractOne", side_effect=Exception("Test error"))
+    def test_apply_fuzzy_correction_exception_handling(self, mock_extractOne):
+        # Setup
+        df = pl.DataFrame({
+            "Product Name": ["MILK"]
+        })
+        reference_list = ["milk"]
+
+        # Test
+        with self.assertRaises(Exception) as context:
+            apply_fuzzy_correction(df, reference_list)
+
+        # Assert
+        self.assertIn("Test error", str(context.exception))
+    
+
+
+    ### Unit tests for remove_duplicate_records function.
+
+    # Test case where duplicte records exist.
+    def test_remove_duplicate_records_duplicate_records_exist(self):
+        # Setup
+        df = pl.DataFrame({
+            "Transaction ID": ["T001", "T002", "T001", "T003", "T002"],
+            "Value": [100, 200, 150, 300, 250]
+        })
+
+        expected_df = pl.DataFrame({
+            "Transaction ID": ["T001", "T002", "T003"],
+            "Value": [100, 200, 300]
+        })
+
+        # Test
+        result_df = remove_duplicate_records(df)
+        
+        # Assert
+        self.assertEqual(result_df.to_dicts(), expected_df.to_dicts())
+
+
+    # Test case where no duplicate records exist.
+    def test_remove_duplicate_records_no_duplicate_records(self):
+        # Setup
+        df = pl.DataFrame({
+            "Transaction ID": ["T001", "T002", "T003"],
+            "Value": [100, 200, 300]
+        })
+
+
+        # Test
+        result_df = remove_duplicate_records(df)
+
+        # Assert
+        self.assertEqual(df.to_dicts(), result_df.to_dicts())
+
+
+    # Test case where empty dataframe.
+    def test_remove_duplicate_records_empty_dataframe(self):
+        # Setup
+        df = pl.DataFrame({
+            "Transaction ID": [],
+            "Value": []
+        })
+
+        # Test
+        result_df = remove_duplicate_records(df)
+
+        # Assert
+        self.assertEqual(df.to_dicts(), result_df.to_dicts())
+
+    
+    # Test case where exception is handled.
+    @patch("polars.DataFrame.unique", side_effect=Exception("Test error"))
+    def test_remove_duplicate_records_exception_handling(self, mock_unique):
+        # Setup
+        df = pl.DataFrame({
+            "Transaction ID": ["T001", "T002", "T001"],
+            "Value": [100, 200, 150]
+        })
+
+
+        # Test
+        with self.assertRaises(Exception) as context:
+            remove_duplicate_records(df)
+        
+        # Assert
+        self.assertIn("Test error", str(context.exception))
+
 
 
 
