@@ -1,6 +1,8 @@
 import smtplib
 from email.message import EmailMessage
 import pandas as pd
+# from logger import logger
+from scripts.logger import logger
 
 def send_email(emailid, message, subject="Automated Email", 
                smtp_server="smtp.gmail.com", smtp_port=587,
@@ -66,9 +68,10 @@ def send_email(emailid, message, subject="Automated Email",
             if username and password:
                 server.login(username, password)
             server.send_message(msg)
-        print("Email sent successfully to", emailid)
+        logger.info(f"Email sent successfully to: {emailid}")
     except Exception as e:
-        print("Failed to send email:", e)
+        logger.error(f"Failed to send email: {e}")
+        raise
 
 # # Example usage:
 # if __name__ == "__main__":
