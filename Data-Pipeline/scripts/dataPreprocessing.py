@@ -815,10 +815,10 @@ def save_cleaned_data(df: pl.DataFrame, output_file: str) -> None:
 
 def main(input_file: str = "temp_messy_transactions_20190103_20241231.xlsx", 
          output_file: str  = "cleaned_data.csv", 
-         bucket_name: str = 'mlops-data-storage-000', 
-         source_blob_name: str = 'generated_training_data/transactions_20190103_20241231.xlsx', 
-         destination_blob_name: str = 'cleaned_data/cleanedData.csv', 
-         cloud: bool = False) -> None:
+         bucket_name: str = 'full-raw-data', 
+         source_blob_name: str = 'generated_training_data/messy_transactions_20190103_20241231.xlsx', 
+         destination_blob_name: str = 'cleaned_data/cleanedData.csv',
+         cloud: bool = True) -> None:
     """
     Executes all data cleaning steps in sequence.
 
