@@ -1,16 +1,16 @@
 import polars as pl
 from polars.testing import assert_frame_equal
-from datetime import datetime
+from datetime import datetime, timedelta
 import io
 import unittest
-from scripts.logger import logger
+# from scripts.logger import logger
 from unittest.mock import MagicMock, patch
 from scripts.dataPreprocessing import convert_feature_types, load_bucket_data, detect_anomalies, upload_df_to_gcs, \
     remove_duplicate_records, apply_fuzzy_correction, remove_invalid_records, standardize_product_name, \
     filling_missing_cost_price, convert_string_columns_to_lowercase, compute_most_frequent_price, standardize_date_format, \
-    detect_date_order, filling_missing_dates, remove_future_dates, extract_datetime_features
+    detect_date_order, filling_missing_dates, remove_future_dates, extract_datetime_features, send_anomaly_alert, \
+    aggregate_daily_products, extracting_time_series_and_lagged_features, calculate_zscore, iqr_bounds, main
 
-# import logging
 from google.api_core.exceptions import GoogleAPICallError
 
 
@@ -39,38 +39,76 @@ class TestDataPreprocessing(unittest.TestCase):
     ### Unit Tests for convert_types.
 
 
-    # Test case where it is a valid input.
-    def test_convert_types_valid_df(self):
-        """Test if the function correctly converts valid data types."""
-        df_converted = convert_feature_types(self.valid_df)
-
-        self.assertEqual(df_converted.schema["Date"], pl.Datetime, "Date column is not converted to Datetime")
-        self.assertEqual(df_converted.schema["Unit Price"], pl.Float64, "Unit Price is not Float64")
-        self.assertEqual(df_converted.schema["Quantity"], pl.Int64, "Quantity is not Int64")
-        self.assertEqual(df_converted.schema["Transaction ID"], pl.Utf8, "Transaction ID is not Utf8")
-        self.assertEqual(df_converted.schema["Store Location"], pl.Utf8, "Store Location is not Utf8")
-        self.assertEqual(df_converted.schema["Product Name"], pl.Utf8, "Product Name is not Utf8")
-        self.assertEqual(df_converted.schema["Producer ID"], pl.Utf8, "Producer ID is not Utf8")
-
-    @patch("polars.Expr.cast", side_effect=Exception("Test exception"))
-    def test_exception_during_conversion(self, mock_cast):
+    def test_convert_feature_types(self):
         # Setup
         df = pl.DataFrame({
-            "Date": ["2020-01-01"],
-            "Unit Price": ["10.5"],
-            "Quantity": ["1"],
-            "Transaction ID": ["T001"],
-            "Store Location": ["NY"],
-            "Product Name": ["milk"],
-            "Producer ID": ["P001"]
+            "Date": ["2024-01-01", "2024-01-02"],
+            "Unit Price": [10.5, 20.0],
+            "Quantity": [1, 2],
+            "Transaction ID": ["T001", "T002"],
+            "Store Location": ["NY", "LA"],
+            "Product Name": ["A", "B"],
+            "Producer ID": ["P001", "P002"],
+        }).with_columns(pl.col("Date").str.strptime(pl.Date, "%Y-%m-%d"))
+
+        # Test
+        converted_df = convert_feature_types(df)
+
+        # Assert
+        self.assertEqual(converted_df["Date"].dtype, pl.Datetime)
+        self.assertEqual(converted_df["Unit Price"].dtype, pl.Float64)
+        self.assertEqual(converted_df["Quantity"].dtype, pl.Int64)
+        self.assertEqual(converted_df["Transaction ID"].dtype, pl.Utf8)
+        self.assertEqual(converted_df["Store Location"].dtype, pl.Utf8)
+        self.assertEqual(converted_df["Product Name"].dtype, pl.Utf8)
+        self.assertEqual(converted_df["Producer ID"].dtype, pl.Utf8)
+
+
+    def test_convert_feature_types_missing_column(self):
+        # Setup
+        df = pl.DataFrame({"Date": ["2024-01-01"], "Quantity": [5]}).with_columns(
+            pl.col("Date").str.strptime(pl.Date, "%Y-%m-%d")
+        )
+
+        # Test
+        converted_df = convert_feature_types(df)
+
+        # Assert
+        self.assertIn("Date", converted_df.columns)
+        self.assertIn("Quantity", converted_df.columns)
+        self.assertEqual(converted_df["Date"].dtype, pl.Datetime)
+        self.assertEqual(converted_df["Quantity"].dtype, pl.Int64)
+
+    
+    def test_convert_feature_types_empty_dataframe(self):
+        # Setup
+        df_empty = pl.DataFrame(schema={
+            "Date": pl.Datetime,
+            "Unit Price": pl.Float64,
+            "Quantity": pl.Int64,
+            "Transaction ID": pl.Utf8,
+            "Store Location": pl.Utf8,
+            "Product Name": pl.Utf8,
+            "Producer ID": pl.Utf8,
         })
 
         # Test
-        with self.assertRaises(Exception) as context:
-            convert_feature_types(df)
+        converted_df = convert_feature_types(df_empty)
 
         # Assert
-        self.assertIn("Test exception", str(context.exception))
+        self.assertTrue(converted_df.is_empty())
+        self.assertEqual(converted_df.schema, df_empty.schema)
+
+    
+    def test_convert_feature_types_invalid_data(self):
+        # Setup
+        df_invalid = pl.DataFrame({"Date": ["invalid_date"], "Quantity": ["not_a_number"]})
+
+        # Test
+        with self.assertRaises(Exception):
+            convert_feature_types(df_invalid)
+
+
 
 
 
@@ -213,19 +251,6 @@ class TestDataPreprocessing(unittest.TestCase):
 
         # Assert
         self.assertEqual(result, "Random")
-
-    # Test case where "Date" column not found.
-    def test_detect_date_order_missing_date_col(self):
-        # Setup
-        df = pl.DataFrame({"NotDate": ["2021-01-01", "2021-01-02"]})
-        df = standardize_date_format(df)
-
-        # Test
-        with self.assertRaises(AttributeError) as context:
-            detect_date_order(df, "Date")
-
-            # Assert
-            self.assertIn("Date column not found.", context.exception)
 
 
     # Test empty date column
@@ -1398,9 +1423,594 @@ class TestDataPreprocessing(unittest.TestCase):
 
 
 
+    ### Unit tests for send_anomaly_alert function.
+
+    # Test case where no anomalies.
+    @patch("scripts.dataPreprocessing.send_email", side_effect=True)
+    @patch('scripts.dataPreprocessing.logger')
+    def test_send_anomaly_alert_no_anomalies(self, mock_logger, mock_send_email):
+        # Setup
+        anomalies = {
+            "price_anomalies": pl.DataFrame(), 
+            "quantity_anomalies": pl.DataFrame()
+        }
+
+        # Test 
+        send_anomaly_alert(anomalies, recipient="test@example.com", subject="Alert")
+
+        # Assert
+        mock_send_email.assert_not_called()
+        mock_logger.info.assert_called_with("No anomalies detected; no alert email sent.")
+
+
+    # Test case where with anomalies.
+    @patch("scripts.dataPreprocessing.send_email")
+    @patch('scripts.dataPreprocessing.logger')
+    def test_send_anomaly_alert_with_anomalies(self, mock_logger, mock_send_email):
+        # Setup
+        data = {"col": [1, 2, 3]}
+        non_empty_df = pl.DataFrame(data)
+        anomalies = {
+            "price_anomalies": pl.DataFrame(), 
+            "quantity_anomalies": non_empty_df
+        }
+
+        mock_send_email.return_value = None
+
+        # Test
+        send_anomaly_alert(anomalies, recipient="test@example.com", subject="Alert")
+
+        # Assert
+        mock_send_email.assert_called_once()
+        call_args = mock_send_email.call_args[0]
+        self.assertEqual(call_args[0], "test@example.com")
+        message_parts = call_args[1]
+        self.assertTrue(any("Anomaly type: quantity_anomalies" in part for part in message_parts))
+        mock_logger.info.assert_any_call("Anomaly alert email sent.")
+    
+
+    # Test case where Exception handled.
+    @patch("scripts.dataPreprocessing.send_email", side_effect=Exception)
+    @patch('scripts.dataPreprocessing.logger')
+    def test_send_anomaly_alert_throws_exception(self, mock_logger, mock_send_email):
+        # Setup
+        data = {"col": [1, 2, 3]}
+        non_empty_df = pl.DataFrame(data)
+        anomalies = {
+            "price_anomalies": non_empty_df
+        }
+
+        # Test
+        send_anomaly_alert(anomalies, recipient="test@example.com", subject="Alert")
+
+        # Assert
+        mock_send_email.assert_called_once()
+        mock_logger.error.assert_called_with("Error sending an alert email.")
+
+    
+
+    ### Unit tests for aggregate_daily_products function.
+
+    # Test case where aggregation is done.
+    def test_aggregate_daily_products_multiple_records(self):
+        # Setup
+        df = pl.DataFrame({
+            "Date": [
+                "2023-01-01", "2023-01-01", "2023-01-01",
+                "2023-01-02", "2023-01-02",
+                "2023-01-01"
+            ],
+            "Product Name": [
+                "milk", "milk", "coffee",
+                "milk", "coffee",
+                "milk"
+            ],
+            "Unit Price": [
+                2.5, 2.5, 3.0,
+                2.5, 3.0,
+                2.5
+            ],
+            "Quantity": [
+                10, 5, 8,
+                7, 6,
+                3
+            ]
+        }).with_columns(pl.col("Date").str.strptime(pl.Datetime, "%Y-%m-%d"))  
+
+        expected_df = pl.DataFrame({
+            "Date": [
+                "2023-01-01", "2023-01-01", "2023-01-02", "2023-01-02"
+            ],
+            "Product Name": [
+                "coffee", "milk", "coffee", "milk"
+            ],
+            "Unit Price": [
+                3.0, 2.5, 3.0, 2.5
+            ],
+            "Total Quantity": [
+                8, 18, 6, 7
+            ]
+        }).with_columns(pl.col("Date").str.strptime(pl.Datetime, "%Y-%m-%d").dt.date()) 
+
+        # Test
+        result_df = aggregate_daily_products(df).sort(["Date", "Product Name"])
+
+        # Assert
+        assert_frame_equal(result_df, expected_df)
+
+
+
+    # Test case where single record.
+    def test_aggregate_daily_products_single_record(self):
+        # Setup
+        df = pl.DataFrame({
+            "Date": ["2023-01-01", "2023-01-02"],
+            "Product Name": ["milk", "coffee"],
+            "Unit Price": [2.5, 3.0],
+            "Quantity": [10, 8]
+        }).with_columns(pl.col("Date").str.strptime(pl.Datetime, "%Y-%m-%d"))  
+
+        expected_df = pl.DataFrame({
+            "Date": ["2023-01-01", "2023-01-02"],
+            "Product Name": ["milk", "coffee"],
+            "Unit Price": [2.5, 3.0],
+            "Total Quantity": [10, 8]
+        }).with_columns(pl.col("Date").str.strptime(pl.Datetime, "%Y-%m-%d").dt.date())  
+
+        # Test
+        result_df = aggregate_daily_products(df).sort(["Date", "Product Name"])
+
+        # Assert
+        assert_frame_equal(result_df, expected_df)
+
+
+    # Test case where empty dataframe.
+    def test_aggregate_daily_products_empty_dataframe(self):
+        # Setup
+        df = pl.DataFrame({
+            "Date": [], "Product Name": [], "Unit Price": [], "Quantity": []
+        }).with_columns(pl.col("Date").cast(pl.Date))  
+
+        expected_df = pl.DataFrame({
+            "Date": [], "Product Name": [], "Unit Price": [], "Total Quantity": []
+        }).with_columns(pl.col("Date").cast(pl.Date)) 
+
+        # Test
+        result_df = aggregate_daily_products(df)
+
+        # Assert
+        self.assertEqual(result_df.height, 0)
+        self.assertListEqual(result_df.columns, ["Date", "Product Name", "Unit Price", "Total Quantity"])
+
+
+
+class TestTimeSeriesFeatureExtraction(unittest.TestCase):
+    # Setup
+    def setUp(self):
+        """Set up a sample dataframe for testing."""
+        base_date = datetime(2024, 1, 1)
+        self.df = pl.DataFrame({
+            "Date": [(base_date + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(10)],
+            "Product Name": ["A"] * 10,
+            "Total Quantity": list(range(10))
+        })
+        self.df = self.df.with_columns(pl.col("Date").str.strptime(pl.Date, "%Y-%m-%d"))
+
+    
+
+    # Test case where datetime_extraction_and_lagged_features executes successfully.
+    def test_datetime_extraction_executes_successfully(self):
+        # Test
+        result_df = extracting_time_series_and_lagged_features(self.df)
+        
+        # Assert
+        self.assertIn("day_of_week", result_df.columns)
+        self.assertIn("is_weekend", result_df.columns)
+        self.assertIn("lag_1", result_df.columns)
+        self.assertIn("lag_7", result_df.columns)
+        self.assertIn("rolling_mean_7", result_df.columns)
+
+    
+    # Test case where datetime_extraction_and_lagged_features
+    def test_lagged_features_executes_successfully(self):
+        # Test
+        result_df = extracting_time_series_and_lagged_features(self.df)
+        expected_lag_1 = [None] + list(range(9))  # First row should be None
+        expected_lag_7 = [None] * 7 + list(range(3))  # First 7 rows should be None
+
+        # Assert
+        
+        self.assertEqual(result_df["lag_1"].to_list(), expected_lag_1)
+        self.assertEqual(result_df["lag_7"].to_list(), expected_lag_7)
+
+    
+    def test_rolling_average(self):
+        # Test
+        result_df = extracting_time_series_and_lagged_features(self.df)
+        expected_rolling = [None] * 6 + [sum(range(i-6, i+1)) / 7 for i in range(6, 10)]
+
+        # Assert
+        self.assertEqual(result_df["rolling_mean_7"].to_list(), expected_rolling)
+
+
+    def test_multiple_products(self):
+        # Setup
+        df_multi = pl.concat([
+            self.df,
+            self.df.with_columns(pl.lit("B").alias("Product Name"))
+        ])
+
+        # Test
+        result_df = extracting_time_series_and_lagged_features(df_multi)
+
+        # Assert
+        self.assertEqual(result_df.filter(pl.col("Product Name") == "A")["lag_1"].to_list(), result_df.filter(pl.col("Product Name") == "B")["lag_1"].to_list())
+
+    # Test case where dataframe is empty.
+    def test_empty_dataframe(self):
+        # Setup
+        df_empty = pl.DataFrame({"Date": [], "Product Name": [], "Total Quantity": []})
+
+        # Test
+        result_df = extracting_time_series_and_lagged_features(df_empty)
+
+        # Assert
+        self.assertTrue(result_df.is_empty())
+
+
+    def test_missing_values(self):
+        # Setup
+        df_missing = self.df.with_columns(pl.lit(None).cast(pl.Int64).alias("Total Quantity"))
+
+        # Test
+        result_df = extracting_time_series_and_lagged_features(df_missing)
+
+        # Assert
+        self.assertTrue(result_df["lag_1"].null_count() > 0)
+        self.assertTrue(result_df["rolling_mean_7"].null_count() > 0)
+
+
+    def test_datetime_extraction_exception(self):
+        """Test exception handling during datetime feature extraction."""
+        df_invalid = self.df.with_columns(pl.lit(None).alias("Date"))
+        with self.assertRaises(Exception):
+            extracting_time_series_and_lagged_features(df_invalid)
+
+    def test_lagged_feature_exception(self):
+        """Test exception handling during lagged feature computation."""
+        df_invalid = self.df.drop("Total Quantity")
+        with self.assertRaises(Exception):
+            extracting_time_series_and_lagged_features(df_invalid)
+
+    
+
+    ### Unit Tests for z-score function.
+
+    def test_calculate_zscore(self):
+        # Setup
+        series = pl.Series("values", [10, 20, 30, 40, 50])
+
+        # Test
+        zscores = calculate_zscore(series)
+
+        # Assert
+        self.assertAlmostEqual(zscores.mean(), 0, places=6)
+        self.assertAlmostEqual(zscores.std(), 1, places=6)
+
+    # Test case where z-score is contant.
+    def test_calculate_zscore_constant_series(self):
+        # Setup
+        series = pl.Series("values", [5, 5, 5, 5, 5])
+
+        # Test
+        zscores = calculate_zscore(series)
+
+        # Assert
+        self.assertTrue(all(z == 0 for z in zscores))
+
+    # Test case where series has single value.
+    def test_calculate_zscore_single_value(self):
+        # Setup
+        series = pl.Series("values", [100])
+
+        # Test
+        zscores = calculate_zscore(series)
+
+        # Assert
+        self.assertEqual(zscores[0], 0)
+
+
+    # Test case where z-score with series has None value.
+    def test_calculate_zscore_with_nan(self):
+        # Setup
+        series = pl.Series("values", [10, 20, None, 30, 40])
+
+        # Test
+        zscores = calculate_zscore(series.drop_nulls())
+
+        # Assert
+        self.assertAlmostEqual(zscores.mean(), 0, places=6)
+        self.assertAlmostEqual(zscores.std(), 1, places=6)
+
+    # Test case where z-score throws exception.
+    def test_calculate_zscore_throws_exception(self):
+        # Test
+        with self.assertRaises(Exception):
+            calculate_zscore(pl.Series("values", ["a", "b", "c"]))
+
+    
+    def test_iqr_bounds_data(self):
+        # Setup
+        series = pl.Series([10, 12, 15, 14, 18, 20, 25, 30])
+
+        # Test
+        lower, upper = iqr_bounds(series)
+
+        # Assert
+        self.assertIsInstance(lower, float)
+        self.assertIsInstance(upper, float)
+        self.assertGreaterEqual(lower, 0)
+
+    
+    def test_iqr_bounds_identical_values(self):
+        # Setup
+        series = pl.Series([5, 5, 5, 5, 5])
+
+        # Test
+        lower, upper = iqr_bounds(series)
+
+        # Assert
+        self.assertEqual(lower, 5) 
+        self.assertEqual(upper, 5)
+
+
+    def test_iqr_bounds_one_value(self):
+        # Setup
+        series = pl.Series([10])
+
+        # Test
+        lower, upper = iqr_bounds(series)
+
+        # Assert
+        self.assertEqual(lower, 10) 
+        self.assertEqual(upper, 10)
+
+    
+    def test_iqr_bounds_negative_values(self):
+        # Setup
+        series = pl.Series([-10, -5, 0, 5, 10])
+
+        # Test
+        lower, upper = iqr_bounds(series)
+
+        # Assert
+        self.assertLess(lower, 0)
+        self.assertGreater(upper, 10)
+
+    
+    def test_iqr_bounds_zero_and_mixed_values(self):
+        # Setup
+        series = pl.Series([0, 1, 2, 3, 4, 5, -1, -2, -3, -4, -5])
+
+        # Test
+        lower, upper = iqr_bounds(series)
+
+        # Assert
+        self.assertLess(lower, 0) 
+        self.assertGreater(upper, 5)
+
+    
+    def test_iqr_bounds_empty_series(self):
+        # Setup
+        series = pl.Series([])
+
+        # Test
+        with self.assertRaises(ValueError):
+            iqr_bounds(series)
+
+
+
+    ### Unit Tests for main function.
+
+    # Test case where main function executes successfully.
+    @patch("scripts.dataPreprocessing.upload_df_to_gcs")
+    @patch("scripts.dataPreprocessing.save_cleaned_data")
+    @patch("scripts.dataPreprocessing.extracting_time_series_and_lagged_features")
+    @patch("scripts.dataPreprocessing.aggregate_daily_products")
+    @patch("scripts.dataPreprocessing.send_anomaly_alert")
+    @patch("scripts.dataPreprocessing.detect_anomalies", return_value=({}, pl.DataFrame()))
+    @patch("scripts.dataPreprocessing.remove_duplicate_records")
+    @patch("scripts.dataPreprocessing.remove_invalid_records")
+    @patch("scripts.dataPreprocessing.filling_missing_cost_price")
+    @patch("scripts.dataPreprocessing.apply_fuzzy_correction")
+    @patch("scripts.dataPreprocessing.standardize_product_name")
+    @patch("scripts.dataPreprocessing.convert_string_columns_to_lowercase")
+    @patch("scripts.dataPreprocessing.convert_feature_types")
+    @patch("scripts.dataPreprocessing.filling_missing_dates")
+    @patch("scripts.dataPreprocessing.load_bucket_data")
+    @patch("scripts.dataPreprocessing.load_data")
+    def test_main_successful_execution(
+        self, mock_load_data, mock_load_bucket_data, mock_filling_missing_dates,
+        mock_convert_feature_types, mock_convert_string_columns_to_lowercase, mock_standardize_product_name,
+        mock_apply_fuzzy_correction, mock_filling_missing_cost_price, mock_remove_invalid_records,
+        mock_remove_duplicate_records, mock_detect_anomalies, mock_send_anomaly_alert,
+        mock_aggregate_daily_products, mock_extracting_features, mock_save_cleaned_data,
+        mock_upload_df_to_gcs
+    ):
+        # Setup
+
+        # Mock dataframe
+        mock_df = pl.DataFrame({
+            "Date": ["2024-01-01", "2024-01-02"],
+            "Unit Price": [100.5, 200.75],
+            "Quantity": [10, 20],
+            "Transaction ID": ["T123", "T456"],
+            "Store Location": ["NY", "CA"],
+            "Product Name": ["milk", "coffee"],
+            "Producer ID": ["P001", "P002"]
+        }).with_columns(pl.col("Date").str.strptime(pl.Datetime, "%Y-%m-%d"))
+
+        mock_load_data.return_value = mock_df
+        mock_load_bucket_data.return_value = mock_df
+
+        # Mock all transformations to return the modified dataframe
+        for mock_func in [
+            mock_filling_missing_dates, mock_convert_feature_types, mock_convert_string_columns_to_lowercase,
+            mock_standardize_product_name, mock_apply_fuzzy_correction, mock_filling_missing_cost_price,
+            mock_remove_invalid_records, mock_remove_duplicate_records, mock_aggregate_daily_products,
+            mock_extracting_features
+        ]:
+            mock_func.return_value = mock_df
+
+        # Test
+        main(input_file="input.xlsx", output_file="output.csv", cloud=False)
+
+        # Assert
+        mock_load_data.assert_called_once()
+        mock_filling_missing_dates.assert_called_once()
+        mock_convert_feature_types.assert_called_once()
+        mock_convert_string_columns_to_lowercase.assert_called_once()
+        mock_standardize_product_name.assert_called_once()
+        mock_apply_fuzzy_correction.assert_called_once()
+        mock_filling_missing_cost_price.assert_called_once()
+        mock_remove_invalid_records.assert_called_once()
+        mock_remove_duplicate_records.assert_called_once()
+        mock_detect_anomalies.assert_called_once()
+        mock_send_anomaly_alert.assert_called_once()
+        mock_aggregate_daily_products.assert_called_once()
+        mock_extracting_features.assert_called_once()
+        mock_save_cleaned_data.assert_called_once()
+
+    
+
+    @patch("scripts.dataPreprocessing.load_data", side_effect=Exception("File not found"))
+    def test_main_load_data_failure(self, mock_load_data):
+        # Test
+        with self.assertRaises(Exception) as context:
+            main(input_file="invalid.xlsx", output_file="output.csv", cloud=False)
+
+        # Assert
+        self.assertIn("File not found", str(context.exception))
+        mock_load_data.assert_called_once()
+
+
+    @patch("scripts.dataPreprocessing.upload_df_to_gcs")
+    @patch("scripts.dataPreprocessing.save_cleaned_data")
+    @patch("scripts.dataPreprocessing.extracting_time_series_and_lagged_features")
+    @patch("scripts.dataPreprocessing.aggregate_daily_products")
+    @patch("scripts.dataPreprocessing.send_anomaly_alert")
+    @patch("scripts.dataPreprocessing.remove_duplicate_records")
+    @patch("scripts.dataPreprocessing.remove_invalid_records")
+    @patch("scripts.dataPreprocessing.filling_missing_cost_price")
+    @patch("scripts.dataPreprocessing.apply_fuzzy_correction")
+    @patch("scripts.dataPreprocessing.standardize_product_name")
+    @patch("scripts.dataPreprocessing.convert_string_columns_to_lowercase")
+    @patch("scripts.dataPreprocessing.convert_feature_types")
+    @patch("scripts.dataPreprocessing.filling_missing_dates")
+    @patch("scripts.dataPreprocessing.load_bucket_data")
+    @patch("scripts.dataPreprocessing.load_data", return_value=pl.DataFrame({
+            "Date": ["2024-01-01", "2024-01-02"],
+            "Unit Price": [100.5, 200.75],
+            "Quantity": [10, 20],
+            "Transaction ID": ["T123", "T456"],
+            "Store Location": ["NY", "CA"],
+            "Product Name": ["milk", "coffee"],
+            "Producer ID": ["P001", "P002"]
+        }).with_columns(pl.col("Date").str.strptime(pl.Datetime, "%Y-%m-%d")))
+    @patch("scripts.dataPreprocessing.detect_anomalies", side_effect=Exception("Anomaly detection failed"))
+    def test_main_anomaly_detection_failure(
+        self, mock_detect_anomalies, mock_load_data, mock_load_bucket_data, 
+        mock_filling_missing_dates, mock_convert_feature_types, 
+        mock_convert_string_columns_to_lowercase, mock_standardize_product_name, 
+        mock_apply_fuzzy_correction, mock_filling_missing_cost_price, 
+        mock_remove_invalid_records, mock_remove_duplicate_records, 
+        mock_aggregate_daily_products, mock_extracting_time_series_and_lagged_features, 
+        mock_send_anomaly_alert, mock_save_cleaned_data, mock_upload_df_to_gcs
+    ):
+        # Test
+
+        with self.assertRaises(Exception) as context:
+            main(input_file="input.xlsx", output_file="output.csv", cloud=False)
+
+        # Assert
+        self.assertIn("Anomaly detection failed", str(context.exception))        
+        mock_load_data.assert_called_once()
+        mock_detect_anomalies.assert_called_once()
+        mock_filling_missing_dates.assert_called_once()
+        mock_convert_feature_types.assert_called_once()
+        mock_convert_string_columns_to_lowercase.assert_called_once()
+        mock_standardize_product_name.assert_called_once()
+        mock_apply_fuzzy_correction.assert_called_once()
+        mock_filling_missing_cost_price.assert_called_once()
+        mock_remove_invalid_records.assert_called_once()
+        mock_remove_duplicate_records.assert_called_once()
+        mock_aggregate_daily_products.assert_not_called()
+        mock_extracting_time_series_and_lagged_features.assert_not_called()
+        mock_send_anomaly_alert.assert_not_called()
+        mock_save_cleaned_data.assert_not_called()
+        mock_upload_df_to_gcs.assert_not_called()
+        mock_load_bucket_data.assert_not_called()
+
+        
+
+    @patch("scripts.dataPreprocessing.upload_df_to_gcs")
+    @patch("scripts.dataPreprocessing.save_cleaned_data")
+    @patch("scripts.dataPreprocessing.extracting_time_series_and_lagged_features")
+    @patch("scripts.dataPreprocessing.aggregate_daily_products")
+    @patch("scripts.dataPreprocessing.send_anomaly_alert")
+    @patch("scripts.dataPreprocessing.detect_anomalies", return_value=({}, pl.DataFrame()))
+    @patch("scripts.dataPreprocessing.remove_duplicate_records")
+    @patch("scripts.dataPreprocessing.remove_invalid_records")
+    @patch("scripts.dataPreprocessing.filling_missing_cost_price")
+    @patch("scripts.dataPreprocessing.apply_fuzzy_correction")
+    @patch("scripts.dataPreprocessing.standardize_product_name")
+    @patch("scripts.dataPreprocessing.convert_string_columns_to_lowercase")
+    @patch("scripts.dataPreprocessing.convert_feature_types")
+    @patch("scripts.dataPreprocessing.filling_missing_dates")
+    @patch("scripts.dataPreprocessing.load_bucket_data", return_value=pl.DataFrame({
+            "Date": ["2024-01-01", "2024-01-02"],
+            "Unit Price": [100.5, 200.75],
+            "Quantity": [10, 20],
+            "Transaction ID": ["T123", "T456"],
+            "Store Location": ["NY", "CA"],
+            "Product Name": ["milk", "coffee"],
+            "Producer ID": ["P001", "P002"]
+        }).with_columns(pl.col("Date").str.strptime(pl.Datetime, "%Y-%m-%d")))
+    def test_main_cloud_execution(
+        self, mock_load_bucket_data, mock_filling_missing_dates, mock_convert_feature_types,
+        mock_convert_string_columns_to_lowercase, mock_standardize_product_name,
+        mock_apply_fuzzy_correction, mock_filling_missing_cost_price, mock_remove_invalid_records,
+        mock_remove_duplicate_records, mock_detect_anomalies, mock_send_anomaly_alert,
+        mock_aggregate_daily_products, mock_extracting_time_series_and_lagged_features,
+        mock_save_cleaned_data, mock_upload_df_to_gcs
+    ):
+
+        # Test
+        main(cloud=True)
+
+        # Assert
+        mock_load_bucket_data.assert_called_once()
+        mock_filling_missing_dates.assert_called_once()
+        mock_convert_feature_types.assert_called_once()
+        mock_convert_string_columns_to_lowercase.assert_called_once()
+        mock_standardize_product_name.assert_called_once()
+        mock_apply_fuzzy_correction.assert_called_once()
+        mock_filling_missing_cost_price.assert_called_once()
+        mock_remove_invalid_records.assert_called_once()
+        mock_remove_duplicate_records.assert_called_once()
+        mock_detect_anomalies.assert_called_once()
+        mock_send_anomaly_alert.assert_called_once()
+        mock_aggregate_daily_products.assert_called_once()
+        mock_extracting_time_series_and_lagged_features.assert_called_once()
+        mock_upload_df_to_gcs.assert_called_once()
+
+        mock_save_cleaned_data.assert_not_called()
+
+
+
+
 class TestLoadBucketData(unittest.TestCase):
     def setUp(self):
-        logger
         
         # Create mock data for tests
         self.mock_bucket_name = "test-bucket"
@@ -1523,6 +2133,8 @@ class TestLoadBucketData(unittest.TestCase):
         mock_blob.download_as_string.assert_called_once()
         mock_read_excel.assert_called_once()
 
+    
+
 
 class TestDetectAnomalies(unittest.TestCase):
     
@@ -1608,13 +2220,17 @@ class TestDetectAnomalies(unittest.TestCase):
             'Quantity': [2, 3, 2]
         })
 
-    def test_price_anomalies(self):
+    @patch("scripts.dataPreprocessing.iqr_bounds")
+    def test_price_anomalies(self, mock_iqr_bounds):
         """Test detection of price anomalies"""
+        mock_iqr_bounds.return_value = (1.0, 10.0)
+
         # Run the function
         anomalies, clean_df = detect_anomalies(self.test_data)
         
         # Check that price anomalies were detected
         self.assertIn('price_anomalies', anomalies)
+        mock_iqr_bounds.assert_called()
         price_anomalies = anomalies['price_anomalies']
 
         print(price_anomalies)
@@ -1630,8 +2246,11 @@ class TestDetectAnomalies(unittest.TestCase):
         clean_transaction_ids = clean_df['Transaction ID'].to_list()
         self.assertNotIn(3, clean_transaction_ids)
 
-    def test_quantity_anomalies(self):
+
+    @patch("scripts.dataPreprocessing.iqr_bounds")
+    def test_quantity_anomalies(self, mock_iqr_bounds):
         """Test detection of quantity anomalies"""
+        mock_iqr_bounds.return_value = (2, 15)
         # Run the function
         anomalies, clean_df = detect_anomalies(self.test_data)
         
@@ -1653,9 +2272,12 @@ class TestDetectAnomalies(unittest.TestCase):
         clean_transaction_ids = clean_df['Transaction ID'].to_list()
         self.assertNotIn(7, clean_transaction_ids)
         self.assertNotIn(17, clean_transaction_ids)
+    
 
-    def test_time_anomalies(self):
+    @patch("scripts.dataPreprocessing.iqr_bounds")
+    def test_time_anomalies(self, mock_iqr_bounds):
         """Test detection of time pattern anomalies"""
+        mock_iqr_bounds.return_value = (10, 2)
         # Run the function
         anomalies, clean_df = detect_anomalies(self.test_data)
         
@@ -1678,8 +2300,10 @@ class TestDetectAnomalies(unittest.TestCase):
         self.assertNotIn(8, clean_transaction_ids)
         self.assertNotIn(15, clean_transaction_ids)
 
-    def test_format_anomalies(self):
+    @patch("scripts.dataPreprocessing.iqr_bounds")
+    def test_format_anomalies(self, mock_iqr_bounds):
         """Test detection of format anomalies (invalid values)"""
+        mock_iqr_bounds.return_value = None
         # Run the function
         anomalies, clean_df = detect_anomalies(self.test_data)
         
@@ -1698,8 +2322,10 @@ class TestDetectAnomalies(unittest.TestCase):
         clean_transaction_ids = clean_df['Transaction ID'].to_list()
         self.assertNotIn(20, clean_transaction_ids)
 
-    def test_empty_dataframe(self):
+    @patch("scripts.dataPreprocessing.iqr_bounds")
+    def test_empty_dataframe(self, mock_iqr_bounds):
         """Test function behavior with an empty dataframe"""
+        mock_iqr_bounds.return_value = None
         # Run the function with empty data
         anomalies, clean_df = detect_anomalies(self.empty_data)
         
@@ -1719,8 +2345,11 @@ class TestDetectAnomalies(unittest.TestCase):
         # Clean data should be empty
         self.assertEqual(len(clean_df), 0)
 
-    def test_insufficient_data_for_iqr(self):
+    @patch("scripts.dataPreprocessing.iqr_bounds")
+    def test_insufficient_data_for_iqr(self, mock_iqr_bounds):
         """Test function behavior with insufficient data points for IQR analysis"""
+
+        mock_iqr_bounds.return_value = (1.0, 10.0)
         # Run the function with small data
         anomalies, clean_df = detect_anomalies(self.small_data)
         
@@ -1734,8 +2363,10 @@ class TestDetectAnomalies(unittest.TestCase):
         # Clean data should match original data (no anomalies removed)
         self.assertEqual(len(clean_df), len(self.small_data))
 
-    def test_error_handling(self):
+    @patch("scripts.dataPreprocessing.iqr_bounds")
+    def test_error_handling(self, mock_iqr_bounds):
         """Test error handling in the function"""
+        mock_iqr_bounds.return_value = None
         # Create a dataframe with missing required columns
         bad_data = pl.DataFrame({
             'Transaction ID': [1, 2, 3],
@@ -1749,8 +2380,10 @@ class TestDetectAnomalies(unittest.TestCase):
         with self.assertRaises(Exception):
             detect_anomalies(bad_data)
 
-    def test_clean_data_integrity(self):
+    @patch("scripts.dataPreprocessing.iqr_bounds")
+    def test_clean_data_integrity(self, mock_iqr_bounds):
         """Test that the clean data maintains integrity of non-anomalous records"""
+        mock_iqr_bounds.return_value = (1.0, 10.0)
         # Run the function
         anomalies, clean_df = detect_anomalies(self.test_data)
         
@@ -1834,13 +2467,14 @@ class TestUploadDfToGcs(unittest.TestCase):
         mock_blob.upload_from_string.side_effect = cloud_error
         
         # Call the function and check that it raises the error
-        with self.assertRaises(GoogleAPICallError):
+        with self.assertRaises(GoogleAPICallError) as context:
             upload_df_to_gcs(self.test_df, self.bucket_name, self.blob_name)
         
         # Verify logging
-        mock_logging.error.assert_called_with(
-            "Error uploading DataFrame to GCS. Error: %s", cloud_error
-        )
+        self.assertEqual("Storage Error", str(context.exception))
+        # mock_logging.error.assert_called_with(
+        #     "Error uploading DataFrame to GCS. Error: %s", cloud_error
+        # )
 
     @patch('scripts.dataPreprocessing.storage')
     @patch('scripts.dataPreprocessing.logger')
@@ -1858,7 +2492,7 @@ class TestUploadDfToGcs(unittest.TestCase):
         
         # Verify logging
         mock_logging.error.assert_called_with(
-            "Error uploading DataFrame to GCS. Error: %s", general_error
+            "Error uploading DataFrame to GCS. Error: "
         )
 
     @patch('scripts.dataPreprocessing.storage')

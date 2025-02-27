@@ -223,11 +223,6 @@ def detect_date_order(df: pl.DataFrame, date_column: str = "Date") -> str:
             - "Random" if no clear pattern is detected.
     """
     try:
-        if date_column not in df.columns:
-            logger.error(f"Column '{date_column}' not found in DataFrame.")
-            raise AttributeError("Date column not found.")
-        
-
         # Ensure Date column is in Datetime format
         df = df.with_columns(pl.col(date_column).cast(pl.Datetime))
 
@@ -578,7 +573,7 @@ def calculate_zscore(series: pl.Series) -> pl.Series:
     try:
         mean = series.mean()
         std = series.std()
-        if std == 0:
+        if std == 0 or std == None:
             return pl.Series([0] * len(series))
         
         return (series - mean) / std
@@ -591,16 +586,27 @@ def calculate_zscore(series: pl.Series) -> pl.Series:
 def iqr_bounds(series: pl.Series) -> Tuple[float, float]:
     """Calculate IQR bounds for a series"""
     try:
+        if series.is_empty():
+            raise ValueError("Cannot compute IQR for an empty series.")
+        
         q1 = np.percentile(series, 25)
         q3 = np.percentile(series, 75)
         iqr = q3 - q1
+
+        if iqr == 0:
+            return q1, q3
+        
         lower_bound = q1 - (1.5 * iqr)
         upper_bound = q3 + (2.0 * iqr)
+
+        # If the dataset contains only positive values, enforce lower bound >= 0
+        if series.min() >= 0:
+            lower_bound = max(0, lower_bound)
 
         # Log bounds
         logger.debug(f"Lower Bound: {lower_bound}, Upper Bound: {upper_bound}")
 
-        return max(0, lower_bound), upper_bound
+        return lower_bound, upper_bound
 
     except Exception as e:
         logger.error(f"Error calculating IQR bounds: {e}")
@@ -735,6 +741,7 @@ def aggregate_daily_products(df: pl.DataFrame) -> pl.DataFrame:
     Returns:
     pl.DataFrame: Aggregated DataFrame with daily totals per product
     """
+    df = df.with_columns(pl.col("Date").dt.date().alias("Date"))
     return (
         df.group_by(["Date", "Product Name", "Unit Price"])
         .agg(
@@ -804,6 +811,72 @@ def send_anomaly_alert(anomalies: dict,
         logger.info("No anomalies detected; no alert email sent.")
 
 
+def extracting_time_series_and_lagged_features(df: pl.DataFrame) -> pl.DataFrame:
+    """
+    Given a Polars DataFrame with at least:
+      - 'Date' (datetime or string convertible to datetime)
+      - 'Product Name' (string/categorical)
+      - 'Total Quantity' (int or float)
+    This function creates various time-series features such as:
+      - Day-of-week, is-weekend, day-of-month, day-of-year, month, week_of_year
+      - Cyclical day-of-week encoding (sin/cos)
+      - Lag features (Quantity at t-1, t-7, etc.)
+      - Rolling average over 7 days
+
+    Returns a DataFrame with the new features added.
+    """
+    try:
+        if df.is_empty():
+            logger.warning("Input DataFrame is empty. Returning an empty DataFrame with expected schema.")
+            return pl.DataFrame(schema={
+                "Date": pl.Date,
+                "Product Name": pl.Utf8,
+                "Total Quantity": pl.Float64,
+                "day_of_week": pl.Int32,
+                "is_weekend": pl.Int8,
+                "day_of_month": pl.Int32,
+                "day_of_year": pl.Int32,
+                "month": pl.Int32,
+                "week_of_year": pl.Int32,
+                "lag_1": pl.Float64,
+                "lag_7": pl.Float64,
+                "rolling_mean_7": pl.Float64
+            })
+    
+        # 1. Convert Date to datetime if not already, and add date/time-based features.
+        df = df.with_columns(
+            pl.col("Date").dt.weekday().alias("day_of_week"),
+            (pl.col("Date").dt.weekday() > 5).cast(pl.Int8).alias("is_weekend"),
+            pl.col("Date").dt.day().alias("day_of_month"),
+            pl.col("Date").dt.ordinal_day().alias("day_of_year"),
+            pl.col("Date").dt.month().alias("month"),
+            pl.col("Date").dt.week().alias("week_of_year")
+        )
+    except Exception as e:
+        logger.error(f"Error extracting datetime feature while feature engineering stage.")
+        raise e
+
+    # 2. Create lag and rolling features for each Product Name.
+    # Sort by (Product Name, Date) so time-series operations are correct.
+    # We'll create:
+    #   - lag_1: quantity from the previous day
+    #   - lag_7: quantity from 7 days ago
+    #   - rolling_mean_7: 7-day rolling average
+    try:
+        df = df.sort(["Product Name", "Date"]).with_columns([
+            pl.col("Total Quantity").shift(1).over("Product Name").alias("lag_1"),
+            pl.col("Total Quantity").shift(7).over("Product Name").alias("lag_7"),
+
+            # Rolling mean over the last 7 rows. This is row-based, not strictly time-based.
+            pl.col("Total Quantity").rolling_mean(window_size=7).over("Product Name").alias("rolling_mean_7"),
+        ])
+    except Exception as e:
+        logger.error(f"Error calculating lagged feature while feature engineering stage.")
+        raise e
+
+    return df
+
+
 def save_cleaned_data(df: pl.DataFrame, output_file: str) -> None:
     """Saves the cleaned data to a CSV file."""
     try:
@@ -813,12 +886,12 @@ def save_cleaned_data(df: pl.DataFrame, output_file: str) -> None:
         raise e
     
 
-def main(input_file: str = "temp_messy_transactions_20190103_20241231.xlsx", 
+def main(input_file: str = "messy_transactions_20190103_20241231.xlsx", 
          output_file: str  = "cleaned_data.csv", 
          bucket_name: str = 'full-raw-data', 
          source_blob_name: str = 'generated_training_data/messy_transactions_20190103_20241231.xlsx', 
          destination_blob_name: str = 'cleaned_data/cleanedData.csv',
-         cloud: bool = True) -> None:
+         cloud: bool = False) -> None:
     """
     Executes all data cleaning steps in sequence.
 
@@ -867,10 +940,12 @@ def main(input_file: str = "temp_messy_transactions_20190103_20241231.xlsx",
         logger.info("Sending an Email for Alert...")
         send_anomaly_alert(anomalies)
 
-        df = df.with_columns(pl.col("Date").dt.date().alias("Date"))
+        logger.info("Aggregating dataset...")
         df = aggregate_daily_products(df)
-        
 
+        logger.info("Performing Feature Engineering on Aggregated Data...")
+        df = extracting_time_series_and_lagged_features(df)
+        
         logger.info("Saving cleaned data...")
         if cloud:
             upload_df_to_gcs(df, bucket_name, destination_blob_name)

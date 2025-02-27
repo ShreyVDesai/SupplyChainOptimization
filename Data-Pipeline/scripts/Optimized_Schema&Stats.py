@@ -5,15 +5,8 @@ import json
 import logging
 from sklearn.model_selection import train_test_split
 import tensorflow_data_validation as tfdv
+from logger import logger
 
-# Configure logging
-log_file_path = os.path.join(os.getcwd(), 'process_check_schema_transactions.log')
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.FileHandler(log_file_path), logging.StreamHandler()]
-)
-logger = logging.getLogger(__name__)
 
 # File paths
 DATASET_FILE_PATH = "transactions_20190103_20241231.xlsx"
