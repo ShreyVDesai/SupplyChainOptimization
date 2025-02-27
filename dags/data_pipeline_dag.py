@@ -1,9 +1,11 @@
 from airflow import DAG
-from airflow.providers.google.cloud.sensors.gcs import GCSObjectExistenceSensor
+from airflow.providers.google.cloud.sensors.gcs import GCSObjectUpdateSensor
 from airflow.operators.python import PythonOperator, BranchPythonOperator
 from datetime import datetime, timedelta
 import os
 import subprocess
+
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/opt/airflow/gcp-key.json"
 
 # Define default DAG arguments
 default_args = {
@@ -29,7 +31,9 @@ SCRIPTS = {
 def run_script(script_name):
     script_path = os.path.join(SCRIPT_DIR, script_name)
     try:
-        subprocess.run(["python3", script_path], check=True)
+        # subprocess.run(["python3", script_path], check=True)
+        subprocess.run([sys.executable, script_path], check=True)
+
         return "preprocess_data"  # If successful, continue to preprocessing
     except subprocess.CalledProcessError:
         return "stop_pipeline"  # If failed, stop execution
@@ -48,7 +52,7 @@ with DAG(
 ) as dag:
 
     # Wait for new file in GCP bucket
-    wait_for_file = GCSObjectExistenceSensor(
+    wait_for_file = GCSObjectUpdateSensor(
         task_id="wait_for_file",
         bucket=BUCKET_NAME,
         object=FILE_NAME,

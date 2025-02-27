@@ -18,4 +18,4 @@ SCO_LOG/
 /transaction
 /logs
 /dataValidation.py
-
+./gcp_key.json

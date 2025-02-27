@@ -13,6 +13,7 @@ x-airflow-common:
     AIRFLOW__CORE__LOAD_EXAMPLES: 'true'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.session,airflow.api.auth.backend.basic_auth'
     _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
+    
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
@@ -76,6 +77,11 @@ services:
       timeout: 10s
       retries: 5
     restart: always
+    volumes:
+      - ./gcp_key.json:/opt/airflow/gcp_key.json
+    environment:
+      - AIRFLOW__WEBSERVER__WORKER_TIMEOUT=300  
+      - AIRFLOW__WEBSERVER__WORKERS=2  
 
   airflow-scheduler:
     <<: *airflow-common
@@ -86,6 +92,8 @@ services:
       timeout: 10s
       retries: 5
     restart: always
+    volumes:
+      - ./gcp_key.json:/opt/airflow/gcp_key.json
 
   airflow-worker:
     <<: *airflow-common
@@ -98,6 +106,8 @@ services:
       timeout: 10s
       retries: 5
     restart: always
+    volumes:
+      - ./gcp_key.json:/opt/airflow/gcp_key.json
 
   airflow-init:
     <<: *airflow-common
