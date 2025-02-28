@@ -15,12 +15,9 @@ __init__.py
 .coverage
 .vscode
 /Data-Pipeline/logs/
-secrets/
 SCO_LOG/
 *.dvc
 /data
 /transaction
 /logs
 /dataValidation.py
-# Deprecated GCP key reference - kept for legacy compatibility
-# ./gcp_key.json
