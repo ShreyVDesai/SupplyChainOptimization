@@ -2,55 +2,34 @@
 
 This project contains a supply chain optimization system with Airflow-based data pipelines.
 
-## Quick Start
+## Environment Setup
 
-### Starting the Services
+### Quick Start
 
-You can start the services in two ways:
-
-1. **Using Docker Compose directly** (for development):
-
-   ```bash
-   docker compose up
+1. Ensure you have Docker and Docker Compose installed
+2. Place your Google Cloud Platform key file at `./secret/gcp-key.json`
+3. Configure the `.env` file in the root directory with your environment variables
+4. Start the services with a simple command:
    ```
-
-2. **Using the start script** (for production/custom configurations):
-   ```bash
-   ./start-airflow.sh
+   docker compose up -d
    ```
-
-### Stopping the Services
-
-1. **Using Docker Compose directly**:
-
-   ```bash
+5. Access the Airflow UI at http://localhost:8080 (default credentials: admin/admin)
+6. To stop all services:
+   ```
    docker compose down
    ```
 
-2. **Using the stop script**:
-   ```bash
-   ./stop-airflow.sh
-   ```
+### Notes
+
+- The project uses a single `.env` file for all configuration
+- All environment variables are loaded directly by docker-compose
+- The GCP key file should be placed in the secret directory (and is gitignored)
 
 ## Environment Configuration
 
-This project uses a dual .env file setup:
-
-1. **Root `.env` file**
-
-   - Used automatically by `docker compose up`
-   - Contains safe default values for development
-   - Good for local testing and development
-
-2. **`secret/.env` file**
-   - Used when running `./start-airflow.sh`
-   - Should contain your actual production credentials
-   - Overrides values from the root .env file
-   - Protected by .gitignore (never committed to version control)
-
 ### Required Environment Variables
 
-Both .env files include all necessary variables:
+The .env file includes all necessary variables:
 
 - `AIRFLOW_UID`: User ID for Airflow containers (default: 50000)
 - `AIRFLOW_FERNET_KEY`: Encryption key for sensitive data

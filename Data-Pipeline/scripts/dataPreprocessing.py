@@ -853,7 +853,7 @@ def remove_duplicate_records(df: pl.DataFrame) -> pl.DataFrame:
 
 def send_anomaly_alert(
     anomalies: dict,
-    recipient: str = "patelmit640@gmail.com",
+    recipient: str = "junar9989@gmail.com",
     subject: str = "Anomaly Alert",
 ) -> None:
     """
