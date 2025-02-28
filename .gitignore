@@ -1,5 +1,10 @@
-# Ignore all files in the 'secret' directory - GCP Key
+# Ignore all files in the 'secret' directory - GCP Key and environment files
 secret/*
+
+# Ignore environment files
+.env
+/.env
+
 /temp_env/
 /transactions_20190103_20241231.xlsx
 /messy_transactions_20190103_20241231.xlsx
@@ -9,7 +14,6 @@ __pycache__/
 __init__.py
 .coverage
 .vscode
-.env
 /Data-Pipeline/logs/
 secrets/
 SCO_LOG/
@@ -18,4 +22,5 @@ SCO_LOG/
 /transaction
 /logs
 /dataValidation.py
-./gcp_key.json
+# Deprecated GCP key reference - kept for legacy compatibility
+# ./gcp_key.json

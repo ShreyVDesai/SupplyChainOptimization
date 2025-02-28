@@ -74,7 +74,9 @@ def upload_json_to_gcs(bucket_name, json_data, destination_blob_name):
     # Upload the JSON data to GCS
     try:
         blob.upload_from_string(json_data, content_type="application/json")
-        print(f"JSON data uploaded to bucket '{bucket_name}' as '{destination_blob_name}'.")
+        print(
+            f"JSON data uploaded to bucket '{bucket_name}' as '{destination_blob_name}'."
+        )
     except Exception as e:
         print(f"Error uploading JSON data: {e}")
         raise e
@@ -89,7 +91,29 @@ def process_all_excel_files_in_data_folder(data_folder):
         data_folder (str): The path to the folder containing Excel files.
     """
     # Ensure the environment variable for authentication is set
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "secret/gcp-key.json"
+    # Get the project root directory (assuming scripts is one level deep)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(os.path.dirname(script_dir))
+    gcp_key_path = os.path.join(project_root, "secret", "gcp-key.json")
+
+    # Make sure the key exists
+    if not os.path.exists(gcp_key_path):
+        # Try an alternative path - current directory might be project root
+        alt_path = os.path.join(
+            os.path.dirname(script_dir), "..", "secret", "gcp-key.json"
+        )
+        if os.path.exists(alt_path):
+            gcp_key_path = alt_path
+        else:
+            # Final fallback to direct path from container
+            gcp_key_path = "secret/gcp-key.json"
+            if not os.path.exists(gcp_key_path):
+                print(
+                    f"Warning: GCP key not found at {gcp_key_path}. Authentication may fail."
+                )
+
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = gcp_key_path
+    print(f"Using GCP credentials from: {gcp_key_path}")
 
     # Iterate over all files in the data folder
     for filename in os.listdir(data_folder):

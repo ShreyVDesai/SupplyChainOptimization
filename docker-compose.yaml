@@ -5,10 +5,10 @@ x-airflow-common:
   environment:
     &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
-    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
-    AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
-    AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
-    AIRFLOW__CORE__FERNET_KEY: '81HqDtbqAywKSOumSha3BhWNOdQ26slT6K0YaZeZyPs='
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DATABASE_PASSWORD}@postgres/airflow
+    AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:${AIRFLOW_DATABASE_PASSWORD}@postgres/airflow
+    AIRFLOW__CELERY__BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.session,airflow.api.auth.backend.basic_auth'
@@ -17,19 +17,19 @@ x-airflow-common:
     AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'true'
     AIRFLOW__CELERY__BROKER_CONNECTION_RETRY_ON_STARTUP: 'true'
     _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-apache-airflow-providers-google>=10.3.0 google-cloud-storage>=2.10.0 docker>=6.1.0 apache-airflow-providers-docker>=3.7.0}
-    GOOGLE_APPLICATION_CREDENTIALS: /opt/airflow/gcp_key.json
+    GOOGLE_APPLICATION_CREDENTIALS: /opt/airflow/gcp-key.json
     
-  volumes:
+  volumes: &airflow-common-volumes
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
     - ./plugins:/opt/airflow/plugins
     - ./Data-Pipeline/scripts:/app/scripts
-    - ./gcp_key.json:/opt/airflow/gcp_key.json
+    - ./secret/gcp-key.json:/opt/airflow/gcp-key.json
     - /var/run/docker.sock:/var/run/docker.sock
   user: "${AIRFLOW_UID:-50000}:999"
   group_add:
     - "999"
-  depends_on:
+  depends_on: &airflow-common-depends-on
     redis:
       condition: service_healthy
     postgres:
@@ -45,9 +45,9 @@ services:
     volumes:
       - ./Data-Pipeline/scripts:/app/scripts
       - ./data:/data
-      - ./gcp_key.json:/app/gcp_key.json
+      - ./secret/gcp-key.json:/app/gcp-key.json
     environment:
-      GOOGLE_APPLICATION_CREDENTIALS: /app/gcp_key.json
+      GOOGLE_APPLICATION_CREDENTIALS: /app/gcp-key.json
     working_dir: /app/scripts
     command: ["tail", "-f", "/dev/null"]
     restart: always
@@ -58,9 +58,9 @@ services:
     image: postgres:15
     platform: linux/amd64
     environment:
-      POSTGRES_USER: airflow
-      POSTGRES_PASSWORD: airflow
-      POSTGRES_DB: airflow
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres-db-volume:/var/lib/postgresql/data
     healthcheck:
@@ -80,6 +80,7 @@ services:
       timeout: 30s
       retries: 50
     restart: always
+    command: ${REDIS_PASSWORD:+--requirepass ${REDIS_PASSWORD}}
 
   airflow-webserver:
     <<: *airflow-common
@@ -102,10 +103,7 @@ services:
     depends_on:
       airflow-init:
         condition: service_completed_successfully
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      <<: *airflow-common-depends-on
 
   airflow-scheduler:
     <<: *airflow-common
@@ -116,13 +114,7 @@ services:
       timeout: 10s
       retries: 5
     restart: always
-    volumes:
-      - ./dags:/opt/airflow/dags
-      - ./logs:/opt/airflow/logs
-      - ./plugins:/opt/airflow/plugins
-      - ./Data-Pipeline/scripts:/app/scripts
-      - ./gcp_key.json:/opt/airflow/gcp_key.json
-      - /var/run/docker.sock:/var/run/docker.sock
+    volumes: *airflow-common-volumes
 
   airflow-worker:
     <<: *airflow-common
@@ -135,13 +127,7 @@ services:
       timeout: 10s
       retries: 5
     restart: always
-    volumes:
-      - ./dags:/opt/airflow/dags
-      - ./logs:/opt/airflow/logs
-      - ./plugins:/opt/airflow/plugins
-      - ./Data-Pipeline/scripts:/app/scripts
-      - ./gcp_key.json:/opt/airflow/gcp_key.json
-      - /var/run/docker.sock:/var/run/docker.sock
+    volumes: *airflow-common-volumes
 
   airflow-init:
     <<: *airflow-common
@@ -150,21 +136,18 @@ services:
     command: >
       -c "
       airflow db migrate &&
-      airflow users create --username admin --password admin --firstname Anonymous --lastname Admin --role Admin --email admin@example.com &&
+      airflow users create --username ${AIRFLOW_ADMIN_USERNAME} --password ${AIRFLOW_ADMIN_PASSWORD} --firstname ${AIRFLOW_ADMIN_FIRSTNAME} --lastname ${AIRFLOW_ADMIN_LASTNAME} --role Admin --email ${AIRFLOW_ADMIN_EMAIL} &&
       airflow connections delete google_cloud_default || true &&
-      airflow connections add 'google_cloud_default' --conn-type 'google_cloud_platform' --conn-extra '{\"extra__google_cloud_platform__key_path\": \"/opt/airflow/gcp_key.json\"}'
+      airflow connections add 'google_cloud_default' --conn-type 'google_cloud_platform' --conn-extra '{\"extra__google_cloud_platform__key_path\": \"/opt/airflow/gcp-key.json\"}'
       "
     environment:
       <<: *airflow-common-env
       _AIRFLOW_DB_MIGRATE: 'true'
       _AIRFLOW_WWW_USER_CREATE: 'true'
-      _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
-      _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
+      _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_ADMIN_USERNAME:-airflow}
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:-airflow}
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      <<: *airflow-common-depends-on
 
   flower:
     <<: *airflow-common
