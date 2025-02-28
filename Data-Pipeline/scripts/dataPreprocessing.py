@@ -602,17 +602,18 @@ def apply_fuzzy_correction(
 
 
 def upload_df_to_gcs(
-    df: pl.DataFrame, bucket_name: str, destination_blob_name: str
-) -> None:
+    df: pl.DataFrame, bucket_name: str, destination_blob_name: str, format: str = "csv"
+) -> bool:
     """
-    Uploads a DataFrame to Google Cloud Storage (GCS) as a CSV file.
+    Uploads a DataFrame to Google Cloud Storage (GCS) in the specified format (CSV or JSON).
     Args:
         df (polars.DataFrame): The DataFrame to upload.
         bucket_name (str): The name of the GCS bucket where the file should be stored.
         destination_blob_name (str): The desired name for the file in GCS.
+        format (str): Output format, either "csv" or "json"
 
     Returns:
-        None
+        bool: True if upload was successful, False otherwise.
 
     Raises:
         Exception: If any other error occurs during the process.
@@ -622,20 +623,69 @@ def upload_df_to_gcs(
 
     try:
         logger.info(
-            "Starting upload to GCS. Bucket: %s, Blob: %s",
+            "Starting upload to GCS. Bucket: %s, Blob: %s, Format: %s",
             bucket_name,
             destination_blob_name,
+            format,
         )
-        bucket = storage.Client().get_bucket(bucket_name)
-        blob = bucket.blob(destination_blob_name)
-        csv_data = df.write_csv()
-        blob.upload_from_string(csv_data, content_type="text/csv")
 
-        logger.info("Upload successful to GCS. Blob name: %s", destination_blob_name)
+        # Verify the DataFrame is not empty before uploading
+        if df is None or df.is_empty():
+            logger.error("Cannot upload an empty DataFrame to GCS")
+            return False
+
+        # Get the GCS client and bucket
+        client = storage.Client()
+
+        # Check if bucket exists, create if it doesn't
+        try:
+            bucket = client.get_bucket(bucket_name)
+            logger.info(f"Found existing bucket: {bucket_name}")
+        except Exception as bucket_error:
+            logger.warning(f"Bucket not found, attempting to create: {bucket_name}")
+            try:
+                bucket = client.create_bucket(bucket_name)
+                logger.info(f"Created new bucket: {bucket_name}")
+            except Exception as create_error:
+                logger.error(f"Failed to create bucket {bucket_name}: {create_error}")
+                return False
+
+        # Create the blob object
+        blob = bucket.blob(destination_blob_name)
+
+        # Upload based on format
+        if format.lower() == "json":
+            # Convert to pandas first for better JSON serialization
+            pd_df = df.to_pandas()
+            # Convert to JSON string with proper formatting
+            json_data = pd_df.to_json(orient="records", date_format="iso", indent=4)
+            # Upload JSON string
+            blob.upload_from_string(json_data, content_type="application/json")
+        else:
+            # Default CSV upload
+            csv_data = df.write_csv()
+            blob.upload_from_string(csv_data, content_type="text/csv")
+
+        # Verify the blob exists after upload
+        try:
+            blob_exists = blob.exists()
+            if blob_exists:
+                logger.info(
+                    f"Upload successful to GCS. Blob {destination_blob_name} verified in bucket {bucket_name}"
+                )
+                return True
+            else:
+                logger.error(
+                    f"Upload completed but blob {destination_blob_name} not found in bucket {bucket_name}"
+                )
+                return False
+        except Exception as verify_error:
+            logger.error(f"Error verifying blob after upload: {verify_error}")
+            return False
 
     except Exception as e:
-        logger.error("Error uploading DataFrame to GCS. Error: %s", e)
-        raise
+        logger.error(f"Error uploading DataFrame to GCS. Error: {e}", exc_info=True)
+        return False
 
 
 def calculate_zscore(series: pl.Series) -> pl.Series:
@@ -982,27 +1032,47 @@ def main(
     output_file: str = "cleaned_data.csv",
     bucket_name: str = "full-raw-data",
     source_blob_name: str = "generated_training_data/messy_transactions_20190103_20241231.xlsx",
+    destination_bucket_name: str = "fully-processed-data",
     destination_blob_name: str = "cleaned_data/cleanedData.csv",
+    output_format: str = "csv",
     cloud: bool = False,
-) -> None:
+) -> bool:
     """
     Executes all data cleaning steps in sequence.
 
     Parameters:
         input_file (str): Path to the input dataset.
         output_file (str): Path to save the cleaned dataset.
+        bucket_name (str): Name of GCS bucket for source data.
+        source_blob_name (str): Source blob name in GCS.
+        destination_bucket_name (str): Name of GCS bucket for storing processed data.
+        destination_blob_name (str): Destination blob name in GCS.
+        output_format (str): Format for output data ("csv" or "json")
+        cloud (bool): Whether to use cloud storage.
 
-    Raises:
-        RuntimeError: If any step fails during execution.
+    Returns:
+        bool: True if processing succeeded, False otherwise.
     """
 
     try:
-        logger.info("Loading data...")
+        logger.info(
+            f"Starting data preprocessing pipeline. Input: {input_file}, Cloud mode: {cloud}, Output format: {output_format}"
+        )
+
         if cloud:
+            logger.info(f"Loading from cloud bucket: {bucket_name}/{source_blob_name}")
             df = load_bucket_data(bucket_name, source_blob_name)
         else:
+            logger.info(f"Loading from local file: {input_file}")
             df = load_data(input_file)
 
+        if df is None or df.is_empty():
+            logger.error("Failed to load data or empty dataset received")
+            return False
+
+        logger.info(f"Initial data loaded with shape: {df.shape}")
+
+        # Execute all data cleaning steps
         logger.info("Filling missing dates...")
         df = filling_missing_dates(df)
 
@@ -1031,7 +1101,18 @@ def main(
         anomalies, df = detect_anomalies(df)
 
         logger.info("Sending an Email for Alert...")
-        send_anomaly_alert(anomalies)
+        # Only send email if anomalies are significant
+        significant_anomalies = any(
+            not anom_df.is_empty() for anom_df in anomalies.values()
+        )
+        if significant_anomalies:
+            try:
+                send_anomaly_alert(anomalies)
+                logger.info("Anomaly alert email sent successfully")
+            except Exception as email_error:
+                logger.warning(f"Failed to send anomaly alert email: {email_error}")
+        else:
+            logger.info("No significant anomalies detected, skipping email alert")
 
         logger.info("Aggregating dataset...")
         df = aggregate_daily_products(df)
@@ -1039,16 +1120,43 @@ def main(
         logger.info("Performing Feature Engineering on Aggregated Data...")
         df = extracting_time_series_and_lagged_features(df)
 
-        logger.info("Saving cleaned data...")
+        logger.info(f"Final processed data shape: {df.shape}")
+
+        logger.info(f"Saving cleaned data in {output_format} format...")
         if cloud:
-            upload_df_to_gcs(df, bucket_name, destination_blob_name)
+            # Use destination bucket name for saving processed data with specified format
+            upload_success = upload_df_to_gcs(
+                df, destination_bucket_name, destination_blob_name, format=output_format
+            )
+            if not upload_success:
+                logger.error(
+                    f"Failed to upload data to GCS destination: {destination_bucket_name}/{destination_blob_name}"
+                )
+                return False
+
+            logger.info(
+                f"Data successfully uploaded to cloud: {destination_bucket_name}/{destination_blob_name} in {output_format} format"
+            )
         else:
-            save_cleaned_data(df, output_file)
-        logger.info(f"Data cleaning completed! Cleaned data saved to: {output_file}")
+            # For local file saving
+            if output_format.lower() == "json":
+                # If output format is JSON, save as JSON
+                pd_df = df.to_pandas()
+                pd_df.to_json(
+                    output_file, orient="records", date_format="iso", indent=4
+                )
+            else:
+                # Default to CSV
+                save_cleaned_data(df, output_file)
+            logger.info(
+                f"Data cleaning completed! Cleaned data saved to: {output_file} in {output_format} format"
+            )
+
+        return True
 
     except Exception as e:
-        logger.error(f"Processing failed due to: {e}")
-        raise e
+        logger.error(f"Processing failed due to: {e}", exc_info=True)
+        return False
 
 
 if __name__ == "__main__":
