@@ -4,13 +4,16 @@ from datetime import datetime
 from rapidfuzz import process, fuzz
 import polars as pl
 from scripts.logger import logger
+# from data_pipeline.scripts.logger import logger
 # from logger import logger
 import io
 from google.cloud import storage
 from dotenv import load_dotenv
 from typing import Dict, Tuple
-from scripts.sendMail import send_email
+# from scripts.sendMail import send_email
 # from sendMail import send_email
+from scripts.utils import send_email
+# from data_pipeline.scripts.utils import send_email
 
 load_dotenv()
 
@@ -440,6 +443,9 @@ def filling_missing_cost_price(df: pl.DataFrame) -> pl.DataFrame:
         )
 
         logger.info("Unit Price filling completed successfully.")
+
+        df = df.drop(["Year", "Month", "Week_of_year"])
+
         return df
     
     except Exception as e:
@@ -786,27 +792,32 @@ def send_anomaly_alert(anomalies: dict,
         subject (str): Subject line for the email.
     """
     # Build message parts based on the anomalies detected.
-    message_parts = ["Hi, anomalies have been detected in the dataset:"]
-    anomaly_found = False
-
-    for anomaly_type, anomaly_df in anomalies.items():
-        # Only include anomaly types that have data.
-        if not anomaly_df.is_empty():
-            anomaly_found = True
-            message_parts.append(f"\nAnomaly type: {anomaly_type}")
-            # Convert the DataFrame to CSV text for readability.
-            csv_str = anomaly_df.to_pandas().to_csv(index=False)
-            message_parts.append(csv_str)
+    body_message = ("Hi,\n\n"
+                    "Anomalies have been detected in the dataset. "
+                    "Please see the attached CSV file for details.\n\n"
+                    "Thank you!")
     
-    message_parts.append("\nThank you!")
-
-    if anomaly_found:
-        # Call your pre-defined send_email function.
+    anomaly_list = []
+    
+    # Combine non-empty anomaly DataFrames into one.
+    for anomaly_type, anomaly_df in anomalies.items():
+        if not anomaly_df.is_empty():
+            df = anomaly_df.to_pandas()
+            df["anomaly_type"] = anomaly_type  # add a column to indicate the anomaly type
+            anomaly_list.append(df)
+    
+    if anomaly_list:
+        combined_df = pd.concat(anomaly_list, ignore_index=True)
         try:
-            send_email(recipient, message_parts, subject=subject)
+            send_email(
+                emailid=recipient,
+                body=body_message,
+                subject=subject,
+                attachment=combined_df
+            )
             logger.info("Anomaly alert email sent.")
         except Exception as e:
-            logger.error(f"Error sending an alert email.")
+            logger.error(f"Error sending an alert email: {e}")
     else:
         logger.info("No anomalies detected; no alert email sent.")
 
@@ -888,10 +899,10 @@ def save_cleaned_data(df: pl.DataFrame, output_file: str) -> None:
 
 def main(input_file: str = "messy_transactions_20190103_20241231.xlsx", 
          output_file: str  = "cleaned_data.csv", 
-         bucket_name: str = 'full-raw-data', 
-         source_blob_name: str = 'generated_training_data/messy_transactions_20190103_20241231.xlsx', 
-         destination_blob_name: str = 'cleaned_data/cleanedData.csv',
-         cloud: bool = False) -> None:
+         bucket_name: str = 'full-raw-data',
+         source_blob_name: str = '2024-01-01_2024-12-31.xlsx', 
+         destination_blob_name: str = 'fully-processed-data/cleanedData.csv',
+         cloud: bool = True) -> None:
     """
     Executes all data cleaning steps in sequence.
 
@@ -949,6 +960,7 @@ def main(input_file: str = "messy_transactions_20190103_20241231.xlsx",
         logger.info("Saving cleaned data...")
         if cloud:
             upload_df_to_gcs(df, bucket_name, destination_blob_name)
+            # save_cleaned_data(df, output_file)
         else:
             save_cleaned_data(df, output_file)
         logger.info(f"Data cleaning completed! Cleaned data saved to: {output_file}")
