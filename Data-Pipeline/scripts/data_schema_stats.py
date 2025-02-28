@@ -1,9 +1,7 @@
 import os
 import pandas as pd
-import tensorflow as tf
 import tensorflow_data_validation as tfdv
 from sklearn.model_selection import train_test_split
-from tensorflow_metadata.proto.v0 import schema_pb2
 
 # Set up file paths
 FILE_PATH = "transactions_20190103_20241231.xlsx"
@@ -28,10 +26,12 @@ eval_stats = tfdv.generate_statistics_from_dataframe(eval_df)
 schema = tfdv.infer_schema(train_stats)
 tfdv.display_schema(schema)
 
+
 # Save schema and statistics
 def save_json(data, filename):
     with open(filename, "w") as f:
         f.write(str(data))
+
 
 save_json(schema, SCHEMA_OUTPUT)
 save_json(train_stats, STATS_OUTPUT)
