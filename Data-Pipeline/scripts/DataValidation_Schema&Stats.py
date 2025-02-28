@@ -5,6 +5,7 @@ from google.cloud import storage
 import great_expectations as ge
 import smtplib
 from email.message import EmailMessage
+import json
 
 def setup_logging():
     """Set up logging for the application."""
@@ -119,32 +120,44 @@ def load_data(file_path):
 def validate_data(df):
     """
     Validate the DataFrame using Great Expectations.
-    Generates schema and statistics based on defined expectations.
+    Generates schema and statistics based on defined expectations,
+    captures validation results, generates DataDocs (if possible), and saves results to a file.
     
     Parameters:
       df (pd.DataFrame): DataFrame to validate.
+      
+    Returns:
+      dict: Validation results.
     """
     try:
         # Convert to a Great Expectations DataFrame
         ge_df = ge.from_pandas(df)
         
         # Define expectations
-        expectations = {
-            "expect_column_to_exist": ["product_id", "user_id", "transaction_date", "quantity"],
-            "expect_column_values_to_be_of_type": {"quantity": "int"},
-        }
+        ge_df.expect_column_to_exist("product_id")
+        ge_df.expect_column_to_exist("user_id")
+        ge_df.expect_column_to_exist("transaction_date")
+        ge_df.expect_column_to_exist("quantity")
+        ge_df.expect_column_values_to_be_of_type("quantity", "int")
         
-        # Apply expectations
-        for expectation, params in expectations.items():
-            if isinstance(params, list):
-                for param in params:
-                    ge_df.validate(expectation, column=param)
-            else:
-                for col, dtype in params.items():
-                    ge_df.validate(expectation, column=col, type_=dtype)
+        # Validate the dataset and capture results
+        validation_results = ge_df.validate()
         
-        logger.info("Data validation completed.")
-        return ge_df
+        # Attempt to generate DataDocs if a DataContext is available
+        try:
+            context = ge.data_context.DataContext()  # requires a GE config (great_expectations.yml)
+            context.build_data_docs()
+            logger.info("DataDocs generated successfully.")
+        except Exception as doc_ex:
+            logger.warning(f"DataDocs generation failed: {doc_ex}")
+        
+        # Save the validation results to a JSON file
+        output_path = "/tmp/validation_results.json"
+        with open(output_path, "w") as f:
+            json.dump(validation_results, f, indent=2)
+        logger.info(f"Validation results saved to {output_path}.")
+        
+        return validation_results
     except Exception as e:
         logger.error(f"Error in data validation: {e}")
         raise
@@ -190,10 +203,10 @@ def main():
         df = load_data(destination)
         
         # Validate data and generate schema/stats metadata
-        validated_df = validate_data(df)
+        validation_results = validate_data(df)
         
         # Example anomaly check: if the mean of 'quantity' exceeds a threshold.
-        if validated_df["quantity"].mean() > 100:
+        if df["quantity"].mean() > 100:
             send_anomaly_alert(user_id=df["user_id"].iloc[0], message="High demand detected!")
         
         logger.info("Workflow completed successfully.")
@@ -203,4 +216,3 @@ def main():
 if __name__ == "__main__":
     logger = setup_logging()
     main()
-
