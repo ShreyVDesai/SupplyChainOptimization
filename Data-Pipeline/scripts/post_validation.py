@@ -7,19 +7,28 @@ import smtplib
 from email.message import EmailMessage
 import json
 
+
 def setup_logging():
     """Set up logging for the application."""
-    logging.basicConfig(level=logging.INFO, 
-                        format='%(asctime)s - %(levelname)s - %(message)s')
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+    )
     return logging.getLogger(__name__)
 
-def send_email(emailid, message, subject="Automated Email", 
-               smtp_server="smtp.gmail.com", smtp_port=587,
-               sender="svarunanusheel@gmail.com", username="svarunanusheel@gmail.com", 
-               password="Temp"):
+
+def send_email(
+    emailid,
+    message,
+    subject="Automated Email",
+    smtp_server="smtp.gmail.com",
+    smtp_port=587,
+    sender="svarunanusheel@gmail.com",
+    username="svarunanusheel@gmail.com",
+    password="Temp",
+):
     """
     Sends an email to the given email address.
-    
+
     Parameters:
       emailid (str): Recipient email address.
       message (str, pd.DataFrame, or list): Message content.
@@ -42,7 +51,7 @@ def send_email(emailid, message, subject="Automated Email",
         plain_text = message.to_string()
         html_text = message.to_html()
         msg.set_content(plain_text)
-        msg.add_alternative(html_text, subtype='html')
+        msg.add_alternative(html_text, subtype="html")
     elif isinstance(message, list):
         text_parts = []
         html_parts = []
@@ -59,10 +68,10 @@ def send_email(emailid, message, subject="Automated Email",
         combined_text = "\n".join(text_parts)
         combined_html = "".join(html_parts)
         msg.set_content(combined_text)
-        msg.add_alternative(combined_html, subtype='html')
+        msg.add_alternative(combined_html, subtype="html")
     else:
         msg.set_content(str(message))
-    
+
     try:
         with smtplib.SMTP(smtp_server, smtp_port) as server:
             server.starttls()
@@ -74,10 +83,11 @@ def send_email(emailid, message, subject="Automated Email",
         logger.error(f"Failed to send email: {e}")
         raise
 
+
 def fetch_file_from_gcp(bucket_name, file_name, destination):
     """
     Fetch file from the specified GCP bucket and save it to the destination.
-    
+
     Parameters:
       bucket_name (str): Name of the GCP bucket.
       file_name (str): Name/path of the file in the bucket.
@@ -86,7 +96,7 @@ def fetch_file_from_gcp(bucket_name, file_name, destination):
     try:
         # Ensure the destination directory exists
         os.makedirs(os.path.dirname(destination), exist_ok=True)
-        
+
         client = storage.Client()
         bucket = client.bucket(bucket_name)
         blob = bucket.blob(file_name)
@@ -96,76 +106,81 @@ def fetch_file_from_gcp(bucket_name, file_name, destination):
         logger.error(f"Error fetching file from GCP: {e}")
         raise
 
+
 def load_data(file_path):
     """
     Load data from a CSV or Excel file into a Pandas DataFrame.
-    
+
     Parameters:
       file_path (str): Local path to the file.
     """
     try:
-        if file_path.endswith('.csv'):
+        if file_path.endswith(".csv"):
             df = pd.read_csv(file_path)
-        elif file_path.endswith('.xlsx'):
+        elif file_path.endswith(".xlsx"):
             df = pd.read_excel(file_path)
         else:
             raise ValueError("Unsupported file format. Only CSV and XLSX are allowed.")
-        
+
         logger.info(f"Data loaded successfully from {file_path}.")
         return df
     except Exception as e:
         logger.error(f"Error loading data: {e}")
         raise
 
+
 def validate_data(df):
     """
     Validate the DataFrame using Great Expectations.
     Generates schema and statistics based on defined expectations,
     captures validation results, generates DataDocs (if possible), and saves results to a file.
-    
+
     Parameters:
       df (pd.DataFrame): DataFrame to validate.
-      
+
     Returns:
       dict: Validation results.
     """
     try:
         # Convert to a Great Expectations DataFrame
         ge_df = ge.from_pandas(df)
-        
+
         # Define expectations
         ge_df.expect_column_to_exist("product_id")
         ge_df.expect_column_to_exist("user_id")
         ge_df.expect_column_to_exist("transaction_date")
         ge_df.expect_column_to_exist("quantity")
         ge_df.expect_column_values_to_be_of_type("quantity", "int")
-        
+
         # Validate the dataset and capture results
         validation_results = ge_df.validate()
-        
+
         # Attempt to generate DataDocs if a DataContext is available
         try:
-            context = ge.data_context.DataContext()  # requires a GE config (great_expectations.yml)
+            context = (
+                ge.data_context.DataContext()
+            )  # requires a GE config (great_expectations.yml)
             context.build_data_docs()
             logger.info("DataDocs generated successfully.")
         except Exception as doc_ex:
             logger.warning(f"DataDocs generation failed: {doc_ex}")
-        
+
         # Save the validation results to a JSON file
         output_path = "/tmp/validation_results.json"
         with open(output_path, "w") as f:
             json.dump(validation_results, f, indent=2)
         logger.info(f"Validation results saved to {output_path}.")
-        
+
         return validation_results
     except Exception as e:
         logger.error(f"Error in data validation: {e}")
         raise
 
+
 def send_anomaly_alert(user_id, message):
     """
     Send an anomaly alert using email.
-    
+
     Parameters:
       user_id (str/int): Identifier of the user.
       message (str): Alert message.
@@ -180,6 +195,7 @@ def send_anomaly_alert(user_id, message):
         logger.error(f"Error sending anomaly alert: {e}")
         raise
 
+
 def main():
     """
     Main function to run the entire workflow.
@@ -189,29 +205,32 @@ def main():
     try:
         # Retrieve bucket name dynamically; default to 'fully-processed-data'
         bucket_name = os.getenv("GCP_BUCKET_NAME", "fully-processed-data")
-        
+
         # Define the file name in the bucket; adjust as needed
         file_name = "transactions_20190103_20241231.xlsx"
-        
+
         # Set local destination path
         destination = f"/tmp/{file_name}"
-        
+
         # Fetch file from GCP
         fetch_file_from_gcp(bucket_name, file_name, destination)
-        
+
         # Load data into DataFrame
         df = load_data(destination)
-        
+
         # Validate data and generate schema/stats metadata
         validation_results = validate_data(df)
-        
+
         # Example anomaly check: if the mean of 'quantity' exceeds a threshold.
         if df["quantity"].mean() > 100:
-            send_anomaly_alert(user_id=df["user_id"].iloc[0], message="High demand detected!")
-        
+            send_anomaly_alert(
+                user_id=df["user_id"].iloc[0], message="High demand detected!"
+            )
+
         logger.info("Workflow completed successfully.")
     except Exception as e:
         logger.error(f"Workflow failed: {e}")
+
 
 if __name__ == "__main__":
     logger = setup_logging()
