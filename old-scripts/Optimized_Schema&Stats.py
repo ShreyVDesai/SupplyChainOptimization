@@ -15,10 +15,12 @@ STATS_FILE_PATH = "transactions_stats.json"
 TRAIN_FILE = "train_data.csv"
 TEST_FILE = "test_data.csv"
 
+
 # Load dataset
 def load_data(file_path):
     logger.info("Loading dataset...")
     return pd.read_excel(file_path)
+
 
 # Generate schema
 def generate_schema(data):
@@ -28,7 +30,7 @@ def generate_schema(data):
         column_info = {
             "name": column_name,
             "type": dtype.name,
-            "required": not data[column_name].isnull().any()
+            "required": not data[column_name].isnull().any(),
         }
         if column_name == "Date":
             column_info["format"] = r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$"
@@ -37,26 +39,37 @@ def generate_schema(data):
         schema["columns"].append(column_info)
     return schema
 
+
 # Generate statistics
 def generate_statistics(data):
     logger.info("Generating dataset statistics...")
     stats = {}
     for column in data.columns:
         stats[column] = {
-            "mean": data[column].mean() if pd.api.types.is_numeric_dtype(data[column]) else None,
-            "std_dev": data[column].std() if pd.api.types.is_numeric_dtype(data[column]) else None,
+            "mean": (
+                data[column].mean()
+                if pd.api.types.is_numeric_dtype(data[column])
+                else None
+            ),
+            "std_dev": (
+                data[column].std()
+                if pd.api.types.is_numeric_dtype(data[column])
+                else None
+            ),
             "min": data[column].min(),
             "max": data[column].max(),
             "missing_values": data[column].isnull().sum(),
-            "unique_values": len(data[column].unique())
+            "unique_values": len(data[column].unique()),
         }
     return stats
 
+
 # Save data to JSON
 def save_to_json(data, file_path):
-    with open(file_path, 'w') as f:
+    with open(file_path, "w") as f:
         json.dump(data, f, indent=4)
     logger.info("Data saved to %s", file_path)
+
 
 # Split data
 def split_data(df, test_size=0.2):
@@ -64,8 +77,11 @@ def split_data(df, test_size=0.2):
     train_df, test_df = train_test_split(df, test_size=test_size, shuffle=False)
     train_df.to_csv(TRAIN_FILE, index=False)
     test_df.to_csv(TEST_FILE, index=False)
-    logger.info("Train/Test split complete: Train(%d), Test(%d)", len(train_df), len(test_df))
+    logger.info(
+        "Train/Test split complete: Train(%d), Test(%d)", len(train_df), len(test_df)
+    )
     return train_df, test_df
+
 
 # Perform TFDV analysis
 def analyze_data_with_tfdv(train_df, test_df):
@@ -76,6 +92,7 @@ def analyze_data_with_tfdv(train_df, test_df):
     anomalies = tfdv.validate_statistics(test_stats, schema)
     return train_stats, test_stats, schema, anomalies
 
+
 # Main function
 def main():
     df = load_data(DATASET_FILE_PATH)
@@ -84,8 +101,11 @@ def main():
     save_to_json(schema, SCHEMA_FILE_PATH)
     save_to_json(stats, STATS_FILE_PATH)
     train_df, test_df = split_data(df)
-    train_stats, test_stats, schema, anomalies = analyze_data_with_tfdv(train_df, test_df)
+    train_stats, test_stats, schema, anomalies = analyze_data_with_tfdv(
+        train_df, test_df
+    )
     logger.info("Analysis complete.")
+
 
 if __name__ == "__main__":
     main()
