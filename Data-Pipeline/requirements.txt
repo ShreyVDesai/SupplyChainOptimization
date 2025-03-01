@@ -6,5 +6,6 @@ tqdm==4.67.1
 polars-lts-cpu==1.22.0
 python-dotenv==1.0.1
 openpyxl==3.1.5
+fastexcel==0.13.0
 RapidFuzz==3.12.1
 great_expectations
