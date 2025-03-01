@@ -10,120 +10,253 @@ from logger import logger
 from utils import send_email, load_bucket_data, load_data
 
 
-# def fetch_file_from_gcp(bucket_name, file_name, destination):
+COLUMN_EXPECTATIONS = [
+    {
+        "column": "Product Name",
+        "expectations": [
+            {
+                "type": "expect_column_to_exist",
+                "kwargs": {}
+            },
+            {
+                "type": "expect_column_values_to_be_of_type",
+                "kwargs": {"type_": "str"}
+            }
+        ]
+    },
+    {
+        "column": "Transaction ID",
+        "expectations": [
+            {
+                "type": "expect_column_to_exist",
+                "kwargs": {}
+            },
+            # Possibly check it's a string or matches a certain pattern:
+            # {
+            #     "type": "expect_column_values_to_match_regex",
+            #     "kwargs": {"regex": r"^T\d+$"}
+            # }
+        ]
+    },
+    {
+        "column": "Quantity",
+        "expectations": [
+            {
+                "type": "expect_column_to_exist",
+                "kwargs": {}
+            },
+            {
+                "type": "expect_column_values_to_be_of_type",
+                "kwargs": {"type_": "int"}
+            },
+            {
+                "type": "expect_column_values_to_be_between",
+                "kwargs": {"min_value": 0}
+            }
+        ]
+    },
+    {
+        "column": "Date",
+        "expectations": [
+            {
+                "type": "expect_column_to_exist",
+                "kwargs": {}
+            },
+            {
+                "type": "expect_column_values_to_match_regex",
+                "kwargs": {
+                    "regex": (
+                        r"^(?:"
+                        r"\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2}:\d{2}(?:\.\d+)?){0,1}"
+                        r"|"
+                        r"\d{2}-\d{2}-\d{4}"
+                        r"|"
+                        r"\d{2}/\d{2}/\d{4}"
+                        r")$"
+                    )
+                }
+            }
+        ]
+    }
+]
+
+
+
+# def validate_data(df):
 #     """
-#     Fetch file from the specified GCP bucket and save it to the destination.
+#     Validate the DataFrame using Great Expectations.
+#     Generates schema and statistics based on defined expectations,
+#     captures validation results, generates DataDocs (if possible), and saves results to a file.
     
 #     Parameters:
-#       bucket_name (str): Name of the GCP bucket.
-#       file_name (str): Name/path of the file in the bucket.
-#       destination (str): Local destination path.
+#       df (pd.DataFrame): DataFrame to validate.
+      
+#     Returns:
+#       dict: Validation results.
 #     """
-#     try:
-#         # Ensure the destination directory exists
-#         os.makedirs(os.path.dirname(destination), exist_ok=True)
-        
-#         client = storage.Client()
-#         bucket = client.bucket(bucket_name)
-#         blob = bucket.blob(file_name)
-#         blob.download_to_filename(destination)
-#         logger.info(f"File {file_name} downloaded from GCP bucket {bucket_name}.")
-#     except Exception as e:
-#         logger.error(f"Error fetching file from GCP: {e}")
-#         raise
+    # try:
+    #     # Convert to a Great Expectations DataFrame
+    #     if isinstance(df, pl.DataFrame):
+    #         df = df.to_pandas()
+    #     ge_df = ge.from_pandas(df)
+    #     # logger.info(df["Product Name"].dtype)
 
-# def load_data(file_path):
-#     """
-#     Load data from a CSV or Excel file into a Pandas DataFrame.
+        
+    #     # Define expectations
+    #     ge_df.expect_column_to_exist("Product Name")
+    #     ge_df.expect_column_values_to_be_of_type("Product Name", "str")
+
+    #     # ge_df.expect_column_to_exist("user_id")
+    #     ge_df.expect_column_to_exist("Transaction ID")
+ 
+    #     ge_df.expect_column_to_exist("Quantity")
+    #     ge_df.expect_column_values_to_be_of_type("Quantity", "int")
+
+    #     ge_df.expect_column_to_exist("Date")
+    #     date_regex = (
+    #         r"^(?:"
+    #         r"\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2}:\d{2}(?:\.\d+)?){0,1}"
+    #         r"|"
+    #         r"\d{2}-\d{2}-\d{4}"
+    #         r"|"
+    #         r"\d{2}/\d{2}/\d{4}"
+    #         r")$"
+    #     )
+
+    #     # 3. Set result_format="COMPLETE" to capture unexpected rows/values
+    #     ge_df.expect_column_values_to_match_regex(
+    #         "Date", date_regex, result_format="COMPLETE"
+    #     )
+        
+    #     # Validate the dataset and capture results
+    #     validation_results = ge_df.validate()
+
+    #     validation_results_dict = validation_results.to_json_dict()
+        
+    #     # Attempt to generate DataDocs if a DataContext is available
+    #     try:
+    #         context = ge.data_context.DataContext()  # requires a GE config (great_expectations.yml)
+    #         context.build_data_docs()
+    #         logger.info("DataDocs generated successfully.")
+    #     except Exception as doc_ex:
+    #         logger.warning(f"DataDocs generation failed: {doc_ex}")
+        
+    #     # Save the validation results to a JSON file
+    #     output_path = "validation_results.json"
+    #     with open(output_path, "w") as f:
+    #         json.dump(validation_results_dict, f, indent=2)
+    #     logger.info(f"Validation results saved to {output_path}.")
+        
+    #     return validation_results_dict
+    # except Exception as e:
+    #     logger.error(f"Error in data validation: {e}")
+    #     raise
+
+
+
+
+
     
-#     Parameters:
-#       file_path (str): Local path to the file.
-#     """
-#     try:
-#         if file_path.endswith('.csv'):
-#             df = pd.read_csv(file_path)
-#         elif file_path.endswith('.xlsx'):
-#             df = pd.read_excel(file_path)
-#         else:
-#             raise ValueError("Unsupported file format. Only CSV and XLSX are allowed.")
-        
-#         logger.info(f"Data loaded successfully from {file_path}.")
-#         return df
-#     except Exception as e:
-#         logger.error(f"Error loading data: {e}")
-#         raise
-
 def validate_data(df):
     """
     Validate the DataFrame using Great Expectations.
-    Generates schema and statistics based on defined expectations,
-    captures validation results, generates DataDocs (if possible), and saves results to a file.
-    
+    Applies expectations dynamically from COLUMN_EXPECTATIONS,
+    captures validation results, saves them to a JSON file, and if any anomalies
+    (invalid rows) are detected, saves those records with anomaly reasons to a CSV
+    and sends an email alert with the CSV attached.
+
     Parameters:
-      df (pd.DataFrame): DataFrame to validate.
-      
+      df (pd.DataFrame or pl.DataFrame): DataFrame to validate.
+
     Returns:
-      dict: Validation results.
+      dict: JSON-serializable validation results.
     """
     try:
-        # Convert to a Great Expectations DataFrame
+        # 1. Convert Polars to Pandas if needed
         if isinstance(df, pl.DataFrame):
             df = df.to_pandas()
+
+        # 2. Create a Great Expectations DataFrame
         ge_df = ge.from_pandas(df)
-        # logger.info(df["Product Name"].dtype)
 
-        
-        # Define expectations
-        ge_df.expect_column_to_exist("Product Name")
-        ge_df.expect_column_values_to_be_of_type("Product Name", "str")
 
-        # ge_df.expect_column_to_exist("user_id")
-        ge_df.expect_column_to_exist("Transaction ID")
- 
-        ge_df.expect_column_to_exist("Quantity")
-        ge_df.expect_column_values_to_be_of_type("Quantity", "int")
+        # 3. Dynamically apply expectations from COLUMN_EXPECTATIONS
+        for col_config in COLUMN_EXPECTATIONS:
+            col_name = col_config["column"]
+            for exp in col_config["expectations"]:
+                exp_type = exp["type"]
+                kwargs = exp["kwargs"].copy()
+                kwargs["result_format"] = "COMPLETE"
+                if "column" not in kwargs:
+                    kwargs["column"] = col_name
 
-        ge_df.expect_column_to_exist("Date")
-        date_regex = (
-            r"^(?:"
-            r"\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2}:\d{2}(?:\.\d+)?){0,1}"
-            r"|"
-            r"\d{2}-\d{2}-\d{4}"
-            r"|"
-            r"\d{2}/\d{2}/\d{4}"
-            r")$"
-        )
+                # Dynamically get the GE method and invoke it
+                ge_method = getattr(ge_df, exp_type)
+                ge_method(**kwargs)
 
-        # 3. Set result_format="COMPLETE" to capture unexpected rows/values
-        ge_df.expect_column_values_to_match_regex(
-            "Date", date_regex, result_format="COMPLETE"
-        )
-        
-        # Validate the dataset and capture results
+        # 4. Validate the entire DataFrame and convert results to a JSON serializable dict
         validation_results = ge_df.validate()
-
         validation_results_dict = validation_results.to_json_dict()
-        
-        # Attempt to generate DataDocs if a DataContext is available
-        try:
-            context = ge.data_context.DataContext()  # requires a GE config (great_expectations.yml)
-            context.build_data_docs()
-            logger.info("DataDocs generated successfully.")
-        except Exception as doc_ex:
-            logger.warning(f"DataDocs generation failed: {doc_ex}")
-        
-        # Save the validation results to a JSON file
+
+
+        # 5. Save the validation results to a JSON file
         output_path = "validation_results.json"
         with open(output_path, "w") as f:
             json.dump(validation_results_dict, f, indent=2)
         logger.info(f"Validation results saved to {output_path}.")
-        
+
+        # 6. Gather all unexpected row indices and collect anomaly reasons
+        anomaly_reasons = {}
+        all_unexpected_indices = set()
+        for result in validation_results.results:
+            unexpected_indices = result.result.get("unexpected_index_list", [])
+            exp_type = result.expectation_config.expectation_type
+            col_name = result.expectation_config.kwargs.get("column")
+            unexpected_vals = result.result.get("unexpected_list", [])
+            if unexpected_vals:
+                logger.warning(
+                    f"Unexpected values found for '{col_name}' in {exp_type}: "
+                    f"{unexpected_vals} at indices {unexpected_indices}"
+                )
+                for idx, val in zip(unexpected_indices, unexpected_vals):
+                    reason = f"{col_name} fails {exp_type} (value: {val})"
+                    if idx in anomaly_reasons:
+                        anomaly_reasons[idx].append(reason)
+                    else:
+                        anomaly_reasons[idx] = [reason]
+                    all_unexpected_indices.add(idx)
+
+        # 7. Filter the original DataFrame to get rows that failed validation
+        anomalies_df = df.iloc[list(all_unexpected_indices)].copy()
+    
+        if not anomalies_df.empty:
+            anomalies_df["anomaly_reason"] = anomalies_df.index.map(
+                lambda idx: "; ".join(anomaly_reasons.get(idx, []))
+            )
+
+        # 8. If anomalies are found, save them to CSV and send an email alert
+        if not anomalies_df.empty:
+            anomalies_csv = "data_validation_anomalies.csv"
+            # anomalies_df.to_csv(anomalies_csv, index=False)
+            logger.warning(
+                f"Anomalies detected! {len(anomalies_df)} rows failed validation. "
+            )
+            send_anomaly_alert(
+                anomalies_df,
+                subject="Data Validation Anomalies",
+                message="Data Validation Anomalies Found! Please find attached CSV file with anomaly reasons."
+            )
+        else:
+            logger.info("No anomalies detected. No email sent.")
+
         return validation_results_dict
+
     except Exception as e:
         logger.error(f"Error in data validation: {e}")
         raise
 
-def send_anomaly_alert(message):
+
+def send_anomaly_alert(df, subject, message):
     """
     Send an anomaly alert using email.
     
@@ -133,7 +266,7 @@ def send_anomaly_alert(message):
     """
     try:
         recipient_email = "patelmit640@gmail.com"
-        send_email(recipient_email, subject="Anomaly Alert")
+        send_email(recipient_email, subject=subject, body=message, attachment=df)
         logger.info(f"Data Validation Anomaly alert sent to user: {message}")
     except Exception as e:
         logger.error(f"Error sending anomaly alert: {e}")
@@ -161,10 +294,7 @@ def main(cloud: str = False):
         
         # Validate data and generate schema/stats metadata
         validation_results = validate_data(df)
-        
-        # Example anomaly check: if the mean of 'quantity' exceeds a threshold.
-        if df["Quantity"].mean() > 100:
-            send_anomaly_alert(message="High demand detected!")
+
         
         logger.info("Workflow completed successfully.")
     except Exception as e:
