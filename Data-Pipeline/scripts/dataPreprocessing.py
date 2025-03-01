@@ -10,7 +10,7 @@ from google.cloud import storage
 from dotenv import load_dotenv
 from typing import Dict, Tuple
 import os
-from utils import send_email, load_bucket_data, setup_gcp_credentials
+from utils import send_email, load_bucket_data, upload_to_gcs
 # from data_pipeline.scripts.utils import send_email
 
 
@@ -572,43 +572,6 @@ def apply_fuzzy_correction(
         raise e
 
 
-def upload_df_to_gcs(
-    df: pl.DataFrame, bucket_name: str, destination_blob_name: str
-) -> None:
-    """
-    Uploads a DataFrame to Google Cloud Storage (GCS) as a CSV file.
-    Args:
-        df (polars.DataFrame): The DataFrame to upload.
-        bucket_name (str): The name of the GCS bucket where the file should be stored.
-        destination_blob_name (str): The desired name for the file in GCS.
-
-    Returns:
-        None
-
-    Raises:
-        Exception: If any other error occurs during the process.
-    """
-    # Ensure GCP credentials are properly set up
-    setup_gcp_credentials()
-
-    try:
-        logger.info(
-            "Starting upload to GCS. Bucket: %s, Blob: %s",
-            bucket_name,
-            destination_blob_name,
-        )
-        bucket = storage.Client().get_bucket(bucket_name)
-        blob = bucket.blob(destination_blob_name)
-        csv_data = df.write_csv()
-        blob.upload_from_string(csv_data, content_type="text/csv")
-
-        logger.info("Upload successful to GCS. Blob name: %s", destination_blob_name)
-
-    except Exception as e:
-        logger.error("Error uploading DataFrame to GCS. Error: %s", e)
-        raise
-
-
 def calculate_zscore(series: pl.Series) -> pl.Series:
     """Calculate Z-score for a series"""
     try:
@@ -1017,11 +980,11 @@ def main(input_file: str = "temp_messy_transactions_20190103_20241231.xlsx",
 
         logger.info("Saving cleaned data...")
         if cloud:
-            upload_df_to_gcs(df, destination_bucket_name, destination_blob_name)
-            # save_cleaned_data(df, output_file)
+            upload_to_gcs(df, destination_bucket_name, destination_blob_name)
+            logger.info(f"Data cleaning completed! Cleaned data saved to: {destination_bucket_name}/{destination_blob_name}")
         else:
             save_cleaned_data(df, output_file)
-        logger.info(f"Data cleaning completed! Cleaned data saved to: {output_file}")
+            logger.info(f"Data cleaning completed! Cleaned data saved to: {output_file}")
 
     except Exception as e:
         logger.error(f"Processing failed due to: {e}")
