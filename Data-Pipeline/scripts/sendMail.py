@@ -2,7 +2,7 @@ import smtplib
 from email.message import EmailMessage
 import pandas as pd
 # from logger import logger
-from scripts.logger import logger
+from logger import logger
 
 def send_email(emailid, message, subject="Automated Email", 
                smtp_server="smtp.gmail.com", smtp_port=587,

@@ -3,14 +3,14 @@ import pandas as pd
 from datetime import datetime
 from rapidfuzz import process, fuzz
 import polars as pl
-from scripts.logger import logger
+from logger import logger
 
 # from logger import logger
 import io
 from google.cloud import storage
 from dotenv import load_dotenv
 from typing import Dict, Tuple
-from scripts.sendMail import send_email
+from sendMail import send_email
 
 # from sendMail import send_email
 import os
