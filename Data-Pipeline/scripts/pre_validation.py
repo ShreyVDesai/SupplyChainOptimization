@@ -100,9 +100,10 @@ def main(cloud: bool = False):
         
         if not validate_data(df):
             logger.error("Validation failed. Exiting process.")
-            return
+            return False
         
         logger.info("Workflow completed successfully.")
+        return True
 
     except Exception as e:
         logger.error(f"Workflow failed: {e}")
