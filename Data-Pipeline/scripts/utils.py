@@ -12,8 +12,66 @@ from dotenv import load_dotenv
 from typing import Dict, Tuple
 import smtplib
 from email.message import EmailMessage
+import os
 
 load_dotenv()
+
+# Set up GCP credentials path
+def setup_gcp_credentials():
+    """
+    Sets up the GCP credentials by setting the GOOGLE_APPLICATION_CREDENTIALS environment variable
+    to point to the correct location of the GCP key file.
+    """
+    # Get the project root directory
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(os.path.dirname(script_dir))
+    gcp_key_path = os.path.join(project_root, "secret", "gcp-key.json")
+
+    # Make sure the key exists
+    if not os.path.exists(gcp_key_path):
+        # Try an alternative path - current directory might be project root
+        alt_path = os.path.join(
+            os.path.dirname(script_dir), "..", "secret", "gcp-key.json"
+        )
+        if os.path.exists(alt_path):
+            gcp_key_path = alt_path
+        else:
+            # Final fallback to direct path from container
+            gcp_key_path = "secret/gcp-key.json"
+            if not os.path.exists(gcp_key_path):
+                logger.warning(
+                    f"GCP key not found at {gcp_key_path}. Authentication may fail."
+                )
+
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = gcp_key_path
+    logger.info(f"Using GCP credentials from: {gcp_key_path}")
+
+
+def load_data(file_path: str) -> pl.DataFrame:
+    """
+    Loads the dataset from the given file path.
+
+    Parameters:
+        file_path (str): Path to the input file.
+
+    Returns:
+        pl.DataFrame: Loaded DataFrame.
+    """
+    try:
+        if file_path.lower().endswith(".xlsx"):
+            df = pl.read_excel(file_path)
+
+        logger.info(
+            f"Data successfully loaded with {df.shape[0]} rows and {df.shape[1]} columns."
+        )
+        return df
+
+    except FileNotFoundError:
+        logger.error(f"File Not Found: {file_path}")
+
+    except Exception as e:
+        logger.error(f"Fail to load data due to: {e}")
+        raise e
 
 
 def load_bucket_data(bucket_name: str, file_name: str) -> pl.DataFrame:
@@ -29,38 +87,44 @@ def load_bucket_data(bucket_name: str, file_name: str) -> pl.DataFrame:
     Raises:
         Exception: If an error occurs while accessing the bucket or reading the file.
     """
+
+    setup_gcp_credentials()
+
     try:
         bucket = storage.Client().get_bucket(bucket_name)
         blob = bucket.blob(file_name)
         blob_content = blob.download_as_string()
-        df = pl.read_excel(io.BytesIO(blob_content))
-        logger.info(
-            f"'{file_name}' from bucket '{bucket_name}' successfully read into DataFrame."
-        )
+
+        file_extension = file_name.split('.')[-1].lower()
+        if file_extension == 'csv':
+            try:
+                df = pl.read_csv(io.BytesIO(blob_content))
+                logger.info(f"'{file_name}' from bucket '{bucket_name}' successfully read as CSV into DataFrame.")
+            except Exception as e:
+                logger.error(f"Error reading '{file_name}' as CSV: {e}")
+                raise
+
+        elif file_extension == 'json':
+            try:
+                df = pd.read_json(io.BytesIO(blob_content))
+                logger.info(f"'{file_name}' from bucket '{bucket_name}' successfully read as JSON into DataFrame.")
+            except Exception as e:
+                logger.error(f"Error reading '{file_name}' as JSON: {e}")
+                raise
+
+        elif file_extension == 'xlsx' or file_extension == 'xls':
+            try:
+                df = pl.read_excel(io.BytesIO(blob_content))
+                logger.info(f"'{file_name}' from bucket '{bucket_name}' successfully read as Excel into DataFrame.")
+            except Exception as e:
+                logger.error(f"Error reading '{file_name}' as Excel: {e}")
+                raise
+        else:
+            logger.error(f"Unsupported file type: {file_extension}")
+            raise ValueError(f"Unsupported file type: {file_extension}")
 
         if df.is_empty():
             error_msg = f"DataFrame loaded from bucket '{bucket_name}', file '{file_name}' is empty."
-            logger.error(error_msg)
-            raise ValueError(error_msg)
-
-        required_columns = [
-            "Date",
-            "Unit Price",
-            "Quantity",
-            "Transaction ID",
-            "Store Location",
-            "Product Name",
-            "Producer ID",
-        ]
-
-        missing_columns = [col for col in required_columns if col not in df.columns]
-
-        if missing_columns:
-            error_msg = (
-                f"DataFrame loaded from bucket '{bucket_name}', file '{file_name}' "
-                f"is missing required columns: {missing_columns}"
-            )
-
             logger.error(error_msg)
             raise ValueError(error_msg)
 
@@ -124,4 +188,59 @@ def send_email(
         logger.info(f"Email sent successfully to: {emailid}")
     except Exception as e:
         logger.error(f"Failed to send email: {e}")
+        raise
+
+
+def upload_to_gcs(
+    df: pl.DataFrame, bucket_name: str, destination_blob_name: str
+) -> None:
+    """
+    Uploads a DataFrame to Google Cloud Storage (GCS) in multiple formats (CSV, JSON, XLSX).
+    
+    Args:
+        df (polars.DataFrame): The DataFrame to upload.
+        bucket_name (str): The name of the GCS bucket where the file should be stored.
+        destination_blob_name (str): The desired name for the file in GCS, which determines the file format.
+
+    Returns:
+        None
+
+    Raises:
+        Exception: If any other error occurs during the process.
+    """
+    setup_gcp_credentials()
+
+    try:
+        logger.info(
+            "Starting upload to GCS. Bucket: %s, Blob: %s",
+            bucket_name,
+            destination_blob_name,
+        )
+
+        file_extension = destination_blob_name.split('.')[-1].lower()
+        bucket = storage.Client().get_bucket(bucket_name)
+        blob = bucket.blob(destination_blob_name)
+
+        if file_extension == 'csv':
+            csv_data = df.write_csv()
+            blob.upload_from_string(csv_data, content_type="text/csv")
+        
+        elif file_extension == 'json':
+            json_data = df.write_json()
+            blob.upload_from_string(json_data, content_type="application/json")
+
+        # TODO: Add support for Excel files
+        # elif file_extension == 'xlsx':
+        #     excel_buffer = BytesIO()
+        #     df.write_excel(excel_buffer, index=False, engine="openpyxl")
+        #     excel_buffer.seek(0)
+        #     blob.upload_from_file(excel_buffer, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        
+        else:
+            raise ValueError(f"Unsupported file extension: {file_extension}")
+
+        logger.info("Upload successful to GCS. Blob name: %s", destination_blob_name)
+
+    except Exception as e:
+        logger.error("Error uploading DataFrame to GCS. Error: %s", e)
         raise

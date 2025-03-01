@@ -62,6 +62,7 @@ REFERENCE_PRODUCT_NAMES = [
 ]
 
 
+
 def load_bucket_data(bucket_name: str, file_name: str) -> pl.DataFrame:
     """
     Loads data from a specified file in a Google Cloud Storage bucket
