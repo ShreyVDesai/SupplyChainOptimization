@@ -1,0 +1,195 @@
+{
+  "success": false,
+  "results": [
+    {
+      "success": true,
+      "expectation_config": {
+        "expectation_type": "expect_column_to_exist",
+        "kwargs": {
+          "column": "Product Name",
+          "result_format": "BASIC"
+        },
+        "meta": {}
+      },
+      "result": {},
+      "meta": {},
+      "exception_info": {
+        "raised_exception": false,
+        "exception_message": null,
+        "exception_traceback": null
+      }
+    },
+    {
+      "success": true,
+      "expectation_config": {
+        "expectation_type": "expect_column_values_to_be_of_type",
+        "kwargs": {
+          "column": "Product Name",
+          "type_": "str",
+          "result_format": "BASIC"
+        },
+        "meta": {}
+      },
+      "result": {
+        "element_count": 25,
+        "missing_count": 1,
+        "missing_percent": 4.0,
+        "unexpected_count": 0,
+        "unexpected_percent": 0.0,
+        "unexpected_percent_total": 0.0,
+        "unexpected_percent_nonmissing": 0.0,
+        "partial_unexpected_list": []
+      },
+      "meta": {},
+      "exception_info": {
+        "raised_exception": false,
+        "exception_message": null,
+        "exception_traceback": null
+      }
+    },
+    {
+      "success": true,
+      "expectation_config": {
+        "expectation_type": "expect_column_to_exist",
+        "kwargs": {
+          "column": "Transaction ID",
+          "result_format": "BASIC"
+        },
+        "meta": {}
+      },
+      "result": {},
+      "meta": {},
+      "exception_info": {
+        "raised_exception": false,
+        "exception_message": null,
+        "exception_traceback": null
+      }
+    },
+    {
+      "success": true,
+      "expectation_config": {
+        "expectation_type": "expect_column_to_exist",
+        "kwargs": {
+          "column": "Quantity",
+          "result_format": "BASIC"
+        },
+        "meta": {}
+      },
+      "result": {},
+      "meta": {},
+      "exception_info": {
+        "raised_exception": false,
+        "exception_message": null,
+        "exception_traceback": null
+      }
+    },
+    {
+      "success": false,
+      "expectation_config": {
+        "expectation_type": "expect_column_values_to_be_of_type",
+        "kwargs": {
+          "column": "Quantity",
+          "type_": "int",
+          "result_format": "BASIC"
+        },
+        "meta": {}
+      },
+      "result": {
+        "observed_value": "float64"
+      },
+      "meta": {},
+      "exception_info": {
+        "raised_exception": false,
+        "exception_message": null,
+        "exception_traceback": null
+      }
+    },
+    {
+      "success": true,
+      "expectation_config": {
+        "expectation_type": "expect_column_to_exist",
+        "kwargs": {
+          "column": "Date",
+          "result_format": "BASIC"
+        },
+        "meta": {}
+      },
+      "result": {},
+      "meta": {},
+      "exception_info": {
+        "raised_exception": false,
+        "exception_message": null,
+        "exception_traceback": null
+      }
+    },
+    {
+      "success": false,
+      "expectation_config": {
+        "expectation_type": "expect_column_values_to_match_regex",
+        "kwargs": {
+          "column": "Date",
+          "regex": "^(?:\\d{4}-\\d{2}-\\d{2}(?: \\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?){0,1}|\\d{2}-\\d{2}-\\d{4}|\\d{2}/\\d{2}/\\d{4})$",
+          "result_format": "COMPLETE"
+        },
+        "meta": {}
+      },
+      "result": {
+        "element_count": 25,
+        "missing_count": 7,
+        "missing_percent": 28.000000000000004,
+        "unexpected_count": 1,
+        "unexpected_percent": 5.555555555555555,
+        "unexpected_percent_total": 4.0,
+        "unexpected_percent_nonmissing": 5.555555555555555,
+        "partial_unexpected_list": [
+          "true"
+        ],
+        "partial_unexpected_index_list": [
+          11
+        ],
+        "partial_unexpected_counts": [
+          {
+            "value": "true",
+            "count": 1
+          }
+        ],
+        "unexpected_list": [
+          "true"
+        ],
+        "unexpected_index_list": [
+          11
+        ]
+      },
+      "meta": {},
+      "exception_info": {
+        "raised_exception": false,
+        "exception_message": null,
+        "exception_traceback": null
+      }
+    }
+  ],
+  "evaluation_parameters": {},
+  "statistics": {
+    "evaluated_expectations": 7,
+    "successful_expectations": 5,
+    "unsuccessful_expectations": 2,
+    "success_percent": 71.42857142857143
+  },
+  "meta": {
+    "great_expectations_version": "0.18.8",
+    "expectation_suite_name": "default",
+    "run_id": {
+      "run_name": null,
+      "run_time": "2025-02-28T20:40:46.437989-05:00"
+    },
+    "batch_kwargs": {
+      "ge_batch_id": "324f15b3-f63e-11ef-a183-00e18cb06755"
+    },
+    "batch_markers": {},
+    "batch_parameters": {},
+    "validation_time": "20250301T014046.437989Z",
+    "expectation_suite_meta": {
+      "great_expectations_version": "0.18.8"
+    }
+  }
+}
