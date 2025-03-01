@@ -4,6 +4,9 @@ from datetime import datetime
 from rapidfuzz import process, fuzz
 import polars as pl
 from logger import logger
+
+# from data_pipeline.scripts.logger import logger
+
 import io
 from google.cloud import storage
 from dotenv import load_dotenv
@@ -439,7 +442,7 @@ def compute_most_frequent_price(
             .agg(pl.col("Unit Price").mode().first().alias("Most_Frequent_Cost"))
         )
     except Exception as e:
-        logger.error(f"Error computing most frequent price: {e}")
+        logger.error(f"Error computing most frequent unit price: {e}")
         raise e
 
 
@@ -823,7 +826,7 @@ def aggregate_daily_products(df: pl.DataFrame) -> pl.DataFrame:
     return (
         df.group_by(["Date", "Product Name", "Unit Price"])
         .agg(pl.col("Quantity").sum().alias("Total Quantity"))
-        .sort(["Date", "Product Name"])
+        .sort(["Date"])
     )
 
 
@@ -990,28 +993,182 @@ def save_cleaned_data(df: pl.DataFrame, output_file: str) -> None:
         raise e
 
 
+def list_bucket_blobs(bucket_name: str) -> list:
+    """
+    Lists all blobs in a Google Cloud Storage bucket.
+
+    Args:
+        bucket_name (str): The name of the Google Cloud Storage bucket.
+
+    Returns:
+        list: A list of blob names in the bucket.
+
+    Raises:
+        Exception: If an error occurs while accessing the bucket.
+    """
+    # Ensure GCP credentials are properly set up
+    setup_gcp_credentials()
+
+    try:
+        storage_client = storage.Client()
+        bucket = storage_client.get_bucket(bucket_name)
+        blobs = bucket.list_blobs()
+
+        # Get just the blob names
+        blob_names = [blob.name for blob in blobs]
+        logger.info(f"Found {len(blob_names)} files in bucket '{bucket_name}'")
+
+        return blob_names
+
+    except Exception as e:
+        logger.error(f"Error listing blobs in bucket '{bucket_name}': {e}")
+        raise
+
+
+def delete_blob_from_bucket(bucket_name: str, blob_name: str) -> bool:
+    """
+    Deletes a blob from a Google Cloud Storage bucket.
+
+    Args:
+        bucket_name (str): The name of the Google Cloud Storage bucket.
+        blob_name (str): The name of the blob to delete.
+
+    Returns:
+        bool: True if deletion was successful, False otherwise.
+    """
+    # Ensure GCP credentials are properly set up
+    setup_gcp_credentials()
+
+    try:
+        storage_client = storage.Client()
+        bucket = storage_client.get_bucket(bucket_name)
+        blob = bucket.blob(blob_name)
+        blob.delete()
+
+        logger.info(f"Blob {blob_name} deleted from bucket {bucket_name}")
+        return True
+
+    except Exception as e:
+        logger.error(f"Error deleting blob {blob_name} from bucket {bucket_name}: {e}")
+        return False
+
+
 def main(
-    input_file: str = "temp_messy_transactions_20190103_20241231.xlsx",
+    input_file: str = "",  # cloud = False
     output_file: str = "cleaned_data.csv",
     source_bucket_name: str = "full-raw-data",
-    source_blob_name: str = "temp_messy_transactions_20190103_20241231.xlsx",
+    source_blob_name: str = "",  # No longer specifying a default file
     destination_bucket_name: str = "fully-processed-data",
-    destination_blob_name: str = "cleanedData_transactions_20190103_20241231.csv",
+    destination_blob_name: str = "",  # No longer specifying a default file
     cloud: bool = True,
+    process_all_files: bool = True,  # New parameter to process all files
+    delete_after_processing: bool = True,  # New parameter to control file deletion
 ) -> None:
     """
     Executes all data cleaning steps in sequence.
 
     Parameters:
-        input_file (str): Path to the input dataset.
-        output_file (str): Path to save the cleaned dataset.
+        input_file (str): Path to the input dataset (if not using cloud).
+        output_file (str): Path to save the cleaned dataset (if not using cloud).
+        source_bucket_name (str): GCS bucket containing raw data.
+        source_blob_name (str): Specific blob to process (ignored if process_all_files is True).
+        destination_bucket_name (str): GCS bucket for storing processed data.
+        destination_blob_name (str): Specific destination blob name (auto-generated if process_all_files is True).
+        cloud (bool): Whether to use GCS for input/output.
+        process_all_files (bool): Whether to process all files in the source bucket.
+        delete_after_processing (bool): Whether to delete source files after processing.
 
     Raises:
         RuntimeError: If any step fails during execution.
     """
 
     try:
-        logger.info("Loading data...")
+        if cloud:
+            if process_all_files:
+                # List all blobs in the source bucket
+                blob_names = list_bucket_blobs(source_bucket_name)
+
+                if not blob_names:
+                    logger.warning(f"No files found in bucket '{source_bucket_name}'")
+                    return
+
+                # Process each blob
+                for blob_name in blob_names:
+                    logger.info(f"Processing file: {blob_name}")
+
+                    # Generate a unique destination blob name
+                    file_extension = os.path.splitext(blob_name)[1]
+                    base_name = os.path.splitext(os.path.basename(blob_name))[0]
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    unique_dest_name = f"processed_{base_name}_{timestamp}.csv"
+
+                    # Process the individual file
+                    process_single_file(
+                        cloud=True,
+                        source_bucket_name=source_bucket_name,
+                        source_blob_name=blob_name,
+                        destination_bucket_name=destination_bucket_name,
+                        destination_blob_name=unique_dest_name,
+                        delete_after_processing=delete_after_processing,
+                    )
+            else:
+                # Process a single specified file
+                if not source_blob_name:
+                    logger.error(
+                        "No source blob name provided for single file processing"
+                    )
+                    return
+
+                process_single_file(
+                    cloud=True,
+                    source_bucket_name=source_bucket_name,
+                    source_blob_name=source_blob_name,
+                    destination_bucket_name=destination_bucket_name,
+                    destination_blob_name=destination_blob_name
+                    or f"processed_{os.path.splitext(source_blob_name)[0]}.csv",
+                    delete_after_processing=delete_after_processing,
+                )
+        else:
+            # Process local file
+            process_single_file(
+                cloud=False,
+                input_file=input_file,
+                output_file=output_file,
+                delete_after_processing=False,  # Don't attempt to delete local files
+            )
+
+    except Exception as e:
+        logger.error(f"Processing failed due to: {e}")
+        raise e
+
+
+def process_single_file(
+    cloud: bool = True,
+    input_file: str = "",
+    output_file: str = "cleaned_data.csv",
+    source_bucket_name: str = "",
+    source_blob_name: str = "",
+    destination_bucket_name: str = "",
+    destination_blob_name: str = "",
+    delete_after_processing: bool = True,  # New parameter to control file deletion
+) -> None:
+    """
+    Process a single file through the entire data cleaning pipeline.
+
+    Parameters:
+        cloud (bool): Whether to use cloud storage
+        input_file (str): Local input file path (used if cloud=False)
+        output_file (str): Local output file path (used if cloud=False)
+        source_bucket_name (str): GCS bucket with raw data
+        source_blob_name (str): Specific blob to process
+        destination_bucket_name (str): GCS bucket for processed data
+        destination_blob_name (str): Name for processed file in GCS
+        delete_after_processing (bool): Whether to delete the source file after processing
+    """
+    try:
+        logger.info(
+            f"Loading data from {'GCS' if cloud else 'local file'}: {source_blob_name if cloud else input_file}"
+        )
         if cloud:
             df = load_bucket_data(source_bucket_name, source_blob_name)
         else:
@@ -1056,14 +1213,34 @@ def main(
         logger.info("Saving cleaned data...")
         if cloud:
             upload_df_to_gcs(df, destination_bucket_name, destination_blob_name)
-            # save_cleaned_data(df, output_file)
+            logger.info(
+                f"Data cleaning completed! Cleaned data saved to GCS bucket: {destination_bucket_name}, blob: {destination_blob_name}"
+            )
+
+            # Delete the source file after successful processing if requested
+            if delete_after_processing:
+                logger.info(
+                    f"Deleting source file {source_blob_name} from bucket {source_bucket_name}"
+                )
+                delete_success = delete_blob_from_bucket(
+                    source_bucket_name, source_blob_name
+                )
+                if delete_success:
+                    logger.info(f"Successfully deleted source file: {source_blob_name}")
+                else:
+                    logger.warning(f"Failed to delete source file: {source_blob_name}")
         else:
             save_cleaned_data(df, output_file)
-        logger.info(f"Data cleaning completed! Cleaned data saved to: {output_file}")
+            logger.info(
+                f"Data cleaning completed! Cleaned data saved to local file: {output_file}"
+            )
 
     except Exception as e:
-        logger.error(f"Processing failed due to: {e}")
-        raise e
+        logger.error(f"Processing file failed: {e}")
+        logger.error(f"Failed file: {source_blob_name if cloud else input_file}")
+        # Continue with other files rather than raising the exception
+        # This allows the process to continue even if one file fails
+        return
 
 
 if __name__ == "__main__":
