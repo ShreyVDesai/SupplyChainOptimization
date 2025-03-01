@@ -1445,7 +1445,7 @@ class TestDataPreprocessing(unittest.TestCase):
 
     # Test case where with anomalies.
     @patch("scripts.dataPreprocessing.send_email")
-    @patch('scripts.dataPreprocessing.logger')
+    @patch("scripts.dataPreprocessing.logger")
     def test_send_anomaly_alert_with_anomalies(self, mock_logger, mock_send_email):
         # Setup
         data = {"col": [1, 2, 3]}
@@ -1462,15 +1462,27 @@ class TestDataPreprocessing(unittest.TestCase):
 
         # Assert
         mock_send_email.assert_called_once()
-        call_args = mock_send_email.call_args[0]
-        self.assertEqual(call_args[0], "test@example.com")
-        message_parts = call_args[1]
-        self.assertTrue(any("Anomaly type: quantity_anomalies" in part for part in message_parts))
+        args, kwargs = mock_send_email.call_args
+        self.assertEqual(kwargs["emailid"], "test@example.com")
+        self.assertEqual(kwargs["subject"], "Alert")
+
+        # Verify the email body matches the expected message.
+        expected_body = (
+            "Hi,\n\n"
+            "Anomalies have been detected in the dataset. "
+            "Please see the attached CSV file for details.\n\n"
+            "Thank you!"
+        )
+        self.assertEqual(kwargs["body"], expected_body)
+        
+        attachment_df = kwargs["attachment"]
+        self.assertIn("anomaly_type", attachment_df.columns)
+        self.assertTrue("quantity_anomalies" in attachment_df["anomaly_type"].values)
         mock_logger.info.assert_any_call("Anomaly alert email sent.")
     
 
     # Test case where Exception handled.
-    @patch("scripts.dataPreprocessing.send_email", side_effect=Exception)
+    @patch("scripts.dataPreprocessing.send_email", side_effect=Exception("Error sending an alert email."))
     @patch('scripts.dataPreprocessing.logger')
     def test_send_anomaly_alert_throws_exception(self, mock_logger, mock_send_email):
         # Setup
@@ -1485,7 +1497,7 @@ class TestDataPreprocessing(unittest.TestCase):
 
         # Assert
         mock_send_email.assert_called_once()
-        mock_logger.error.assert_called_with("Error sending an alert email.")
+        mock_logger.error.assert_called_with("Error sending an alert email: Error sending an alert email.")
 
     
 

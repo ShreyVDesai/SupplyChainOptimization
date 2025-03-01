@@ -3,17 +3,16 @@ import pandas as pd
 from datetime import datetime
 from rapidfuzz import process, fuzz
 import polars as pl
-from scripts.logger import logger
-
-# from logger import logger
+from logger import logger
+# from data_pipeline.scripts.logger import logger
 import io
 from google.cloud import storage
 from dotenv import load_dotenv
 from typing import Dict, Tuple
-from scripts.sendMail import send_email
-
-# from sendMail import send_email
 import os
+from utils import send_email
+# from data_pipeline.scripts.utils import send_email
+
 
 load_dotenv()
 
@@ -501,6 +500,9 @@ def filling_missing_cost_price(df: pl.DataFrame) -> pl.DataFrame:
         df = df.with_columns(pl.col("Unit Price").fill_null(0))
 
         logger.info("Unit Price filling completed successfully.")
+
+        df = df.drop(["Year", "Month", "Week_of_year"])
+
         return df
 
     except Exception as e:
@@ -853,7 +855,7 @@ def remove_duplicate_records(df: pl.DataFrame) -> pl.DataFrame:
 
 def send_anomaly_alert(
     anomalies: dict,
-    recipient: str = "junar9989@gmail.com",
+    recipient: str = "patelmit640@gmail.com",
     subject: str = "Anomaly Alert",
 ) -> None:
     """
@@ -865,27 +867,34 @@ def send_anomaly_alert(
         subject (str): Subject line for the email.
     """
     # Build message parts based on the anomalies detected.
-    message_parts = ["Hi, anomalies have been detected in the dataset:"]
-    anomaly_found = False
 
+    body_message = ("Hi,\n\n"
+                    "Anomalies have been detected in the dataset. "
+                    "Please see the attached CSV file for details.\n\n"
+                    "Thank you!")
+    
+    anomaly_list = []
+    
+    # Combine non-empty anomaly DataFrames into one.
     for anomaly_type, anomaly_df in anomalies.items():
-        # Only include anomaly types that have data.
         if not anomaly_df.is_empty():
-            anomaly_found = True
-            message_parts.append(f"\nAnomaly type: {anomaly_type}")
-            # Convert the DataFrame to CSV text for readability.
-            csv_str = anomaly_df.to_pandas().to_csv(index=False)
-            message_parts.append(csv_str)
+            df = anomaly_df.to_pandas()
+            df["anomaly_type"] = anomaly_type  # add a column to indicate the anomaly type
+            anomaly_list.append(df)
+    
+    if anomaly_list:
+        combined_df = pd.concat(anomaly_list, ignore_index=True)
 
-    message_parts.append("\nThank you!")
-
-    if anomaly_found:
-        # Call your pre-defined send_email function.
         try:
-            send_email(recipient, message_parts, subject=subject)
+            send_email(
+                emailid=recipient,
+                body=body_message,
+                subject=subject,
+                attachment=combined_df
+            )
             logger.info("Anomaly alert email sent.")
         except Exception as e:
-            logger.error(f"Error sending an alert email.")
+            logger.error(f"Error sending an alert email: {e}")
     else:
         logger.info("No anomalies detected; no alert email sent.")
 
@@ -976,15 +985,13 @@ def save_cleaned_data(df: pl.DataFrame, output_file: str) -> None:
         logger.error(f"Error saving processed DataFrame: {e}")
         raise e
 
-
-def main(
-    input_file: str = "messy_transactions_20190103_20241231.xlsx",
-    output_file: str = "cleaned_data.csv",
-    bucket_name: str = "full-raw-data",
-    source_blob_name: str = "generated_training_data/messy_transactions_20190103_20241231.xlsx",
-    destination_blob_name: str = "cleaned_data/cleanedData.csv",
-    cloud: bool = False,
-) -> None:
+def main(input_file: str = "temp_messy_transactions_20190103_20241231.xlsx", 
+         output_file: str  = "cleaned_data.csv", 
+         source_bucket_name: str = 'full-raw-data',
+         source_blob_name: str = 'temp_messy_transactions_20190103_20241231.xlsx',
+         destination_bucket_name: str = "fully-processed-data",
+         destination_blob_name: str = 'cleanedData_transactions_20190103_20241231.csv',
+         cloud: bool = True) -> None:
     """
     Executes all data cleaning steps in sequence.
 
@@ -999,7 +1006,7 @@ def main(
     try:
         logger.info("Loading data...")
         if cloud:
-            df = load_bucket_data(bucket_name, source_blob_name)
+            df = load_bucket_data(source_bucket_name, source_blob_name)
         else:
             df = load_data(input_file)
 
@@ -1041,7 +1048,8 @@ def main(
 
         logger.info("Saving cleaned data...")
         if cloud:
-            upload_df_to_gcs(df, bucket_name, destination_blob_name)
+            upload_df_to_gcs(df, destination_bucket_name, destination_blob_name)
+            # save_cleaned_data(df, output_file)
         else:
             save_cleaned_data(df, output_file)
         logger.info(f"Data cleaning completed! Cleaned data saved to: {output_file}")
