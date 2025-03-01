@@ -14,3 +14,4 @@ RapidFuzz==3.12.1
 scipy==1.15.2
 apache-airflow
 XlsxWriter==3.2.2
+great_expectations==0.18.8

@@ -10,8 +10,68 @@ from dotenv import load_dotenv
 from typing import Dict, Tuple
 import smtplib
 from email.message import EmailMessage
+import os
 
 load_dotenv()
+
+# Set up GCP credentials path
+def setup_gcp_credentials():
+    """
+    Sets up the GCP credentials by setting the GOOGLE_APPLICATION_CREDENTIALS environment variable
+    to point to the correct location of the GCP key file.
+    """
+    # Get the project root directory
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(os.path.dirname(script_dir))
+    gcp_key_path = os.path.join(project_root, "secret", "gcp-key.json")
+
+    # Make sure the key exists
+    if not os.path.exists(gcp_key_path):
+        # Try an alternative path - current directory might be project root
+        alt_path = os.path.join(
+            os.path.dirname(script_dir), "..", "secret", "gcp-key.json"
+        )
+        if os.path.exists(alt_path):
+            gcp_key_path = alt_path
+        else:
+            # Final fallback to direct path from container
+            gcp_key_path = "secret/gcp-key.json"
+            if not os.path.exists(gcp_key_path):
+                logger.warning(
+                    f"GCP key not found at {gcp_key_path}. Authentication may fail."
+                )
+
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = gcp_key_path
+    logger.info(f"Using GCP credentials from: {gcp_key_path}")
+
+
+def load_data(file_path: str) -> pl.DataFrame:
+    """
+    Loads the dataset from the given file path.
+
+    Parameters:
+        file_path (str): Path to the input file.
+
+    Returns:
+        pl.DataFrame: Loaded DataFrame.
+    """
+    try:
+        if file_path.lower().endswith(".xlsx"):
+            df = pl.read_excel(file_path)
+
+        logger.info(
+            f"Data successfully loaded with {df.shape[0]} rows and {df.shape[1]} columns."
+        )
+        return df
+
+    except FileNotFoundError:
+        logger.error(f"File Not Found: {file_path}")
+
+    except Exception as e:
+        logger.error(f"Fail to load data due to: {e}")
+        raise e
+
+
 
 def load_bucket_data(bucket_name: str, file_name: str) -> pl.DataFrame:
     """
@@ -26,6 +86,9 @@ def load_bucket_data(bucket_name: str, file_name: str) -> pl.DataFrame:
     Raises:
         Exception: If an error occurs while accessing the bucket or reading the file.
     """
+
+    setup_gcp_credentials()
+
     try:
         bucket = storage.Client().get_bucket(bucket_name)
         blob = bucket.blob(file_name)

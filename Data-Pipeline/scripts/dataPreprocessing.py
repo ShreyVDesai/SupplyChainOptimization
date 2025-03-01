@@ -10,42 +10,11 @@ from google.cloud import storage
 from dotenv import load_dotenv
 from typing import Dict, Tuple
 import os
-from utils import send_email
+from utils import send_email, load_bucket_data, setup_gcp_credentials
 # from data_pipeline.scripts.utils import send_email
 
 
 load_dotenv()
-
-
-# Set up GCP credentials path
-def setup_gcp_credentials():
-    """
-    Sets up the GCP credentials by setting the GOOGLE_APPLICATION_CREDENTIALS environment variable
-    to point to the correct location of the GCP key file.
-    """
-    # Get the project root directory
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(os.path.dirname(script_dir))
-    gcp_key_path = os.path.join(project_root, "secret", "gcp-key.json")
-
-    # Make sure the key exists
-    if not os.path.exists(gcp_key_path):
-        # Try an alternative path - current directory might be project root
-        alt_path = os.path.join(
-            os.path.dirname(script_dir), "..", "secret", "gcp-key.json"
-        )
-        if os.path.exists(alt_path):
-            gcp_key_path = alt_path
-        else:
-            # Final fallback to direct path from container
-            gcp_key_path = "secret/gcp-key.json"
-            if not os.path.exists(gcp_key_path):
-                logger.warning(
-                    f"GCP key not found at {gcp_key_path}. Authentication may fail."
-                )
-
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = gcp_key_path
-    logger.info(f"Using GCP credentials from: {gcp_key_path}")
 
 
 # Reference product names (correct names from the dataset)
@@ -61,38 +30,38 @@ REFERENCE_PRODUCT_NAMES = [
 ]
 
 
-def load_bucket_data(bucket_name: str, file_name: str) -> pl.DataFrame:
-    """
-    Loads data from a specified file in a Google Cloud Storage bucket and returns it as a Polars DataFrame.
-    Args:
-        bucket_name (str): The name of the Google Cloud Storage bucket.
-        file_name (str): The name of the file within the bucket, including extension.
+# def load_bucket_data(bucket_name: str, file_name: str) -> pl.DataFrame:
+#     """
+#     Loads data from a specified file in a Google Cloud Storage bucket and returns it as a Polars DataFrame.
+#     Args:
+#         bucket_name (str): The name of the Google Cloud Storage bucket.
+#         file_name (str): The name of the file within the bucket, including extension.
 
-    Returns:
-        pl.DataFrame: The content of the Excel file as a Polars DataFrame.
+#     Returns:
+#         pl.DataFrame: The content of the Excel file as a Polars DataFrame.
 
-    Raises:
-        Exception: If an error occurs while accessing the bucket or reading the file.
-    """
-    # Ensure GCP credentials are properly set up
-    setup_gcp_credentials()
+#     Raises:
+#         Exception: If an error occurs while accessing the bucket or reading the file.
+#     """
+#     # Ensure GCP credentials are properly set up
+#     setup_gcp_credentials()
 
-    try:
-        bucket = storage.Client().get_bucket(bucket_name)
-        blob = bucket.blob(file_name)
-        blob_content = blob.download_as_string()
-        data_frame = pl.read_excel(io.BytesIO(blob_content))
-        logger.info(
-            f"'{file_name}' from bucket '{bucket_name}' successfully read into DataFrame."
-        )
+#     try:
+#         bucket = storage.Client().get_bucket(bucket_name)
+#         blob = bucket.blob(file_name)
+#         blob_content = blob.download_as_string()
+#         data_frame = pl.read_excel(io.BytesIO(blob_content))
+#         logger.info(
+#             f"'{file_name}' from bucket '{bucket_name}' successfully read into DataFrame."
+#         )
 
-        return data_frame
+#         return data_frame
 
-    except Exception as e:
-        logger.error(
-            f"Error occurred while loading data from bucket '{bucket_name}', file '{file_name}': {e}"
-        )
-        raise
+#     except Exception as e:
+#         logger.error(
+#             f"Error occurred while loading data from bucket '{bucket_name}', file '{file_name}': {e}"
+#         )
+#         raise
 
 
 def load_data(file_path: str) -> pl.DataFrame:
