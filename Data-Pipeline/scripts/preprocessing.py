@@ -5,8 +5,6 @@ from rapidfuzz import process, fuzz
 import polars as pl
 from logger import logger
 
-# from data_pipeline.scripts.logger import logger
-
 import io
 from google.cloud import storage
 from dotenv import load_dotenv
@@ -14,13 +12,9 @@ from typing import Dict, Tuple
 import os
 from utils import send_email
 
-# from data_pipeline.scripts.utils import send_email
-
-
 load_dotenv()
 
 
-# Set up GCP credentials path
 def setup_gcp_credentials():
     """
     Sets up the GCP credentials by setting the GOOGLE_APPLICATION_CREDENTIALS environment variable
@@ -98,33 +92,6 @@ def load_bucket_data(bucket_name: str, file_name: str) -> pl.DataFrame:
         raise
 
 
-def load_data(file_path: str) -> pl.DataFrame:
-    """
-    Loads the dataset from the given file path.
-
-    Parameters:
-        file_path (str): Path to the input file.
-
-    Returns:
-        pl.DataFrame: Loaded DataFrame.
-    """
-    try:
-        if file_path.lower().endswith(".xlsx"):
-            df = pl.read_excel(file_path)
-
-        logger.info(
-            f"Data successfully loaded with {df.shape[0]} rows and {df.shape[1]} columns."
-        )
-        return df
-
-    except FileNotFoundError:
-        logger.error(f"File Not Found: {file_path}")
-
-    except Exception as e:
-        logger.error(f"Fail to load data due to: {e}")
-        raise e
-
-
 def convert_feature_types(df: pl.DataFrame) -> pl.DataFrame:
     """
     Converts columns to their appropriate data types for consistency.
@@ -175,7 +142,6 @@ def convert_string_columns_to_lowercase(df: pl.DataFrame) -> pl.DataFrame:
         pl.DataFrame: Updated DataFrame with lowercase strings
     """
     try:
-        # Detect all string-type columns dynamically
         logger.info("Converting all string-type columns to lowercase...")
         string_features = [
             col for col, dtype in zip(df.columns, df.dtypes) if dtype == pl.Utf8
@@ -251,7 +217,6 @@ def standardize_date_format(
             .alias(date_column)
         )
 
-        # Log any null values after standardization
         null_count = df[date_column].null_count()
         if null_count > 0:
             logger.warning(
@@ -284,16 +249,12 @@ def detect_date_order(df: pl.DataFrame, date_column: str = "Date") -> str:
         # Ensure Date column is in Datetime format
         df = df.with_columns(pl.col(date_column).cast(pl.Datetime))
 
-        # Extracting only date to detect order.
         temp_df = df.with_columns(pl.col(date_column).dt.date().alias(date_column))
-
-        # Extract the non-null date series
         date_series = temp_df.drop_nulls(date_column)[date_column].to_list()
 
         if len(date_series) < 2:
             return "Random"
 
-        # Compute the number of ascending and descending transitions efficiently
         is_ascending = all(
             date_series[i] <= date_series[i + 1] for i in range(len(date_series) - 1)
         )
@@ -301,7 +262,6 @@ def detect_date_order(df: pl.DataFrame, date_column: str = "Date") -> str:
             date_series[i] >= date_series[i + 1] for i in range(len(date_series) - 1)
         )
 
-        # Determine the dominant ordering
         if is_ascending:
             return "Ascending"
         elif is_descending:
@@ -326,7 +286,6 @@ def filling_missing_dates(df: pl.DataFrame, date_column: str = "Date") -> pl.Dat
         pl.DataFrame: Updated DataFrame with missing dates filled or handled.
     """
     try:
-        # Ensure Date column is in correct format before filling
         df = standardize_date_format(df, date_column)
 
         if df[date_column].null_count() > 0:
@@ -347,8 +306,6 @@ def filling_missing_dates(df: pl.DataFrame, date_column: str = "Date") -> pl.Dat
             )
 
             original_count = df.height
-
-            # Remove records with missing date values whose previous and next
             df = df.filter(
                 pl.col(date_column).is_not_null()
                 | (
@@ -364,7 +321,6 @@ def filling_missing_dates(df: pl.DataFrame, date_column: str = "Date") -> pl.Dat
                 f"Dropped {dropped_count} records due to mismatched date boundaries."
             )
 
-            # Drop helper columns.
             df = df.drop(["prev_valid", "next_valid"])
 
             if order_type == "Ascending":
@@ -383,27 +339,6 @@ def filling_missing_dates(df: pl.DataFrame, date_column: str = "Date") -> pl.Dat
 
     except Exception as e:
         logger.error(f"Error filling missing dates: {e}")
-        raise e
-
-
-def remove_future_dates(df: pl.DataFrame) -> pl.DataFrame:
-    """
-    Removes records where the date is in the future compared to today's date.
-
-    Parameters:
-        df (pl.DataFrame): Input DataFrame
-        date_column (str): Name of the date column (default is "Date")
-
-    Returns:
-        pl.DataFrame: Filtered DataFrame with future dates removed.
-    """
-    try:
-        today = datetime.today().date()
-
-        # Keeping only today's data
-        return df.filter(pl.col("Date").dt.date() <= today)
-    except Exception as e:
-        logger.error(f"Unexpected error during removing future dates: {e}")
         raise e
 
 
@@ -449,28 +384,17 @@ def compute_most_frequent_price(
 def filling_missing_cost_price(df: pl.DataFrame) -> pl.DataFrame:
     """
     Fills missing 'Unit Price' values based on the most frequent price at different time granularities.
-
-    Parameters:
-        df (pl.DataFrame): Input dataframe
-
-    Returns:
-        pl.DataFrame: Updated dataframe with missing unit prices filled.
     """
-
     try:
         logger.info("Filling missing Unit Price values...")
-
-        # Extract time features dynamically
         df = extract_datetime_features(df)
 
-        # Compute most frequent prices at different time levels
         price_by_week = compute_most_frequent_price(
             df, ["Year", "Month", "Week_of_year"]
         )
         price_by_month = compute_most_frequent_price(df, ["Year", "Month"])
         price_by_year = compute_most_frequent_price(df, ["Year"])
 
-        # Merge with original dataframe to fill missing values
         df = df.join(
             price_by_week,
             on=["Year", "Month", "Week_of_year", "Product Name"],
@@ -499,13 +423,10 @@ def filling_missing_cost_price(df: pl.DataFrame) -> pl.DataFrame:
             .alias("Unit Price")
         ).drop("Most_Frequent_Cost")
 
-        # If still null, set to "Unknown" or a default value (e.g., 0)
         df = df.with_columns(pl.col("Unit Price").fill_null(0))
-
         logger.info("Unit Price filling completed successfully.")
 
         df = df.drop(["Year", "Month", "Week_of_year"])
-
         return df
 
     except Exception as e:
@@ -513,22 +434,20 @@ def filling_missing_cost_price(df: pl.DataFrame) -> pl.DataFrame:
         raise e
 
 
-# If Quantity or Product Name is missing, remove those records.
 def remove_invalid_records(df: pl.DataFrame) -> pl.DataFrame:
     """
-    Remove records if Quantity or Product Name has invalid input.
+    Remove records if Quantity or Product Name is null.
 
     Parameters:
         df (pl.DataFrame): Input DataFrame
 
     Returns:
-        pl.DataFrame: Filtered DataFrame with invalid records removed.
+        pl.DataFrame: Filtered DataFrame.
     """
     try:
         return df.filter(
             pl.col("Quantity").is_not_null() & pl.col("Product Name").is_not_null()
         )
-
     except Exception as e:
         logger.error(f"Error handling remove_invalid_records function: {e}")
         raise e
@@ -540,13 +459,6 @@ def standardize_product_name(df: pl.DataFrame) -> pl.DataFrame:
     - Converting to lowercase
     - Stripping extra spaces
     - Replacing '@' with 'a' and '0' with 'o'
-    - Fixing known typos
-
-    Parameters:
-        df (pl.DataFrame): Input DataFrame
-
-    Returns:
-        pl.DataFrame: Updated DataFrame with standardized product names.
     """
     try:
         logger.info("Standardizing product name.")
@@ -575,19 +487,17 @@ def apply_fuzzy_correction(
     Parameters:
         df (pl.DataFrame): Input DataFrame
         reference_list (list): List of correct product names
-        threshold (int): Similarity threshold (0-100, higher means stricter matching)
+        threshold (int): Similarity threshold (0-100)
 
     Returns:
         pl.DataFrame: DataFrame with corrected product names.
     """
     try:
         product_names = df["Product Name"].unique(maintain_order=True).to_list()
-
         name_mapping = {}
 
         for name in product_names:
             match_result = process.extractOne(name, reference_list, scorer=fuzz.ratio)
-
             if match_result and len(match_result) > 1:
                 match, score = match_result[:2]
                 if score >= threshold:
@@ -613,18 +523,10 @@ def upload_df_to_gcs(
     Uploads a DataFrame to Google Cloud Storage (GCS) as a CSV file.
     Args:
         df (polars.DataFrame): The DataFrame to upload.
-        bucket_name (str): The name of the GCS bucket where the file should be stored.
-        destination_blob_name (str): The desired name for the file in GCS.
-
-    Returns:
-        None
-
-    Raises:
-        Exception: If any other error occurs during the process.
+        bucket_name (str): The name of the GCS bucket.
+        destination_blob_name (str): The name for the file in GCS.
     """
-    # Ensure GCP credentials are properly set up
     setup_gcp_credentials()
-
     try:
         logger.info(
             "Starting upload to GCS. Bucket: %s, Blob: %s",
@@ -648,7 +550,7 @@ def calculate_zscore(series: pl.Series) -> pl.Series:
     try:
         mean = series.mean()
         std = series.std()
-        if std == 0 or std == None:
+        if std == 0 or std is None:
             return pl.Series([0] * len(series))
 
         return (series - mean) / std
@@ -674,13 +576,10 @@ def iqr_bounds(series: pl.Series) -> Tuple[float, float]:
         lower_bound = q1 - (1.5 * iqr)
         upper_bound = q3 + (2.0 * iqr)
 
-        # If the dataset contains only positive values, enforce lower bound >= 0
         if series.min() >= 0:
             lower_bound = max(0, lower_bound)
 
-        # Log bounds
         logger.debug(f"Lower Bound: {lower_bound}, Upper Bound: {upper_bound}")
-
         return lower_bound, upper_bound
 
     except Exception as e:
@@ -688,23 +587,20 @@ def iqr_bounds(series: pl.Series) -> Tuple[float, float]:
         raise
 
 
-def detect_anomalies(df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
+def detect_anomalies(df: pl.DataFrame) -> Tuple[Dict[str, pl.DataFrame], pl.DataFrame]:
     """
-    Detect anomalies in transaction data per product per day using IQR.
-
-    Parameters:
-    df (pl.DataFrame): DataFrame containing transaction data.
+    Detect anomalies in transaction data per product per day using IQR, time-of-day checks, etc.
 
     Returns:
-    Dict[str, pl.DataFrame]: Dictionary containing different types of anomalies detected
+    (anomalies, clean_df):
+      - anomalies (dict[str, pl.DataFrame]): Anomalies of different types
+      - clean_df (pl.DataFrame): DataFrame with anomalies removed
     """
-
     anomalies = {}
     clean_df = df.clone()
     anomaly_transaction_ids = set()
 
     try:
-        # Ensure Date column is in the correct format
         df = df.with_columns(
             [
                 pl.col("Date").cast(pl.Datetime).alias("datetime"),
@@ -715,73 +611,57 @@ def detect_anomalies(df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
 
         # 1. Price Anomalies (by Product and Date)
         price_anomalies = []
-        # Get unique combinations of product and date
         product_date_combinations = df.select(["Product Name", "date_only"]).unique()
 
         for row in product_date_combinations.iter_rows(named=True):
             product = row["Product Name"]
             date = row["date_only"]
-
-            # Filter data for specific product and date
             product_date_data = df.filter(
                 (pl.col("Product Name") == product) & (pl.col("date_only") == date)
             )
 
-            # Only proceed if we have enough data points for this product/date combination
-            if len(product_date_data) >= 4:  # Minimum sample size for meaningful IQR
-                # IQR method
+            if len(product_date_data) >= 4:
                 lower_bound, upper_bound = iqr_bounds(product_date_data["Unit Price"])
                 iqr_anomalies = product_date_data.filter(
                     (pl.col("Unit Price") < lower_bound)
                     | (pl.col("Unit Price") > upper_bound)
                 )
-
                 if len(iqr_anomalies) > 0:
                     price_anomalies.append(iqr_anomalies)
                     anomaly_transaction_ids.update(
                         iqr_anomalies["Transaction ID"].to_list()
                     )
 
-        if price_anomalies:
-            anomalies["price_anomalies"] = pl.concat(price_anomalies)
-        else:
-            anomalies["price_anomalies"] = pl.DataFrame()
-        logger.debug(f"Price anomalies detected: {len(price_anomalies)} products.")
+        anomalies["price_anomalies"] = (
+            pl.concat(price_anomalies) if price_anomalies else pl.DataFrame()
+        )
+        logger.debug(f"Price anomalies detected: {len(price_anomalies)} set(s).")
 
-        # 2. Quantity Anomalies (by Product and Date)
+        # 2. Quantity Anomalies
         quantity_anomalies = []
-
         for row in product_date_combinations.iter_rows(named=True):
             product = row["Product Name"]
             date = row["date_only"]
-
-            # Filter data for specific product and date
             product_date_data = df.filter(
                 (pl.col("Product Name") == product) & (pl.col("date_only") == date)
             )
 
-            # Only proceed if we have enough data points for this product/date combination
-            if len(product_date_data) >= 4:  # Minimum sample size for meaningful IQR
-                # IQR method
+            if len(product_date_data) >= 4:
                 lower_bound, upper_bound = iqr_bounds(product_date_data["Quantity"])
                 iqr_anomalies = product_date_data.filter(
                     (pl.col("Quantity") < lower_bound)
                     | (pl.col("Quantity") > upper_bound)
                 )
-
                 if len(iqr_anomalies) > 0:
                     quantity_anomalies.append(iqr_anomalies)
                     anomaly_transaction_ids.update(
                         iqr_anomalies["Transaction ID"].to_list()
                     )
 
-        if quantity_anomalies:
-            anomalies["quantity_anomalies"] = pl.concat(quantity_anomalies)
-        else:
-            anomalies["quantity_anomalies"] = pl.DataFrame()
-        logger.debug(
-            f"Quantity anomalies detected: {len(quantity_anomalies)} products."
+        anomalies["quantity_anomalies"] = (
+            pl.concat(quantity_anomalies) if quantity_anomalies else pl.DataFrame()
         )
+        logger.debug(f"Quantity anomalies detected: {len(quantity_anomalies)} set(s).")
 
         # 3. Time Pattern Anomalies
         time_anomalies = df.filter((pl.col("hour") < 6) | (pl.col("hour") > 22))
@@ -795,7 +675,6 @@ def detect_anomalies(df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
         )
         anomalies["format_anomalies"] = format_anomalies
         anomaly_transaction_ids.update(format_anomalies["Transaction ID"].to_list())
-
         logger.debug(
             f"Format anomalies detected: {len(format_anomalies)} transactions."
         )
@@ -815,12 +694,6 @@ def detect_anomalies(df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
 def aggregate_daily_products(df: pl.DataFrame) -> pl.DataFrame:
     """
     Aggregates transaction data to show total quantity per product per day.
-
-    Parameters:
-    df (pl.DataFrame): Input DataFrame with columns Date, Unit Price, Quantity, and Product Name
-
-    Returns:
-    pl.DataFrame: Aggregated DataFrame with daily totals per product
     """
     df = df.with_columns(pl.col("Date").dt.date().alias("Date"))
     return (
@@ -833,11 +706,6 @@ def aggregate_daily_products(df: pl.DataFrame) -> pl.DataFrame:
 def remove_duplicate_records(df: pl.DataFrame) -> pl.DataFrame:
     """
     Removes duplicate transaction records if exists.
-
-    Parameters:
-        df (pl.DataFrame): Input DataFrame
-    Returns:
-        pl.DataFrame: DataFrame without duplicate records.
     """
     try:
         logger.info("Removing duplicate records...")
@@ -857,20 +725,13 @@ def remove_duplicate_records(df: pl.DataFrame) -> pl.DataFrame:
 
 
 def send_anomaly_alert(
-    anomalies: dict,
+    anomalies: Dict[str, pl.DataFrame],
     recipient: str = "patelmit640@gmail.com",
     subject: str = "Anomaly Alert",
 ) -> None:
     """
     Checks the anomalies dictionary and sends an email alert if any anomalies are found.
-
-    Parameters:
-        anomalies (dict): Dictionary where keys are anomaly types and values are Polars DataFrames.
-        recipient (str): Email address to send the alert to.
-        subject (str): Subject line for the email.
     """
-    # Build message parts based on the anomalies detected.
-
     body_message = (
         "Hi,\n\n"
         "Anomalies have been detected in the dataset. "
@@ -879,19 +740,14 @@ def send_anomaly_alert(
     )
 
     anomaly_list = []
-
-    # Combine non-empty anomaly DataFrames into one.
     for anomaly_type, anomaly_df in anomalies.items():
         if not anomaly_df.is_empty():
             df = anomaly_df.to_pandas()
-            df["anomaly_type"] = (
-                anomaly_type  # add a column to indicate the anomaly type
-            )
+            df["anomaly_type"] = anomaly_type
             anomaly_list.append(df)
 
     if anomaly_list:
         combined_df = pd.concat(anomaly_list, ignore_index=True)
-
         try:
             send_email(
                 emailid=recipient,
@@ -910,15 +766,9 @@ def extracting_time_series_and_lagged_features(df: pl.DataFrame) -> pl.DataFrame
     """
     Given a Polars DataFrame with at least:
       - 'Date' (datetime or string convertible to datetime)
-      - 'Product Name' (string/categorical)
-      - 'Total Quantity' (int or float)
-    This function creates various time-series features such as:
-      - Day-of-week, is-weekend, day-of-month, day-of-year, month, week_of_year
-      - Cyclical day-of-week encoding (sin/cos)
-      - Lag features (Quantity at t-1, t-7, etc.)
-      - Rolling average over 7 days
-
-    Returns a DataFrame with the new features added.
+      - 'Product Name'
+      - 'Total Quantity'
+    Creates time-series features and lag/rolling features.
     """
     try:
         if df.is_empty():
@@ -942,7 +792,6 @@ def extracting_time_series_and_lagged_features(df: pl.DataFrame) -> pl.DataFrame
                 }
             )
 
-        # 1. Convert Date to datetime if not already, and add date/time-based features.
         df = df.with_columns(
             pl.col("Date").dt.weekday().alias("day_of_week"),
             (pl.col("Date").dt.weekday() > 5).cast(pl.Int8).alias("is_weekend"),
@@ -953,22 +802,15 @@ def extracting_time_series_and_lagged_features(df: pl.DataFrame) -> pl.DataFrame
         )
     except Exception as e:
         logger.error(
-            f"Error extracting datetime feature while feature engineering stage."
+            "Error extracting datetime feature while feature engineering stage."
         )
         raise e
 
-    # 2. Create lag and rolling features for each Product Name.
-    # Sort by (Product Name, Date) so time-series operations are correct.
-    # We'll create:
-    #   - lag_1: quantity from the previous day
-    #   - lag_7: quantity from 7 days ago
-    #   - rolling_mean_7: 7-day rolling average
     try:
         df = df.sort(["Product Name", "Date"]).with_columns(
             [
                 pl.col("Total Quantity").shift(1).over("Product Name").alias("lag_1"),
                 pl.col("Total Quantity").shift(7).over("Product Name").alias("lag_7"),
-                # Rolling mean over the last 7 rows. This is row-based, not strictly time-based.
                 pl.col("Total Quantity")
                 .rolling_mean(window_size=7)
                 .over("Product Name")
@@ -977,47 +819,25 @@ def extracting_time_series_and_lagged_features(df: pl.DataFrame) -> pl.DataFrame
         )
     except Exception as e:
         logger.error(
-            f"Error calculating lagged feature while feature engineering stage."
+            "Error calculating lagged feature while feature engineering stage."
         )
         raise e
 
     return df
 
 
-def save_cleaned_data(df: pl.DataFrame, output_file: str) -> None:
-    """Saves the cleaned data to a CSV file."""
-    try:
-        df.write_csv(output_file)
-    except Exception as e:
-        logger.error(f"Error saving processed DataFrame: {e}")
-        raise e
-
-
 def list_bucket_blobs(bucket_name: str) -> list:
     """
     Lists all blobs in a Google Cloud Storage bucket.
-
-    Args:
-        bucket_name (str): The name of the Google Cloud Storage bucket.
-
-    Returns:
-        list: A list of blob names in the bucket.
-
-    Raises:
-        Exception: If an error occurs while accessing the bucket.
     """
-    # Ensure GCP credentials are properly set up
     setup_gcp_credentials()
 
     try:
         storage_client = storage.Client()
         bucket = storage_client.get_bucket(bucket_name)
         blobs = bucket.list_blobs()
-
-        # Get just the blob names
         blob_names = [blob.name for blob in blobs]
         logger.info(f"Found {len(blob_names)} files in bucket '{bucket_name}'")
-
         return blob_names
 
     except Exception as e:
@@ -1036,7 +856,6 @@ def delete_blob_from_bucket(bucket_name: str, blob_name: str) -> bool:
     Returns:
         bool: True if deletion was successful, False otherwise.
     """
-    # Ensure GCP credentials are properly set up
     setup_gcp_credentials()
 
     try:
@@ -1044,121 +863,25 @@ def delete_blob_from_bucket(bucket_name: str, blob_name: str) -> bool:
         bucket = storage_client.get_bucket(bucket_name)
         blob = bucket.blob(blob_name)
         blob.delete()
-
         logger.info(f"Blob {blob_name} deleted from bucket {bucket_name}")
         return True
-
     except Exception as e:
         logger.error(f"Error deleting blob {blob_name} from bucket {bucket_name}: {e}")
         return False
 
 
-def main(
-    input_file: str = "",  # cloud = False
-    output_file: str = "cleaned_data.csv",
-    source_bucket_name: str = "full-raw-data",
-    source_blob_name: str = "",  # No longer specifying a default file
-    destination_bucket_name: str = "fully-processed-data",
-    destination_blob_name: str = "",  # No longer specifying a default file
-    cloud: bool = True,
-    process_all_files: bool = True,  # New parameter to process all files
-    delete_after_processing: bool = True,  # New parameter to control file deletion
-) -> None:
-    """
-    Executes all data cleaning steps in sequence.
-
-    Parameters:
-        input_file (str): Path to the input dataset (if not using cloud).
-        output_file (str): Path to save the cleaned dataset (if not using cloud).
-        source_bucket_name (str): GCS bucket containing raw data.
-        source_blob_name (str): Specific blob to process (ignored if process_all_files is True).
-        destination_bucket_name (str): GCS bucket for storing processed data.
-        destination_blob_name (str): Specific destination blob name (auto-generated if process_all_files is True).
-        cloud (bool): Whether to use GCS for input/output.
-        process_all_files (bool): Whether to process all files in the source bucket.
-        delete_after_processing (bool): Whether to delete source files after processing.
-
-    Raises:
-        RuntimeError: If any step fails during execution.
-    """
-
-    try:
-        if cloud:
-            if process_all_files:
-                # List all blobs in the source bucket
-                blob_names = list_bucket_blobs(source_bucket_name)
-
-                if not blob_names:
-                    logger.warning(f"No files found in bucket '{source_bucket_name}'")
-                    return
-
-                # Process each blob
-                for blob_name in blob_names:
-                    logger.info(f"Processing file: {blob_name}")
-
-                    # Generate a unique destination blob name
-                    file_extension = os.path.splitext(blob_name)[1]
-                    base_name = os.path.splitext(os.path.basename(blob_name))[0]
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    unique_dest_name = f"processed_{base_name}_{timestamp}.csv"
-
-                    # Process the individual file
-                    process_single_file(
-                        cloud=True,
-                        source_bucket_name=source_bucket_name,
-                        source_blob_name=blob_name,
-                        destination_bucket_name=destination_bucket_name,
-                        destination_blob_name=unique_dest_name,
-                        delete_after_processing=delete_after_processing,
-                    )
-            else:
-                # Process a single specified file
-                if not source_blob_name:
-                    logger.error(
-                        "No source blob name provided for single file processing"
-                    )
-                    return
-
-                process_single_file(
-                    cloud=True,
-                    source_bucket_name=source_bucket_name,
-                    source_blob_name=source_blob_name,
-                    destination_bucket_name=destination_bucket_name,
-                    destination_blob_name=destination_blob_name
-                    or f"processed_{os.path.splitext(source_blob_name)[0]}.csv",
-                    delete_after_processing=delete_after_processing,
-                )
-        else:
-            # Process local file
-            process_single_file(
-                cloud=False,
-                input_file=input_file,
-                output_file=output_file,
-                delete_after_processing=False,  # Don't attempt to delete local files
-            )
-
-    except Exception as e:
-        logger.error(f"Processing failed due to: {e}")
-        raise e
-
-
 def process_single_file(
-    cloud: bool = True,
-    input_file: str = "",
-    output_file: str = "cleaned_data.csv",
-    source_bucket_name: str = "",
-    source_blob_name: str = "",
-    destination_bucket_name: str = "",
-    destination_blob_name: str = "",
-    delete_after_processing: bool = True,  # New parameter to control file deletion
+    source_bucket_name: str,
+    source_blob_name: str,
+    destination_bucket_name: str,
+    destination_blob_name: str,
+    delete_after_processing: bool = True,
 ) -> None:
     """
-    Process a single file through the entire data cleaning pipeline.
+    Processes a single file through the entire data cleaning pipeline,
+    loading from GCS and uploading the cleaned data back to GCS.
 
     Parameters:
-        cloud (bool): Whether to use cloud storage
-        input_file (str): Local input file path (used if cloud=False)
-        output_file (str): Local output file path (used if cloud=False)
         source_bucket_name (str): GCS bucket with raw data
         source_blob_name (str): Specific blob to process
         destination_bucket_name (str): GCS bucket for processed data
@@ -1166,13 +889,8 @@ def process_single_file(
         delete_after_processing (bool): Whether to delete the source file after processing
     """
     try:
-        logger.info(
-            f"Loading data from {'GCS' if cloud else 'local file'}: {source_blob_name if cloud else input_file}"
-        )
-        if cloud:
-            df = load_bucket_data(source_bucket_name, source_blob_name)
-        else:
-            df = load_data(input_file)
+        logger.info(f"Loading data from GCS: {source_blob_name}")
+        df = load_bucket_data(source_bucket_name, source_blob_name)
 
         logger.info("Filling missing dates...")
         df = filling_missing_dates(df)
@@ -1183,13 +901,13 @@ def process_single_file(
         logger.info("Converting string columns to lowercase...")
         df = convert_string_columns_to_lowercase(df)
 
-        logger.info("Standardizing on Product Names...")
+        logger.info("Standardizing Product Names...")
         df = standardize_product_name(df)
 
         logger.info("Applying Fuzzy Correction on Product Name...")
         df = apply_fuzzy_correction(df, REFERENCE_PRODUCT_NAMES)
 
-        logger.info("Filling missing Unit Prices using most frequent price...")
+        logger.info("Filling missing Unit Prices...")
         df = filling_missing_cost_price(df)
 
         logger.info("Removing invalid records...")
@@ -1204,43 +922,96 @@ def process_single_file(
         logger.info("Sending an Email for Alert...")
         send_anomaly_alert(anomalies)
 
-        logger.info("Aggregating dataset...")
+        logger.info("Aggregating dataset to daily level...")
         df = aggregate_daily_products(df)
 
         logger.info("Performing Feature Engineering on Aggregated Data...")
         df = extracting_time_series_and_lagged_features(df)
 
-        logger.info("Saving cleaned data...")
-        if cloud:
-            upload_df_to_gcs(df, destination_bucket_name, destination_blob_name)
-            logger.info(
-                f"Data cleaning completed! Cleaned data saved to GCS bucket: {destination_bucket_name}, blob: {destination_blob_name}"
-            )
+        logger.info("Uploading cleaned data to GCS...")
+        upload_df_to_gcs(df, destination_bucket_name, destination_blob_name)
+        logger.info(
+            f"Data cleaning completed! Cleaned data saved to GCS bucket: {destination_bucket_name}, blob: {destination_blob_name}"
+        )
 
-            # Delete the source file after successful processing if requested
-            if delete_after_processing:
-                logger.info(
-                    f"Deleting source file {source_blob_name} from bucket {source_bucket_name}"
-                )
-                delete_success = delete_blob_from_bucket(
-                    source_bucket_name, source_blob_name
-                )
-                if delete_success:
-                    logger.info(f"Successfully deleted source file: {source_blob_name}")
-                else:
-                    logger.warning(f"Failed to delete source file: {source_blob_name}")
-        else:
-            save_cleaned_data(df, output_file)
+        if delete_after_processing:
             logger.info(
-                f"Data cleaning completed! Cleaned data saved to local file: {output_file}"
+                f"Deleting source file {source_blob_name} from bucket {source_bucket_name}"
             )
+            delete_success = delete_blob_from_bucket(
+                source_bucket_name, source_blob_name
+            )
+            if delete_success:
+                logger.info(f"Successfully deleted source file: {source_blob_name}")
+            else:
+                logger.warning(f"Failed to delete source file: {source_blob_name}")
 
     except Exception as e:
         logger.error(f"Processing file failed: {e}")
-        logger.error(f"Failed file: {source_blob_name if cloud else input_file}")
+        logger.error(f"Failed file: {source_blob_name}")
         # Continue with other files rather than raising the exception
-        # This allows the process to continue even if one file fails
         return
+
+
+def main(
+    source_bucket_name: str = "full-raw-data",
+    source_blob_name: str = "",
+    destination_bucket_name: str = "fully-processed-data",
+    destination_blob_name: str = "",
+    process_all_files: bool = True,
+    delete_after_processing: bool = True,
+) -> None:
+    """
+    Executes all data cleaning steps in sequence, only using GCS.
+
+    Parameters:
+        source_bucket_name (str): GCS bucket containing raw data.
+        source_blob_name (str): Specific blob to process (ignored if process_all_files is True).
+        destination_bucket_name (str): GCS bucket for storing processed data.
+        destination_blob_name (str): Specific destination blob name (auto-generated if process_all_files is True).
+        process_all_files (bool): Whether to process all files in the source bucket.
+        delete_after_processing (bool): Whether to delete source files after processing.
+    """
+    try:
+        if process_all_files:
+            blob_names = list_bucket_blobs(source_bucket_name)
+            if not blob_names:
+                logger.warning(f"No files found in bucket '{source_bucket_name}'")
+                return
+
+            for blob_name in blob_names:
+                logger.info(f"Processing file: {blob_name}")
+                file_extension = os.path.splitext(blob_name)[1]
+                base_name = os.path.splitext(os.path.basename(blob_name))[0]
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                unique_dest_name = f"processed_{base_name}_{timestamp}.csv"
+
+                process_single_file(
+                    source_bucket_name=source_bucket_name,
+                    source_blob_name=blob_name,
+                    destination_bucket_name=destination_bucket_name,
+                    destination_blob_name=unique_dest_name,
+                    delete_after_processing=delete_after_processing,
+                )
+        else:
+            if not source_blob_name:
+                logger.error("No source blob name provided for single-file processing.")
+                return
+
+            final_destination_blob = (
+                destination_blob_name
+                or f"processed_{os.path.splitext(source_blob_name)[0]}.csv"
+            )
+            process_single_file(
+                source_bucket_name=source_bucket_name,
+                source_blob_name=source_blob_name,
+                destination_bucket_name=destination_bucket_name,
+                destination_blob_name=final_destination_blob,
+                delete_after_processing=delete_after_processing,
+            )
+    except Exception as e:
+        logger.error(f"Processing failed due to: {e}")
+        raise e
 
 
 if __name__ == "__main__":
