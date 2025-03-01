@@ -2,14 +2,23 @@ import smtplib
 from email.message import EmailMessage
 import pandas as pd
 from logger import logger
+
 # from data_pipeline.scripts.logger import logger
 
-def send_email(emailid, message, subject="Automated Email", 
-               smtp_server="smtp.gmail.com", smtp_port=587,
-               sender="svarunanusheel@gmail.com", username="svarunanusheel@gmail.com", password="Temp"):
+
+def send_email(
+    emailid,
+    message,
+    subject="Automated Email",
+    smtp_server="smtp.gmail.com",
+    smtp_port=587,
+    sender="svarunanusheel@gmail.com",
+    username="svarunanusheel@gmail.com",
+    password="Temp",
+):
     """
     Sends an email to the given email address.
-    
+
     Parameters:
       emailid (str): Recipient email address.
       message (str, pd.DataFrame, or list): Message content. Can be a plain string, a pandas DataFrame,
@@ -36,7 +45,7 @@ def send_email(emailid, message, subject="Automated Email",
         plain_text = message.to_string()
         html_text = message.to_html()
         msg.set_content(plain_text)
-        msg.add_alternative(html_text, subtype='html')
+        msg.add_alternative(html_text, subtype="html")
     elif isinstance(message, list):
         # Combine parts that could be strings or DataFrames.
         text_parts = []
@@ -55,11 +64,11 @@ def send_email(emailid, message, subject="Automated Email",
         combined_text = "\n".join(text_parts)
         combined_html = "".join(html_parts)
         msg.set_content(combined_text)
-        msg.add_alternative(combined_html, subtype='html')
+        msg.add_alternative(combined_html, subtype="html")
     else:
         # Default to string representation for any other type.
         msg.set_content(str(message))
-    
+
     # Sending the email.
     try:
         with smtplib.SMTP(smtp_server, smtp_port) as server:
@@ -72,6 +81,7 @@ def send_email(emailid, message, subject="Automated Email",
     except Exception as e:
         logger.error(f"Failed to send email: {e}")
         raise
+
 
 # # Example usage:
 # if __name__ == "__main__":

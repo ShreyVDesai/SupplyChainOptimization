@@ -4,8 +4,6 @@ from datetime import datetime
 from rapidfuzz import process, fuzz
 import polars as pl
 from logger import logger
-
-# from data_pipeline.scripts.logger import logger
 import io
 from google.cloud import storage
 from dotenv import load_dotenv
