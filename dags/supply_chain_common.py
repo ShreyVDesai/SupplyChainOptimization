@@ -6,7 +6,7 @@ This module contains shared functions and parameters used by the preprocessing D
 
 from datetime import datetime, timedelta
 import docker
-from airflow.exceptions import AirflowSkipException, AirflowFailException
+from airflow.exceptions import AirflowSkipException
 from airflow.operators.python import PythonOperator
 from airflow.providers.google.cloud.hooks.gcs import GCSHook
 
@@ -21,15 +21,10 @@ DEFAULT_ARGS = {
     "retry_delay": timedelta(minutes=5),
 }
 
-# Define GCP parameters
+# Define GCP bucket parameters
+GCP_BUCKET_NAME = "full-raw-data"
 GCP_CONNECTION_ID = "google_cloud_default"
-
-# Define bucket names
-SOURCE_BUCKET_NAME = "full-raw-data"  # Source data bucket
-PROCESSED_BUCKET_NAME = (
-    "fully-processed-data"  # Destination for processed data
-)
-METADATA_BUCKET_NAME = "metadata_stats"  # For statistics and metadata
+PROCESSED_BUCKET_NAME = "fully-processed-data"
 
 
 def print_gcs_info(**context):
@@ -38,7 +33,7 @@ def print_gcs_info(**context):
     print(f"DAG triggered by event: {dag_run.conf}")
 
     # Extract parameters from the event
-    gcs_bucket = dag_run.conf.get("gcs_bucket", SOURCE_BUCKET_NAME)
+    gcs_bucket = dag_run.conf.get("gcs_bucket", GCP_BUCKET_NAME)
     gcs_object = dag_run.conf.get("gcs_object", "")
     event_time = dag_run.conf.get("event_time", "")
 
@@ -63,18 +58,11 @@ def list_new_files(**context):
     # Use the bucket from the GCS event if available
     gcs_bucket = (
         context["ti"].xcom_pull(task_ids="print_gcs_info", key="gcs_bucket")
-        or SOURCE_BUCKET_NAME
+        or GCP_BUCKET_NAME
     )
 
     hook = GCSHook(gcp_conn_id=GCP_CONNECTION_ID)
     files = hook.list(bucket_name=gcs_bucket)
-
-    # If no files found, raise an exception to fail the task
-    if not files:
-        raise AirflowFailException(
-            "No files found in the bucket. Failing the task."
-        )
-
     context["ti"].xcom_push(key="file_list", value=files)
     print(f"Found {len(files)} files in bucket: {files}")
     return files
@@ -90,7 +78,7 @@ def run_pre_validation(**context):
             context["ti"].xcom_pull(
                 task_ids="print_gcs_info", key="gcs_bucket"
             )
-            or SOURCE_BUCKET_NAME
+            or GCP_BUCKET_NAME
         )
 
         container = client.containers.get("data-pipeline-container")
@@ -184,7 +172,7 @@ def run_preprocessing_script(**context):
             context["ti"].xcom_pull(
                 task_ids="print_gcs_info", key="gcs_bucket"
             )
-            or SOURCE_BUCKET_NAME
+            or GCP_BUCKET_NAME
         )
 
         container = client.containers.get("data-pipeline-container")

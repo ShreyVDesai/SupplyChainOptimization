@@ -71,7 +71,9 @@ def convert_feature_types(df: pl.DataFrame) -> pl.DataFrame:
         logger.info("Feature types converted successfully.")
         return df
     except Exception as e:
-        logger.error("Unexpected error during feature type conversion.", exc_info=True)
+        logger.error(
+            "Unexpected error during feature type conversion.", exc_info=True
+        )
         raise
 
 
@@ -80,7 +82,9 @@ def convert_string_columns_to_lowercase(df: pl.DataFrame) -> pl.DataFrame:
     try:
         logger.info("Converting all string-type columns to lowercase...")
         string_features = [
-            col for col, dtype in zip(df.columns, df.dtypes) if dtype == pl.Utf8
+            col
+            for col, dtype in zip(df.columns, df.dtypes)
+            if dtype == pl.Utf8
         ]
         if not string_features:
             logger.warning("No string columns detected. Skipping conversion.")
@@ -132,31 +136,41 @@ def standardize_date_format(
                 pl.col(date_column).str.contains(r"^\d{4}-\d{2}-\d{2}$")
             )  # 2019-01-03
             .then(
-                pl.col(date_column).str.strptime(pl.Datetime, "%Y-%m-%d", strict=False)
+                pl.col(date_column).str.strptime(
+                    pl.Datetime, "%Y-%m-%d", strict=False
+                )
             )
             .when(
                 pl.col(date_column).str.contains(r"^\d{2}-\d{2}-\d{4}$")
             )  # 01-03-2019
             .then(
-                pl.col(date_column).str.strptime(pl.Datetime, "%m-%d-%Y", strict=False)
+                pl.col(date_column).str.strptime(
+                    pl.Datetime, "%m-%d-%Y", strict=False
+                )
             )
             .when(
                 pl.col(date_column).str.contains(r"^\d{2}/\d{2}/\d{4}$")
             )  # 03/01/2019
             .then(
-                pl.col(date_column).str.strptime(pl.Datetime, "%d/%m/%Y", strict=False)
+                pl.col(date_column).str.strptime(
+                    pl.Datetime, "%d/%m/%Y", strict=False
+                )
             )
             .when(
                 pl.col(date_column).str.contains(r"^\d{1,2}/\d{1,2}/\d{4}$")
             )  # 3/1/2019
             .then(
-                pl.col(date_column).str.strptime(pl.Datetime, "%m/%d/%Y", strict=False)
+                pl.col(date_column).str.strptime(
+                    pl.Datetime, "%m/%d/%Y", strict=False
+                )
             )
             .when(
                 pl.col(date_column).str.contains(r"^\d{1,2}-\d{1,2}-\d{4}$")
             )  # 3-1-2019
             .then(
-                pl.col(date_column).str.strptime(pl.Datetime, "%m-%d-%Y", strict=False)
+                pl.col(date_column).str.strptime(
+                    pl.Datetime, "%m-%d-%Y", strict=False
+                )
             )
             .otherwise(None)
             .alias(date_column)
@@ -210,17 +224,21 @@ def detect_date_order(df: pl.DataFrame, date_column: str = "Date") -> str:
     """
     try:
         df = df.with_columns(pl.col(date_column).cast(pl.Datetime))
-        temp_df = df.with_columns(pl.col(date_column).dt.date().alias(date_column))
+        temp_df = df.with_columns(
+            pl.col(date_column).dt.date().alias(date_column)
+        )
         date_series = temp_df.drop_nulls(date_column)[date_column].to_list()
 
         if len(date_series) < 2:
             return "Random"
 
         is_ascending = all(
-            date_series[i] <= date_series[i + 1] for i in range(len(date_series) - 1)
+            date_series[i] <= date_series[i + 1]
+            for i in range(len(date_series) - 1)
         )
         is_descending = all(
-            date_series[i] >= date_series[i + 1] for i in range(len(date_series) - 1)
+            date_series[i] >= date_series[i + 1]
+            for i in range(len(date_series) - 1)
         )
 
         if is_ascending:
@@ -234,7 +252,9 @@ def detect_date_order(df: pl.DataFrame, date_column: str = "Date") -> str:
         raise
 
 
-def filling_missing_dates(df: pl.DataFrame, date_column: str = "Date") -> pl.DataFrame:
+def filling_missing_dates(
+    df: pl.DataFrame, date_column: str = "Date"
+) -> pl.DataFrame:
     """
     Fills missing dates using forward/backward fill, or drops them if no clear order is found.
     """
@@ -319,7 +339,9 @@ def compute_most_frequent_price(
         return (
             df.drop_nulls(["Unit Price"])
             .group_by(time_granularity + ["Product Name"])
-            .agg(pl.col("Unit Price").mode().first().alias("Most_Frequent_Cost"))
+            .agg(
+                pl.col("Unit Price").mode().first().alias("Most_Frequent_Cost")
+            )
         )
     except Exception as e:
         logger.error(f"Error computing most frequent unit price: {e}")
@@ -354,7 +376,9 @@ def filling_missing_cost_price(df: pl.DataFrame) -> pl.DataFrame:
             .alias("Unit Price")
         ).drop("Most_Frequent_Cost")
 
-        df = df.join(price_by_month, on=["Year", "Month", "Product Name"], how="left")
+        df = df.join(
+            price_by_month, on=["Year", "Month", "Product Name"], how="left"
+        )
         df = df.with_columns(
             pl.when(pl.col("Unit Price").is_null())
             .then(pl.col("Most_Frequent_Cost"))
@@ -377,7 +401,9 @@ def filling_missing_cost_price(df: pl.DataFrame) -> pl.DataFrame:
         df = df.drop(["Year", "Month", "Week_of_year"])
         return df
     except Exception as e:
-        logger.error(f"Unexpected error while filling missing Unit Prices: {e}")
+        logger.error(
+            f"Unexpected error while filling missing Unit Prices: {e}"
+        )
         raise
 
 
@@ -387,7 +413,8 @@ def remove_invalid_records(df: pl.DataFrame) -> pl.DataFrame:
     """
     try:
         return df.filter(
-            pl.col("Quantity").is_not_null() & pl.col("Product Name").is_not_null()
+            pl.col("Quantity").is_not_null()
+            & pl.col("Product Name").is_not_null()
         )
     except Exception as e:
         logger.error(f"Error removing invalid records: {e}")
@@ -413,7 +440,9 @@ def standardize_product_name(df: pl.DataFrame) -> pl.DataFrame:
         raise
 
 
-def filter_invalid_products(df: pl.DataFrame, reference_list: list) -> pl.DataFrame:
+def filter_invalid_products(
+    df: pl.DataFrame, reference_list: list
+) -> pl.DataFrame:
     """
     Filters out rows where the product name is not in the reference list.
     """
@@ -422,7 +451,9 @@ def filter_invalid_products(df: pl.DataFrame, reference_list: list) -> pl.DataFr
         original_count = df.height
         df = df.filter(pl.col("Product Name").is_in(reference_list))
         filtered_count = original_count - df.height
-        logger.info(f"Filtered out {filtered_count} rows with invalid product names.")
+        logger.info(
+            f"Filtered out {filtered_count} rows with invalid product names."
+        )
         return df
     except Exception as e:
         logger.error(f"Error filtering invalid products: {e}")
@@ -492,13 +523,16 @@ def detect_anomalies(
 
         # 1. Price Anomalies
         price_anomalies = []
-        product_date_combinations = df.select(["Product Name", "date_only"]).unique()
+        product_date_combinations = df.select(
+            ["Product Name", "date_only"]
+        ).unique()
 
         for row in product_date_combinations.iter_rows(named=True):
             product = row["Product Name"]
             date = row["date_only"]
             subset = df.filter(
-                (pl.col("Product Name") == product) & (pl.col("date_only") == date)
+                (pl.col("Product Name") == product)
+                & (pl.col("date_only") == date)
             )
 
             if "Unit Price" in df.columns:
@@ -525,7 +559,8 @@ def detect_anomalies(
             product = row["Product Name"]
             date = row["date_only"]
             subset = df.filter(
-                (pl.col("Product Name") == product) & (pl.col("date_only") == date)
+                (pl.col("Product Name") == product)
+                & (pl.col("date_only") == date)
             )
 
             if len(subset) >= 4:
@@ -541,20 +576,32 @@ def detect_anomalies(
                     )
 
         anomalies["quantity_anomalies"] = (
-            pl.concat(quantity_anomalies) if quantity_anomalies else pl.DataFrame()
+            pl.concat(quantity_anomalies)
+            if quantity_anomalies
+            else pl.DataFrame()
         )
-        logger.debug(f"Quantity anomalies detected: {len(quantity_anomalies)} sets.")
+        logger.debug(
+            f"Quantity anomalies detected: {len(quantity_anomalies)} sets."
+        )
 
         # 3. Time-of-day Anomalies
-        time_anomalies = df.filter((pl.col("hour") < 6) | (pl.col("hour") > 22))
+        time_anomalies = df.filter(
+            (pl.col("hour") < 6) | (pl.col("hour") > 22)
+        )
         anomalies["time_anomalies"] = time_anomalies
-        anomaly_transaction_ids.update(time_anomalies["Transaction ID"].to_list())
-        logger.debug(f"Time anomalies detected: {len(time_anomalies)} transactions.")
+        anomaly_transaction_ids.update(
+            time_anomalies["Transaction ID"].to_list()
+        )
+        logger.debug(
+            f"Time anomalies detected: {len(time_anomalies)} transactions."
+        )
 
         # 4. Invalid Format Checks
         format_anomalies = df.filter((pl.col("Quantity") <= 0))
         anomalies["format_anomalies"] = format_anomalies
-        anomaly_transaction_ids.update(format_anomalies["Transaction ID"].to_list())
+        anomaly_transaction_ids.update(
+            format_anomalies["Transaction ID"].to_list()
+        )
         logger.debug(
             f"Format anomalies detected: {len(format_anomalies)} transactions."
         )
@@ -563,7 +610,9 @@ def detect_anomalies(
         clean_df = clean_df.filter(
             ~pl.col("Transaction ID").is_in(list(anomaly_transaction_ids))
         )
-        logger.info(f"Clean data size after anomaly removal: {clean_df.shape[0]} rows.")
+        logger.info(
+            f"Clean data size after anomaly removal: {clean_df.shape[0]} rows."
+        )
 
     except Exception as e:
         logger.error(f"Error detecting anomalies: {e}")
@@ -610,7 +659,9 @@ def extracting_time_series_and_lagged_features(
     """
     try:
         if df.is_empty():
-            logger.warning("Input DataFrame is empty, returning an empty schema.")
+            logger.warning(
+                "Input DataFrame is empty, returning an empty schema."
+            )
             return pl.DataFrame(
                 schema={
                     "Date": pl.Date,
@@ -634,7 +685,9 @@ def extracting_time_series_and_lagged_features(
 
             df = df.with_columns(
                 pl.col("Date").dt.weekday().alias("day_of_week"),
-                (pl.col("Date").dt.weekday() > 5).cast(pl.Int8).alias("is_weekend"),
+                (pl.col("Date").dt.weekday() > 5)
+                .cast(pl.Int8)
+                .alias("is_weekend"),
                 pl.col("Date").dt.day().alias("day_of_month"),
                 pl.col("Date").dt.ordinal_day().alias("day_of_year"),
                 pl.col("Date").dt.month().alias("month"),
@@ -672,7 +725,9 @@ def extracting_time_series_and_lagged_features(
                 ]
             )
         else:
-            logger.warning("Total Quantity column not found, skipping lagged features")
+            logger.warning(
+                "Total Quantity column not found, skipping lagged features"
+            )
             raise KeyError
     except Exception as e:
         logger.error(
@@ -699,7 +754,9 @@ def process_file(
 
         # Check if DataFrame is empty after loading
         if df.is_empty():
-            logger.warning(f"File {blob_name} contains no data. Skipping processing.")
+            logger.warning(
+                f"File {blob_name} contains no data. Skipping processing."
+            )
             return
 
         logger.info("Filling missing dates...")
@@ -779,7 +836,9 @@ def process_file(
             logger.info(
                 f"Deleting source file {blob_name} from bucket {source_bucket_name}"
             )
-            delete_success = delete_blob_from_bucket(source_bucket_name, blob_name)
+            delete_success = delete_blob_from_bucket(
+                source_bucket_name, blob_name
+            )
             if delete_success:
                 logger.info(f"Successfully deleted source file: {blob_name}")
             else:
@@ -792,7 +851,9 @@ def process_file(
         if validation_passed:
             logger.info("Post-validation passed successfully.")
         else:
-            logger.warning("Post-validation detected issues with the processed data.")
+            logger.warning(
+                "Post-validation detected issues with the processed data."
+            )
 
     except Exception as e:
         logger.error(f"Processing file failed: {e}")
