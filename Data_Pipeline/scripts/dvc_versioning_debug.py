@@ -12,7 +12,6 @@ import tempfile
 import argparse
 import subprocess
 from typing import Optional, Tuple
-from datetime import datetime
 
 try:
     from logger import logger
@@ -127,65 +126,15 @@ def ensure_bucket_exists(bucket_name: str) -> bool:
 
         # Check if bucket exists
         try:
-            bucket = storage_client.get_bucket(bucket_name)
+            storage_client.get_bucket(bucket_name)
             logger.info(f"Bucket {bucket_name} already exists")
-
-            # Verify the service account has necessary permissions on this bucket
-            try:
-                # Try to list a few files to verify permissions
-                blobs = list(bucket.list_blobs(max_results=1))
-                logger.info(
-                    f"Successfully verified list permissions on bucket {bucket_name}"
-                )
-            except Exception as perm_e:
-                logger.warning(
-                    f"Service account may not have sufficient permissions on bucket {bucket_name}: {perm_e}"
-                )
-                # We'll continue anyway, as DVC might still be able to access it
-
             return True
         except Exception as e:
             if "Not Found" in str(e):
                 logger.warning(f"Bucket {bucket_name} not found, creating it")
                 try:
                     # Create the bucket
-                    bucket = storage_client.create_bucket(bucket_name)
-
-                    # Make sure we have the right permissions
-                    logger.info(
-                        f"Setting default permissions on newly created bucket {bucket_name}"
-                    )
-                    try:
-                        # Get service account email from env or credentials
-                        import json
-                        import os
-
-                        creds_path = os.environ.get(
-                            "GOOGLE_APPLICATION_CREDENTIALS"
-                        )
-                        if creds_path and os.path.exists(creds_path):
-                            with open(creds_path, "r") as f:
-                                creds_data = json.load(f)
-                                service_account = creds_data.get(
-                                    "client_email"
-                                )
-
-                                if service_account:
-                                    logger.info(
-                                        f"Setting permissions for service account: {service_account}"
-                                    )
-                                    # This is a simplified example - in production you'd use proper IAM policies
-                                    from google.cloud.storage.acl import ACL
-
-                                    bucket.acl.user(
-                                        service_account
-                                    ).grant_owner()
-                                    bucket.acl.save()
-                    except Exception as perm_e:
-                        logger.warning(
-                            f"Failed to set permissions on new bucket: {perm_e}"
-                        )
-
+                    storage_client.create_bucket(bucket_name)
                     logger.info(f"Successfully created bucket {bucket_name}")
                     return True
                 except Exception as create_e:
@@ -194,10 +143,11 @@ def ensure_bucket_exists(bucket_name: str) -> bool:
                     )
                     return False
             else:
-                logger.error(f"Error checking bucket {bucket_name}: {e}")
+                logger.error(f"Error accessing bucket {bucket_name}: {e}")
                 return False
-    except Exception as outer_e:
-        logger.error(f"Unexpected error in ensure_bucket_exists: {outer_e}")
+
+    except Exception as e:
+        logger.error(f"Unexpected error checking/creating bucket: {e}")
         return False
 
 
@@ -298,9 +248,10 @@ def track_bucket_data(cache_bucket: str, dvc_remote: str) -> bool:
             logger.error(f"Failed to configure DVC no_scm: {output}")
             return False
 
-        # Get baseline of existing files for change detection
+        # Get baseline of existing files
         logger.info(f"Getting baseline of existing files in {cache_bucket}")
         before_files = list_bucket_files(cache_bucket)
+        logger.debug(f"Files before: {before_files}")
 
         # Configure remote storage with explicit settings for GCS
         logger.info(f"Configuring DVC remote: {dvc_remote}")
@@ -319,13 +270,6 @@ def track_bucket_data(cache_bucket: str, dvc_remote: str) -> bool:
             cwd=temp_dir,
         )
 
-        # Set URL for the cache bucket in the config
-        logger.info("Configuring cache bucket URL")
-        run_command(
-            f"dvc config cache.gs.url gs://{cache_bucket}",
-            cwd=temp_dir,
-        )
-
         # Set the remote as default
         logger.info("Setting the remote as default")
         success, output = run_command(
@@ -336,104 +280,45 @@ def track_bucket_data(cache_bucket: str, dvc_remote: str) -> bool:
             logger.error(f"Failed to set default remote: {output}")
             return False
 
-        # Create a directory to match the cache bucket
-        cache_dir = os.path.join(temp_dir, cache_bucket)
-        os.makedirs(cache_dir, exist_ok=True)
+        # Import data from bucket
+        logger.info(f"Importing data from gs://{cache_bucket}")
+        success, output = run_command(
+            f"dvc import-url gs://{cache_bucket} {cache_bucket} --no-download",
+            cwd=temp_dir,
+        )
 
-        # List files in the cache bucket
-        logger.info(f"Listing files in {cache_bucket}")
-        cache_files = list_bucket_files(cache_bucket)
+        # If bucket is empty, create a placeholder file to track
+        if not success and "No URLs found" in output:
+            logger.warning(f"Bucket {cache_bucket} appears to be empty")
+            logger.info("Creating a placeholder file for tracking")
 
-        if not cache_files:
-            logger.warning(f"No files found in cache bucket: {cache_bucket}")
-            # Create a placeholder file to represent empty bucket
-            placeholder_path = os.path.join(cache_dir, ".dvc_empty_bucket")
+            # Create a placeholder file
+            placeholder_path = os.path.join(
+                temp_dir, f"{cache_bucket}.placeholder"
+            )
             with open(placeholder_path, "w") as f:
                 f.write(
-                    f"This bucket was empty at {datetime.now().isoformat()}\n"
+                    f"# Placeholder for tracking empty bucket: {cache_bucket}\n"
                 )
 
-            # Add the placeholder file to DVC
-            logger.info("Adding placeholder file for empty bucket")
+            # Add the placeholder to DVC
+            logger.info("Adding placeholder to DVC")
             success, output = run_command(
-                f"dvc add {cache_bucket}/.dvc_empty_bucket", cwd=temp_dir
+                f"dvc add {cache_bucket}.placeholder", cwd=temp_dir
             )
             if not success:
                 logger.error(f"Failed to add placeholder: {output}")
                 return False
-        else:
-            logger.info(f"Found {len(cache_files)} files in bucket")
-
-            # Create .dvc files for each file in the bucket
-            for filename, metadata in cache_files.items():
-                # Create the local directory structure if needed
-                file_path = os.path.join(cache_dir, filename)
-                os.makedirs(os.path.dirname(file_path), exist_ok=True)
-
-                # Create an empty file to represent the remote file
-                with open(file_path, "w") as f:
-                    f.write("")
-
-                # Create a .dvc file for this file
-                dvc_file_path = f"{file_path}.dvc"
-                logger.info(f"Creating DVC file for: {filename}")
-
-                # Use the actual MD5 hash from GCS metadata
-                md5_hash = metadata.get("md5_hash", "")
-                file_size = metadata.get("size", 0)
-
-                # Format compatible with DVC 3.30.1 - no 'url' field
-                with open(dvc_file_path, "w") as f:
-                    f.write(
-                        f"""outs:
-- md5: {md5_hash}
-  size: {file_size}
-  path: {filename}
-"""
-                    )
-
-            # Add each file individually to DVC
-            logger.info(f"Adding files in {cache_bucket} to DVC")
-            all_success = True
-
-            for filename in cache_files.keys():
-                file_path = os.path.join(cache_bucket, filename)
-                logger.info(f"Adding file to DVC: {filename}")
-                success, output = run_command(
-                    f"dvc add {file_path}", cwd=temp_dir
-                )
-
-                if not success:
-                    logger.warning(f"Issue adding {filename}: {output}")
-                    all_success = False
-                else:
-                    logger.info(f"Successfully added: {filename}")
-
-            if not all_success:
-                logger.warning("Some files could not be added to DVC")
-
-        # Push changes to remote
-        logger.info(f"Pushing changes to remote: {dvc_remote}")
-        success, output = run_command(
-            f"dvc push -v --remote {dvc_remote}", cwd=temp_dir
-        )
-        if not success:
-            logger.error(f"Failed to push changes: {output}")
+        elif not success:
+            logger.error(f"Failed to import data: {output}")
             return False
 
-        # Verify push completed successfully
-        logger.info("Verifying push to remote completed")
-        success, output = run_command("dvc status -c", cwd=temp_dir)
-        if not success:
-            logger.warning(f"Issue checking status: {output}")
-        else:
-            logger.info(f"DVC status check: {output}")
-
-        # Get updated file list for change detection
-        logger.info(f"Getting final list of files in {cache_bucket}")
+        # Get updated list of files
+        logger.info(f"Getting updated list of files in {cache_bucket}")
         after_files = list_bucket_files(cache_bucket)
+        logger.debug(f"Files after: {after_files}")
 
-        # Detect and log changes
+        # Detect changes
         added = {k: v for k, v in after_files.items() if k not in before_files}
         removed = {
             k: v for k, v in before_files.items() if k not in after_files
@@ -441,8 +326,7 @@ def track_bucket_data(cache_bucket: str, dvc_remote: str) -> bool:
         modified = {
             k: after_files[k]
             for k in set(before_files) & set(after_files)
-            if before_files[k].get("md5_hash", "")
-            != after_files[k].get("md5_hash", "")
+            if before_files[k] != after_files[k]
         }
 
         # Log changes
@@ -457,8 +341,37 @@ def track_bucket_data(cache_bucket: str, dvc_remote: str) -> bool:
         else:
             logger.info("No changes detected in the bucket")
 
+        # Make sure all files are tracked by DVC
+        logger.info("Ensuring all files are tracked by DVC")
+        success, output = run_command("dvc add .", cwd=temp_dir)
+        if not success:
+            logger.warning(f"Issue with dvc add: {output}, but continuing...")
+
+        # Explicitly commit the changes
+        logger.info("Committing changes to DVC")
+        success, output = run_command("dvc commit", cwd=temp_dir)
+        if not success:
+            logger.warning(
+                f"Issue with dvc commit: {output}, but continuing..."
+            )
+
+        # Push all changes to remote with verbose output
+        logger.info(f"Pushing changes to remote: {dvc_remote}")
+        success, output = run_command("dvc push -v", cwd=temp_dir)
+        if not success:
+            logger.error(f"Failed to push changes: {output}")
+            return False
+
+        # Verify push completed
+        logger.info("Verifying push to remote completed")
+        success, output = run_command("dvc status -c", cwd=temp_dir)
+        if not success:
+            logger.warning(f"Issue checking status: {output}")
+        else:
+            logger.info(f"DVC status check: {output}")
+
         logger.info(
-            f"Successfully tracked {len(after_files)} files in bucket {cache_bucket} to DVC remote: {dvc_remote}"
+            f"Successfully tracked changes in bucket {cache_bucket} to DVC remote: {dvc_remote}"
         )
         return True
     except Exception as e:
@@ -484,7 +397,7 @@ def main() -> None:
 
     # Configure logger verbosity
     if args.verbose:
-        logger.setLevel("DEBUG")
+        import logging; #logger.setLevel(logging.DEBUG)
         logger.info("Verbose logging enabled")
 
     # Get parameters from command line arguments

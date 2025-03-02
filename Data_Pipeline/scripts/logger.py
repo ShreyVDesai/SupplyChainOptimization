@@ -58,6 +58,27 @@ class Logger:
     def exception(self, msg, *args, **kwargs):
         self._get_logger().exception(msg, *args, **kwargs)
 
+    def setLevel(self, level):
+        """
+        Set the logging level of the logger.
+
+        Args:
+            level: The logging level to set (can be a string like 'DEBUG' or a logging constant)
+        """
+        if isinstance(level, str):
+            # Convert string level to logging constant
+            level_map = {
+                "DEBUG": logging.DEBUG,
+                "INFO": logging.INFO,
+                "WARNING": logging.WARNING,
+                "ERROR": logging.ERROR,
+                "CRITICAL": logging.CRITICAL,
+            }
+            level = level_map.get(level, logging.INFO)
+
+        # Set level on standard logger
+        self._standard_logger.setLevel(level)
+
 
 # Create a single instance of the logger to be imported by other modules
 logger = Logger()

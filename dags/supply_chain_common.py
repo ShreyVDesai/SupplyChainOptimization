@@ -25,6 +25,7 @@ DEFAULT_ARGS = {
 GCP_BUCKET_NAME = "full-raw-data"
 GCP_CONNECTION_ID = "google_cloud_default"
 PROCESSED_BUCKET_NAME = "fully-processed-data"
+PROCESSED_CACHE_BUCKET_NAME = "fully-processed-cache"
 DVC_REMOTE_NAME = "fully-processed-data-dvc"
 
 
@@ -179,9 +180,9 @@ def run_preprocessing_script(**context):
         container = client.containers.get("data-pipeline-container")
         print(f"Container found: {container.name}")
 
-        # Execute the preprocessing.py script with bucket parameter
+        # Execute the preprocessing.py script with bucket parameters, including cache bucket
         exit_code, output = container.exec_run(
-            cmd=f"python preprocessing.py --source_bucket={gcs_bucket} --destination_bucket={PROCESSED_BUCKET_NAME} --delete_after",
+            cmd=f"python preprocessing.py --source_bucket={gcs_bucket} --destination_bucket={PROCESSED_BUCKET_NAME} --cache_bucket={PROCESSED_CACHE_BUCKET_NAME} --delete_after",
             workdir="/app/scripts",
         )
 
@@ -230,7 +231,7 @@ def run_dvc_versioning(**context):
         # Execute the dvc_versioning.py script with bucket parameters
         # Removed source_bucket parameter as it's not used by the script
         exit_code, output = container.exec_run(
-            cmd=f"python dvc_versioning.py --destination_bucket={PROCESSED_BUCKET_NAME} --dvc_remote={DVC_REMOTE_NAME}",
+            cmd=f"python dvc_versioning.py --cache_bucket={PROCESSED_CACHE_BUCKET_NAME} --dvc_remote={DVC_REMOTE_NAME}",
             workdir="/app/scripts",
         )
 
