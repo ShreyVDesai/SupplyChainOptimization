@@ -3,10 +3,8 @@ import polars as pl
 import pandas as pd
 import json
 
-# from scripts.logger import logger
 from logger import logger
 
-# from data_pipeline.scripts.logger import logger
 import io
 from google.cloud import storage
 from dotenv import load_dotenv
