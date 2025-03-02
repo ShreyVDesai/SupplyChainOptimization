@@ -85,7 +85,11 @@ def list_new_files(**context):
 
 def run_pre_validation(**context):
     """Run the pre_validation script to validate data before processing"""
-    client = docker.from_env()
+     # Linux/MAC
+    # client = docker.from_env()
+    
+    # Connect to Docker daemon over TCP instead of UNIX socket
+    client = docker.DockerClient(base_url="tcp://host.docker.internal:2375")
 
     try:
         # Get bucket name from xcom
@@ -179,7 +183,11 @@ def run_pre_validation(**context):
 
 def run_preprocessing_script(**context):
     """Run the preprocessing script in the existing data-pipeline-container"""
-    client = docker.from_env()
+    # Linux/MAC
+    # client = docker.from_env()
+
+    # Connect to Docker daemon over TCP instead of UNIX socket
+    client = docker.DockerClient(base_url="tcp://host.docker.internal:2375")
 
     try:
         # Get bucket name from xcom
