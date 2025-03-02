@@ -1,15 +1,10 @@
-import os
 import polars as pl
-import pandas as pd
 import argparse
 
-# Import helper to handle different import scenarios
 try:
-    # First try local import
     from logger import logger
     from utils import send_email, load_bucket_data, load_data, setup_gcp_credentials
-except ImportError:
-    # Fall back to absolute import if local fails
+except ImportError:  # For testing purposes
     from Data_Pipeline.scripts.logger import logger
     from Data_Pipeline.scripts.utils import (
         send_email,

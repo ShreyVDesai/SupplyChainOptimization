@@ -3,14 +3,11 @@ import pandas as pd
 from datetime import datetime
 import polars as pl
 
-# Import helper to handle different import scenarios
 try:
-    # First try local import
     from logger import logger
     from utils import send_email, load_bucket_data, upload_to_gcs, setup_gcp_credentials
     from post_validation import post_validation
-except ImportError:
-    # Fall back to absolute import if local fails
+except ImportError:  # For testing purposes
     from Data_Pipeline.scripts.logger import logger
     from Data_Pipeline.scripts.utils import (
         send_email,

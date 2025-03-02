@@ -3,12 +3,9 @@ import polars as pl
 import pandas as pd
 import json
 
-# Import helper to handle different import scenarios
 try:
-    # First try local import
     from logger import logger
-except ImportError:
-    # Fall back to absolute import if local fails
+except ImportError:  # For testing purposes
     from Data_Pipeline.scripts.logger import logger
 
 import io
