@@ -543,7 +543,7 @@ class TestPreValidateData(unittest.TestCase):
         self, mock_send_email, mock_validate_file, mock_list_bucket_blobs, mock_logger
     ):
         bucket_name = "test-bucket"
-        mock_list_bucket_blobs.side_effect = Exception("Unexpected error")
+        mock_list_bucket_blobs.side_effect = Exception()
 
         ret = main(bucket_name=bucket_name)
 
