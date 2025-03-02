@@ -4,7 +4,7 @@ import pandas as pd
 import json
 
 # from scripts.logger import logger
-from logger import logger
+from scripts.logger import logger
 
 # from data_pipeline.scripts.logger import logger
 import io
@@ -23,41 +23,19 @@ def setup_gcp_credentials():
     Sets up the GCP credentials by setting the GOOGLE_APPLICATION_CREDENTIALS environment variable
     to point to the correct location of the GCP key file.
     """
-    # The GCP key is always in the mounted secret directory
-    gcp_key_path = "/app/secret/gcp-key.json"
-
-    if os.environ.get("GOOGLE_APPLICATION_CREDENTIALS") != gcp_key_path:
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = gcp_key_path
-        logger.info(f"Set GCP credentials path to: {gcp_key_path}")
-    else:
-        logger.info(f"Using existing GCP credentials from: {gcp_key_path}")
-
-
-def load_data(file_path: str) -> pl.DataFrame:
-    """
-    Loads the dataset from the given file path.
-
-    Parameters:
-        file_path (str): Path to the input file.
-
-    Returns:
-        pl.DataFrame: Loaded DataFrame.
-    """
     try:
-        if file_path.lower().endswith(".xlsx"):
-            df = pl.read_excel(file_path)
+        # The GCP key is always in the mounted secret directory
+        gcp_key_path = "/app/secret/gcp-key.json"
 
-        logger.info(
-            f"Data successfully loaded with {df.shape[0]} rows and {df.shape[1]} columns."
-        )
-        return df
-
-    except FileNotFoundError:
-        logger.error(f"File Not Found: {file_path}")
-
+        if os.environ.get("GOOGLE_APPLICATION_CREDENTIALS") != gcp_key_path:
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = gcp_key_path
+            logger.info(f"Set GCP credentials path to: {gcp_key_path}")
+        else:
+            logger.info(f"Using existing GCP credentials from: {gcp_key_path}")
     except Exception as e:
-        logger.error(f"Fail to load data due to: {e}")
-        raise e
+        logger.error(f"Error setting up GCP credentials: {e}")
+        raise
+
 
 
 def load_bucket_data(bucket_name: str, file_name: str) -> pl.DataFrame:
@@ -94,7 +72,7 @@ def load_bucket_data(bucket_name: str, file_name: str) -> pl.DataFrame:
 
         elif file_extension == "json":
             try:
-                df = pd.read_json(io.BytesIO(blob_content))
+                df = pl.read_json(io.BytesIO(blob_content))
                 logger.info(
                     f"'{file_name}' from bucket '{bucket_name}' successfully read as JSON into DataFrame."
                 )
@@ -115,7 +93,7 @@ def load_bucket_data(bucket_name: str, file_name: str) -> pl.DataFrame:
             logger.error(f"Unsupported file type: {file_extension}")
             raise ValueError(f"Unsupported file type: {file_extension}")
 
-        if df.is_empty():
+        if (isinstance(df, pd.DataFrame) and df.empty) or (isinstance(df, pl.DataFrame) and df.is_empty()):
             error_msg = f"DataFrame loaded from bucket '{bucket_name}', file '{file_name}' is empty."
             logger.error(error_msg)
             raise ValueError(error_msg)
