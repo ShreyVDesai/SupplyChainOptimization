@@ -1,6 +1,7 @@
 import numpy as np
 import polars as pl
 import pandas as pd
+import json
 
 # from scripts.logger import logger
 from logger import logger
@@ -9,12 +10,12 @@ from logger import logger
 import io
 from google.cloud import storage
 from dotenv import load_dotenv
-from typing import Dict, Tuple
 import smtplib
 from email.message import EmailMessage
 import os
 
 load_dotenv()
+
 
 # Set up GCP credentials path
 def setup_gcp_credentials():
@@ -22,29 +23,14 @@ def setup_gcp_credentials():
     Sets up the GCP credentials by setting the GOOGLE_APPLICATION_CREDENTIALS environment variable
     to point to the correct location of the GCP key file.
     """
-    # Get the project root directory
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(os.path.dirname(script_dir))
-    gcp_key_path = os.path.join(project_root, "secret", "gcp-key.json")
+    # The GCP key is always in the mounted secret directory
+    gcp_key_path = "/app/secret/gcp-key.json"
 
-    # Make sure the key exists
-    if not os.path.exists(gcp_key_path):
-        # Try an alternative path - current directory might be project root
-        alt_path = os.path.join(
-            os.path.dirname(script_dir), "..", "secret", "gcp-key.json"
-        )
-        if os.path.exists(alt_path):
-            gcp_key_path = alt_path
-        else:
-            # Final fallback to direct path from container
-            gcp_key_path = "secret/gcp-key.json"
-            if not os.path.exists(gcp_key_path):
-                logger.warning(
-                    f"GCP key not found at {gcp_key_path}. Authentication may fail."
-                )
-
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = gcp_key_path
-    logger.info(f"Using GCP credentials from: {gcp_key_path}")
+    if os.environ.get("GOOGLE_APPLICATION_CREDENTIALS") != gcp_key_path:
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = gcp_key_path
+        logger.info(f"Set GCP credentials path to: {gcp_key_path}")
+    else:
+        logger.info(f"Using existing GCP credentials from: {gcp_key_path}")
 
 
 def load_data(file_path: str) -> pl.DataFrame:
@@ -95,27 +81,33 @@ def load_bucket_data(bucket_name: str, file_name: str) -> pl.DataFrame:
         blob = bucket.blob(file_name)
         blob_content = blob.download_as_string()
 
-        file_extension = file_name.split('.')[-1].lower()
-        if file_extension == 'csv':
+        file_extension = file_name.split(".")[-1].lower()
+        if file_extension == "csv":
             try:
                 df = pl.read_csv(io.BytesIO(blob_content))
-                logger.info(f"'{file_name}' from bucket '{bucket_name}' successfully read as CSV into DataFrame.")
+                logger.info(
+                    f"'{file_name}' from bucket '{bucket_name}' successfully read as CSV into DataFrame."
+                )
             except Exception as e:
                 logger.error(f"Error reading '{file_name}' as CSV: {e}")
                 raise
 
-        elif file_extension == 'json':
+        elif file_extension == "json":
             try:
                 df = pd.read_json(io.BytesIO(blob_content))
-                logger.info(f"'{file_name}' from bucket '{bucket_name}' successfully read as JSON into DataFrame.")
+                logger.info(
+                    f"'{file_name}' from bucket '{bucket_name}' successfully read as JSON into DataFrame."
+                )
             except Exception as e:
                 logger.error(f"Error reading '{file_name}' as JSON: {e}")
                 raise
 
-        elif file_extension == 'xlsx' or file_extension == 'xls':
+        elif file_extension == "xlsx" or file_extension == "xls":
             try:
                 df = pl.read_excel(io.BytesIO(blob_content))
-                logger.info(f"'{file_name}' from bucket '{bucket_name}' successfully read as Excel into DataFrame.")
+                logger.info(
+                    f"'{file_name}' from bucket '{bucket_name}' successfully read as Excel into DataFrame."
+                )
             except Exception as e:
                 logger.error(f"Error reading '{file_name}' as Excel: {e}")
                 raise
@@ -196,7 +188,7 @@ def upload_to_gcs(
 ) -> None:
     """
     Uploads a DataFrame to Google Cloud Storage (GCS) in multiple formats (CSV, JSON, XLSX).
-    
+
     Args:
         df (polars.DataFrame): The DataFrame to upload.
         bucket_name (str): The name of the GCS bucket where the file should be stored.
@@ -217,17 +209,93 @@ def upload_to_gcs(
             destination_blob_name,
         )
 
-        file_extension = destination_blob_name.split('.')[-1].lower()
+        file_extension = destination_blob_name.split(".")[-1].lower()
         bucket = storage.Client().get_bucket(bucket_name)
         blob = bucket.blob(destination_blob_name)
 
-        if file_extension == 'csv':
+        if file_extension == "csv":
             csv_data = df.write_csv()
             blob.upload_from_string(csv_data, content_type="text/csv")
-        
-        elif file_extension == 'json':
-            json_data = df.write_json()
-            blob.upload_from_string(json_data, content_type="application/json")
+            logger.info("CSV data uploaded successfully")
+
+        elif file_extension == "json":
+            try:
+                # First try standard write_json method
+                json_data = df.write_json()
+                blob.upload_from_string(json_data, content_type="application/json")
+                logger.info("JSON data uploaded successfully using write_json")
+            except Exception as e:
+                logger.warning(
+                    f"Standard JSON serialization failed: {e}, trying alternative approach"
+                )
+
+                # If that fails, try to convert to dict and then to JSON
+                try:
+                    # Helper function to convert numpy/pandas types to Python types
+                    def convert_to_python_types(obj):
+                        if isinstance(
+                            obj,
+                            (
+                                np.int_,
+                                np.intc,
+                                np.intp,
+                                np.int8,
+                                np.int16,
+                                np.int32,
+                                np.int64,
+                                np.uint8,
+                                np.uint16,
+                                np.uint32,
+                                np.uint64,
+                            ),
+                        ):
+                            return int(obj)
+                        elif isinstance(
+                            obj, (np.float_, np.float16, np.float32, np.float64)
+                        ):
+                            return float(obj)
+                        elif isinstance(obj, (np.bool_)):
+                            return bool(obj)
+                        elif isinstance(obj, (np.ndarray,)):
+                            return obj.tolist()
+                        elif isinstance(obj, dict):
+                            return {
+                                k: convert_to_python_types(v) for k, v in obj.items()
+                            }
+                        elif isinstance(obj, list):
+                            return [convert_to_python_types(item) for item in obj]
+                        else:
+                            return obj
+
+                    # If DataFrame has a single row and contains dictionaries, extract the first row
+                    if df.shape[0] == 1 and df.shape[1] == 1:
+                        cell_value = df[0, 0]
+                        if isinstance(cell_value, dict):
+                            data_dict = cell_value
+                            logger.info("Found dictionary in single cell DataFrame")
+                        else:
+                            data_dict = df.to_pandas().to_dict(orient="records")[0]
+                    else:
+                        data_dict = df.to_pandas().to_dict(orient="records")
+
+                    # Convert numpy/pandas types to Python native types
+                    python_typed_dict = convert_to_python_types(data_dict)
+
+                    # Convert to JSON
+                    json_data = json.dumps(python_typed_dict, indent=2)
+                    blob.upload_from_string(json_data, content_type="application/json")
+                    logger.info("JSON data uploaded successfully using dict conversion")
+                except Exception as e2:
+                    logger.warning(
+                        f"Dict conversion failed: {e2}, trying pandas direct conversion"
+                    )
+                    # Last resort: try pandas to_json
+                    pd_df = df.to_pandas()
+                    json_data = pd_df.to_json(orient="records")
+                    blob.upload_from_string(json_data, content_type="application/json")
+                    logger.info(
+                        "JSON data uploaded successfully using pandas conversion"
+                    )
 
         # TODO: Add support for Excel files
         # elif file_extension == 'xlsx':
@@ -235,7 +303,7 @@ def upload_to_gcs(
         #     df.write_excel(excel_buffer, index=False, engine="openpyxl")
         #     excel_buffer.seek(0)
         #     blob.upload_from_file(excel_buffer, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        
+
         else:
             raise ValueError(f"Unsupported file extension: {file_extension}")
 

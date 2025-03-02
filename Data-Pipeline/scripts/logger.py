@@ -2,7 +2,6 @@ import os
 import logging
 from datetime import datetime
 
-
 LOG_DIR = "SCO_LOG"
 CURRENT_TIME_STAMP = f"{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}"
 LOG_FILE_NAME = f"log_{CURRENT_TIME_STAMP}.log"

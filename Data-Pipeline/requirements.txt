@@ -1,14 +1,28 @@
+# Apache Airflow and providers
+apache-airflow>=2.5.0
+apache-airflow-providers-google>=8.0.0
+apache-airflow-providers-docker>=3.0.0
+
+# Core data processing
 numpy>=1.21.0,<1.24.0
 pandas>=1.3.0,<1.5.0
+polars-lts-cpu==1.22.0
+pandas-schema==0.3.6  # For data validation and schema enforcement
+
+# Cloud storage
 google-cloud-storage==3.0.0
 google-api-core==2.24.1
-tqdm==4.67.1
-polars-lts-cpu==1.22.0
+
+# Utilities
 python-dotenv==1.0.1
-openpyxl==3.1.5
-fastexcel==0.13.0
-RapidFuzz==3.12.1
-scipy==1.15.2
-apache-airflow
-XlsxWriter==3.2.2
-great_expectations==0.18.8
+pyarrow>=10.0.0  # Required for Polars/Pandas data operations
+openpyxl==3.1.5  # For Excel file handling
+
+# Excel support
+XlsxWriter==3.2.2  # Required for writing to Excel files
+
+# Email functionality
+sendgrid>=6.0.0  # For email alerts
+
+# Basic libraries expected by Docker
+pyyaml>=6.0.0

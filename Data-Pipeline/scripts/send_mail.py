@@ -3,8 +3,6 @@ from email.message import EmailMessage
 import pandas as pd
 from logger import logger
 
-# from data_pipeline.scripts.logger import logger
-
 
 def send_email(
     emailid,

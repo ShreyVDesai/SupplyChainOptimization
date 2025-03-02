@@ -3,8 +3,6 @@ import pandas as pd
 from datetime import datetime
 import polars as pl
 from logger import logger
-
-import io
 from google.cloud import storage
 from dotenv import load_dotenv
 from typing import Dict, Tuple
@@ -504,13 +502,11 @@ def detect_anomalies(df: pl.DataFrame) -> Tuple[Dict[str, pl.DataFrame], pl.Data
 def aggregate_daily_products(df: pl.DataFrame) -> pl.DataFrame:
     """
     Aggregates transaction data to a daily level (per product),
-    summing the Quantity and grouping by (Date, Product Name, Unit Price).
+    summing the Quantity and grouping by (Date, Product Name).
     """
     df = df.with_columns(pl.col("Date").dt.date().alias("Date"))
-    return (
-        df.group_by(["Date", "Product Name", "Unit Price"])
-        .agg(pl.col("Quantity").sum().alias("Total Quantity"))
-        .sort(["Date"])
+    return df.group_by(["Date", "Product Name"]).agg(
+        pl.col("Quantity").sum().alias("Total Quantity")
     )
 
 
@@ -609,7 +605,7 @@ def extracting_time_series_and_lagged_features(df: pl.DataFrame) -> pl.DataFrame
 
     try:
         # Sort by (Product Name, Date) for coherent time series ordering
-        df = df.sort(["Product Name", "Date"]).with_columns(
+        df = df.sort(["Date"]).with_columns(
             [
                 pl.col("Total Quantity").shift(1).over("Product Name").alias("lag_1"),
                 pl.col("Total Quantity").shift(7).over("Product Name").alias("lag_7"),
@@ -732,7 +728,6 @@ def process_file(
             else:
                 logger.warning(f"Failed to delete source file: {blob_name}")
 
-        
         logger.info("Performing Post Validation...")
         unique_dest_blob_name = f"stats_{base_name}_{timestamp}.json"
         flag = post_validation(df, unique_dest_blob_name)

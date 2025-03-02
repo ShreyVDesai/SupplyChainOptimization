@@ -69,17 +69,11 @@ docker-compose up -d
 
 ### Development Setup
 
-1. Create a virtual environment:
+1. Create a virtual environment and install dependencies:
 
 ```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-2. Install additional dependencies for the data pipeline:
-
-```bash
 pip install -r Data-Pipeline/requirements.txt
 ```
 
@@ -140,7 +134,7 @@ The project uses several configuration files:
 
 - `.env`: Environment variables for Docker and services
 - `docker-compose.yaml`: Container configuration
-- `requirements.txt`: Python dependencies
+- `Data-Pipeline/requirements.txt`: Python dependencies
 
 ### Google Cloud Configuration
 

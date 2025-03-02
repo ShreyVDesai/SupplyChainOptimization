@@ -112,11 +112,6 @@ with DAG(
     schedule_interval=None,  # External trigger only
     catchup=False,
     tags=["supply-chain", "preprocessing"],
-    params={
-        "gcs_bucket": Param(GCP_BUCKET_NAME, type="string"),
-        "gcs_object": Param("", type="string"),
-        "event_time": Param("", type="string"),
-    },
 ) as dag:
 
     # Print information about the GCS event

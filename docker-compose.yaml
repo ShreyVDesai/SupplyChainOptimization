@@ -45,9 +45,9 @@ services:
     volumes:
       - ./Data-Pipeline/scripts:/app/scripts
       - ./data:/data
-      - ./secret/gcp-key.json:/app/gcp-key.json
+      - ./secret:/app/secret
     environment:
-      GOOGLE_APPLICATION_CREDENTIALS: /app/gcp-key.json
+      GOOGLE_APPLICATION_CREDENTIALS: /app/secret/gcp-key.json
     working_dir: /app/scripts
     command: ["tail", "-f", "/dev/null"]
     restart: always
