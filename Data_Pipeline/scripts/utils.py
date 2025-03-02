@@ -1,16 +1,21 @@
-import numpy as np
+import os
 import polars as pl
 import pandas as pd
 import json
 
-from Data_Pipeline.scripts.logger import logger
+# Import helper to handle different import scenarios
+try:
+    # First try local import
+    from logger import logger
+except ImportError:
+    # Fall back to absolute import if local fails
+    from Data_Pipeline.scripts.logger import logger
 
 import io
 from google.cloud import storage
 from dotenv import load_dotenv
 import smtplib
 from email.message import EmailMessage
-import os
 
 load_dotenv()
 

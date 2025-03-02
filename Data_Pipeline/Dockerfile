@@ -23,6 +23,11 @@ RUN pip install --no-cache-dir 'pandera>=0.15.1,<0.16.0'
 # Copy the rest of the application
 COPY . /app/
 
+# Install the package in development mode to support both import styles
+WORKDIR /
+COPY .. /workspace/
+RUN pip install -e /workspace/
+
 # Set working directory for scripts
 WORKDIR /app/scripts
 

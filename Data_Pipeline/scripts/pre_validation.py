@@ -2,8 +2,22 @@ import os
 import polars as pl
 import pandas as pd
 import argparse
-from Data_Pipeline.scripts.logger import logger
-from Data_Pipeline.scripts.utils import send_email, load_bucket_data, load_data, setup_gcp_credentials
+
+# Import helper to handle different import scenarios
+try:
+    # First try local import
+    from logger import logger
+    from utils import send_email, load_bucket_data, load_data, setup_gcp_credentials
+except ImportError:
+    # Fall back to absolute import if local fails
+    from Data_Pipeline.scripts.logger import logger
+    from Data_Pipeline.scripts.utils import (
+        send_email,
+        load_bucket_data,
+        load_data,
+        setup_gcp_credentials,
+    )
+
 from google.cloud import storage
 from dotenv import load_dotenv
 
@@ -110,7 +124,9 @@ def delete_blob_from_bucket(bucket_name: str, blob_name: str) -> bool:
         return False
 
 
-def validate_file(bucket_name: str, blob_name: str, delete_invalid: bool = True) -> bool:
+def validate_file(
+    bucket_name: str, blob_name: str, delete_invalid: bool = True
+) -> bool:
     """
     Validates a single file from the specified GCP bucket.
     Deletes the file if validation fails and delete_invalid is True.

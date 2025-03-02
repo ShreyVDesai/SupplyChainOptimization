@@ -1,0 +1,131 @@
+diff --git a/Data_Pipeline/scripts/post_validation.py b/Data_Pipeline/scripts/post_validation.py
+index fd1f33c..31d99f2 100644
+--- a/Data_Pipeline/scripts/post_validation.py
++++ b/Data_Pipeline/scripts/post_validation.py
+@@ -1,8 +1,8 @@
+ import polars as pl
+ import pandas as pd
+ import json
+-from Data_Pipeline.scripts.logger import logger
+-from Data_Pipeline.scripts.utils import send_email, upload_to_gcs
++from logger import logger
++from utils import send_email, upload_to_gcs
+ 
+ # Post-validation expected columns
+ POST_VALIDATION_COLUMNS = ["Product Name", "Total Quantity", "Date"]
+diff --git a/Data_Pipeline/scripts/pre_validation.py b/Data_Pipeline/scripts/pre_validation.py
+index ef6a41b..75a140c 100644
+--- a/Data_Pipeline/scripts/pre_validation.py
++++ b/Data_Pipeline/scripts/pre_validation.py
+@@ -2,10 +2,11 @@ import os
+ import polars as pl
+ import pandas as pd
+ import argparse
+-from Data_Pipeline.scripts.logger import logger
+-from Data_Pipeline.scripts.utils import send_email, load_bucket_data, load_data, setup_gcp_credentials
++from logger import logger
++from utils import send_email, load_bucket_data, load_data
+ from google.cloud import storage
+ from dotenv import load_dotenv
++from utils import setup_gcp_credentials
+ 
+ load_dotenv()
+ 
+@@ -110,7 +111,9 @@ def delete_blob_from_bucket(bucket_name: str, blob_name: str) -> bool:
+         return False
+ 
+ 
+-def validate_file(bucket_name: str, blob_name: str, delete_invalid: bool = True) -> bool:
++def validate_file(
++    bucket_name: str, blob_name: str, delete_invalid: bool = True
++) -> bool:
+     """
+     Validates a single file from the specified GCP bucket.
+     Deletes the file if validation fails and delete_invalid is True.
+diff --git a/Data_Pipeline/scripts/preprocessing.py b/Data_Pipeline/scripts/preprocessing.py
+index 46d1db4..ed49cd6 100644
+--- a/Data_Pipeline/scripts/preprocessing.py
++++ b/Data_Pipeline/scripts/preprocessing.py
+@@ -2,14 +2,14 @@ import numpy as np
+ import pandas as pd
+ from datetime import datetime
+ import polars as pl
+-from Data_Pipeline.scripts.logger import logger
++from logger import logger
+ from google.cloud import storage
+ from dotenv import load_dotenv
+ from typing import Dict, Tuple
+ import os
+ import argparse
+-from Data_Pipeline.scripts.utils import send_email, load_bucket_data, upload_to_gcs, setup_gcp_credentials
+-from Data_Pipeline.scripts.post_validation import post_validation
++from utils import send_email, load_bucket_data, upload_to_gcs, setup_gcp_credentials
++from post_validation import post_validation
+ 
+ load_dotenv()
+ 
+@@ -428,18 +428,17 @@ def detect_anomalies(df: pl.DataFrame) -> Tuple[Dict[str, pl.DataFrame], pl.Data
+                 (pl.col("Product Name") == product) & (pl.col("date_only") == date)
+             )
+ 
+-            if "Unit Price" in df.columns:
+-                if len(subset) >= 4:
+-                    lower_bound, upper_bound = iqr_bounds(subset["Unit Price"])
+-                    iqr_anoms = subset.filter(
+-                        (pl.col("Unit Price") < lower_bound)
+-                        | (pl.col("Unit Price") > upper_bound)
++            if len(subset) >= 4:
++                lower_bound, upper_bound = iqr_bounds(subset["Unit Price"])
++                iqr_anoms = subset.filter(
++                    (pl.col("Unit Price") < lower_bound)
++                    | (pl.col("Unit Price") > upper_bound)
++                )
++                if len(iqr_anoms) > 0:
++                    price_anomalies.append(iqr_anoms)
++                    anomaly_transaction_ids.update(
++                        iqr_anoms["Transaction ID"].to_list()
+                     )
+-                    if len(iqr_anoms) > 0:
+-                        price_anomalies.append(iqr_anoms)
+-                        anomaly_transaction_ids.update(
+-                            iqr_anoms["Transaction ID"].to_list()
+-                        )
+ 
+         anomalies["price_anomalies"] = (
+             pl.concat(price_anomalies) if price_anomalies else pl.DataFrame()
+@@ -480,7 +479,7 @@ def detect_anomalies(df: pl.DataFrame) -> Tuple[Dict[str, pl.DataFrame], pl.Data
+ 
+         # 4. Invalid Format Checks
+         format_anomalies = df.filter(
+-            (pl.col("Quantity") <= 0)
++            (pl.col("Unit Price") <= 0) | (pl.col("Quantity") <= 0)
+         )
+         anomalies["format_anomalies"] = format_anomalies
+         anomaly_transaction_ids.update(format_anomalies["Transaction ID"].to_list())
+@@ -687,11 +686,8 @@ def process_file(
+         logger.info("Filtering invalid product names...")
+         df = filter_invalid_products(df, REFERENCE_PRODUCT_NAMES)
+ 
+-        if "Unit Price" in df.columns:
+-            logger.info("Filling missing Unit Prices...")
+-            df = filling_missing_cost_price(df)
+-        else:
+-            logger.info("Skipping filling missing Unit Price...")
++        logger.info("Filling missing Unit Prices...")
++        df = filling_missing_cost_price(df)
+ 
+         logger.info("Removing invalid records...")
+         df = remove_invalid_records(df)
+diff --git a/Data_Pipeline/scripts/utils.py b/Data_Pipeline/scripts/utils.py
+index 0f10b8a..7f6ac14 100644
+--- a/Data_Pipeline/scripts/utils.py
++++ b/Data_Pipeline/scripts/utils.py
+@@ -3,7 +3,7 @@ import polars as pl
+ import pandas as pd
+ import json
+ 
+-from Data_Pipeline.scripts.logger import logger
++from logger import logger
+ 
+ import io
+ from google.cloud import storage

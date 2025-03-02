@@ -2,14 +2,29 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 import polars as pl
-from Data_Pipeline.scripts.logger import logger
+
+# Import helper to handle different import scenarios
+try:
+    # First try local import
+    from logger import logger
+    from utils import send_email, load_bucket_data, upload_to_gcs, setup_gcp_credentials
+    from post_validation import post_validation
+except ImportError:
+    # Fall back to absolute import if local fails
+    from Data_Pipeline.scripts.logger import logger
+    from Data_Pipeline.scripts.utils import (
+        send_email,
+        load_bucket_data,
+        upload_to_gcs,
+        setup_gcp_credentials,
+    )
+    from Data_Pipeline.scripts.post_validation import post_validation
+
 from google.cloud import storage
 from dotenv import load_dotenv
 from typing import Dict, Tuple
 import os
 import argparse
-from Data_Pipeline.scripts.utils import send_email, load_bucket_data, upload_to_gcs, setup_gcp_credentials
-from Data_Pipeline.scripts.post_validation import post_validation
 
 load_dotenv()
 
@@ -479,9 +494,7 @@ def detect_anomalies(df: pl.DataFrame) -> Tuple[Dict[str, pl.DataFrame], pl.Data
         logger.debug(f"Time anomalies detected: {len(time_anomalies)} transactions.")
 
         # 4. Invalid Format Checks
-        format_anomalies = df.filter(
-            (pl.col("Quantity") <= 0)
-        )
+        format_anomalies = df.filter((pl.col("Quantity") <= 0))
         anomalies["format_anomalies"] = format_anomalies
         anomaly_transaction_ids.update(format_anomalies["Transaction ID"].to_list())
         logger.debug(
