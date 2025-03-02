@@ -14,6 +14,7 @@ import os
 
 load_dotenv()
 
+
 # Set up GCP credentials path
 def setup_gcp_credentials():
     """

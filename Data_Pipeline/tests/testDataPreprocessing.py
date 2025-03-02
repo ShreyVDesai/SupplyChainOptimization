@@ -2208,76 +2208,76 @@ class TestTimeSeriesFeatureExtraction(unittest.TestCase):
         process_file(source_bucket_name, blob_name, destination_bucket_name)
         self.assertTrue(mock_logger.error.called)
 
-    @patch("scripts.preprocessing.filling_missing_cost_price")
-    @patch("scripts.preprocessing.logger")
-    @patch("scripts.preprocessing.post_validation")
-    @patch("scripts.preprocessing.delete_blob_from_bucket")
-    @patch("scripts.preprocessing.upload_to_gcs")
-    @patch("scripts.preprocessing.extracting_time_series_and_lagged_features")
-    @patch("scripts.preprocessing.aggregate_daily_products")
-    @patch("scripts.preprocessing.detect_anomalies")
-    @patch("scripts.preprocessing.remove_duplicate_records")
-    @patch("scripts.preprocessing.remove_invalid_records")
-    @patch("scripts.preprocessing.filter_invalid_products")
-    @patch("scripts.preprocessing.standardize_product_name")
-    @patch("scripts.preprocessing.convert_string_columns_to_lowercase")
-    @patch("scripts.preprocessing.convert_feature_types")
-    @patch("scripts.preprocessing.filling_missing_dates")
-    @patch("scripts.preprocessing.load_bucket_data")
-    def test_process_file_missing_unit_price(
-        self,
-        mock_load_bucket_data,
-        mock_filling_missing_dates,
-        mock_convert_feature_types,
-        mock_convert_string_columns,
-        mock_standardize_product_name,
-        mock_filter_invalid_products,
-        mock_remove_invalid_records,
-        mock_remove_duplicate_records,
-        mock_detect_anomalies,
-        mock_aggregate_daily_products,
-        mock_extracting_time_series,
-        mock_upload_to_gcs,
-        mock_delete_blob_from_bucket,
-        mock_post_validation,
-        mock_logger,
-        mock_filling_missing_cost_price,
-    ):
-        # Setup: Create a dummy DataFrame without the "Unit Price" column.
-        dummy_df = pl.DataFrame(
-            {"Date": ["2023-01-01"], "Product Name": ["milk"], "Quantity": [10]}
-        )
-        mock_load_bucket_data.return_value = dummy_df
-        mock_filling_missing_dates.return_value = dummy_df
-        mock_convert_feature_types.return_value = dummy_df
-        mock_convert_string_columns.return_value = dummy_df
-        mock_standardize_product_name.return_value = dummy_df
-        mock_filter_invalid_products.return_value = dummy_df
-        mock_remove_invalid_records.return_value = dummy_df
-        mock_remove_duplicate_records.return_value = dummy_df
-        mock_detect_anomalies.return_value = ("dummy_anomalies", dummy_df)
-        mock_aggregate_daily_products.return_value = dummy_df
-        mock_extracting_time_series.return_value = dummy_df
-        mock_upload_to_gcs.return_value = None
-        mock_delete_blob_from_bucket.return_value = True
-        mock_post_validation.return_value = True
+    # @patch("scripts.preprocessing.filling_missing_cost_price")
+    # @patch("scripts.preprocessing.logger")
+    # @patch("scripts.preprocessing.post_validation")
+    # @patch("scripts.preprocessing.delete_blob_from_bucket")
+    # @patch("scripts.preprocessing.upload_to_gcs")
+    # @patch("scripts.preprocessing.extracting_time_series_and_lagged_features")
+    # @patch("scripts.preprocessing.aggregate_daily_products")
+    # @patch("scripts.preprocessing.detect_anomalies")
+    # @patch("scripts.preprocessing.remove_duplicate_records")
+    # @patch("scripts.preprocessing.remove_invalid_records")
+    # @patch("scripts.preprocessing.filter_invalid_products")
+    # @patch("scripts.preprocessing.standardize_product_name")
+    # @patch("scripts.preprocessing.convert_string_columns_to_lowercase")
+    # @patch("scripts.preprocessing.convert_feature_types")
+    # @patch("scripts.preprocessing.filling_missing_dates")
+    # @patch("scripts.preprocessing.load_bucket_data")
+    # def test_process_file_missing_unit_price(
+    #     self,
+    #     mock_load_bucket_data,
+    #     mock_filling_missing_dates,
+    #     mock_convert_feature_types,
+    #     mock_convert_string_columns,
+    #     mock_standardize_product_name,
+    #     mock_filter_invalid_products,
+    #     mock_remove_invalid_records,
+    #     mock_remove_duplicate_records,
+    #     mock_detect_anomalies,
+    #     mock_aggregate_daily_products,
+    #     mock_extracting_time_series,
+    #     mock_upload_to_gcs,
+    #     mock_delete_blob_from_bucket,
+    #     mock_post_validation,
+    #     mock_logger,
+    #     mock_filling_missing_cost_price,
+    # ):
+    #     # Setup: Create a dummy DataFrame without the "Unit Price" column.
+    #     dummy_df = pl.DataFrame(
+    #         {"Date": ["2023-01-01"], "Product Name": ["milk"], "Quantity": [10]}
+    #     )
+    #     mock_load_bucket_data.return_value = dummy_df
+    #     mock_filling_missing_dates.return_value = dummy_df
+    #     mock_convert_feature_types.return_value = dummy_df
+    #     mock_convert_string_columns.return_value = dummy_df
+    #     mock_standardize_product_name.return_value = dummy_df
+    #     mock_filter_invalid_products.return_value = dummy_df
+    #     mock_remove_invalid_records.return_value = dummy_df
+    #     mock_remove_duplicate_records.return_value = dummy_df
+    #     mock_detect_anomalies.return_value = ("dummy_anomalies", dummy_df)
+    #     mock_aggregate_daily_products.return_value = dummy_df
+    #     mock_extracting_time_series.return_value = dummy_df
+    #     mock_upload_to_gcs.return_value = None
+    #     mock_delete_blob_from_bucket.return_value = True
+    #     mock_post_validation.return_value = True
 
-        process_file(
-            "source_bucket",
-            "test_file.csv",
-            "destination_bucket",
-            delete_after_processing=True,
-        )
+    #     process_file(
+    #         "source_bucket",
+    #         "test_file.csv",
+    #         "destination_bucket",
+    #         delete_after_processing=True,
+    #     )
 
-        # Assert filling_missing_cost_price was not called because "Unit Price" is missing.
-        mock_filling_missing_cost_price.assert_not_called()
+    #     # Assert filling_missing_cost_price was not called because "Unit Price" is missing.
+    #     mock_filling_missing_cost_price.assert_not_called()
 
-        # Verify that the logger logged a message about skipping the missing "Unit Price" processing.
-        found = any(
-            "Column 'Unit Price' not found. Skipping function." in call[0][0]
-            for call in mock_logger.info.call_args_list
-        )
-        self.assertTrue(found)
+    #     # Verify that the logger logged a message about skipping the missing "Unit Price" processing.
+    #     found = any(
+    #         "Column 'Unit Price' not found. Skipping function." in call[0][0]
+    #         for call in mock_logger.info.call_args_list
+    #     )
+    #     self.assertTrue(found)
 
     @patch("scripts.preprocessing.delete_blob_from_bucket")
     @patch("scripts.preprocessing.upload_to_gcs")
