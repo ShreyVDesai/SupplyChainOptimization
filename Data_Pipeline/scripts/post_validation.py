@@ -1,19 +1,19 @@
-import polars as pl
 import pandas as pd
+import polars as pl
 
 try:
     from logger import logger
     from utils import (
-        upload_to_gcs,
         collect_validation_errors,
         send_anomaly_alert,
+        upload_to_gcs,
     )
 except ImportError:  # For testing purposes
     from Data_Pipeline.scripts.logger import logger
     from Data_Pipeline.scripts.utils import (
-        upload_to_gcs,
         collect_validation_errors,
         send_anomaly_alert,
+        upload_to_gcs,
     )
 
 # Post-validation expected columns
@@ -31,7 +31,8 @@ def check_column_types(df, error_indices, error_reasons):
     """
     # Check Product Name (should be string type)
     if "Product Name" in df.columns:
-        invalid_product_mask = ~df["Product Name"].apply(lambda x: isinstance(x, str))
+        invalid_product_mask = ~df["Product Name"
+                                   ].apply(lambda x: isinstance(x, str))
         for idx in df[invalid_product_mask].index:
             error_indices.add(idx)
             reason = "Product Name must be a string"
@@ -44,8 +45,11 @@ def check_column_types(df, error_indices, error_reasons):
     if "Total Quantity" in df.columns:
         # Check if numeric
         try:
-            # Convert to numeric if possible, errors='coerce' will set invalid values to NaN
-            quantity_series = pd.to_numeric(df["Total Quantity"], errors="coerce")
+            # Convert to numeric if possible, errors='coerce' will set invalid
+            # values to NaN
+            quantity_series = pd.to_numeric(
+                df["Total Quantity"], errors="coerce"
+            )
 
             # Check for NaN values (conversion failures)
             nan_mask = quantity_series.isna()
@@ -83,22 +87,20 @@ def check_column_types(df, error_indices, error_reasons):
                     else:
                         error_reasons[idx] = [reason]
                 else:
-                    # Check if it matches expected date format using string operations
+                    # Check if it matches expected date format using string
+                    # operations
                     if isinstance(date_val, str):
                         # Check various date formats using string manipulation
                         date_formats_valid = any(
                             [
                                 # YYYY-MM-DD
-                                len(date_val) >= 10
-                                and date_val[4] == "-"
+                                len(date_val) >= 10 and date_val[4] == "-"
                                 and date_val[7] == "-",
                                 # MM-DD-YYYY or DD-MM-YYYY
-                                len(date_val) >= 10
-                                and date_val[2] == "-"
+                                len(date_val) >= 10 and date_val[2] == "-"
                                 and date_val[5] == "-",
                                 # MM/DD/YYYY or DD/MM/YYYY
-                                len(date_val) >= 10
-                                and date_val[2] == "/"
+                                len(date_val) >= 10 and date_val[2] == "/"
                                 and date_val[5] == "/",
                             ]
                         )
@@ -161,7 +163,9 @@ def validate_data(df):
 
         # If columns are missing, collect the errors
         if missing_columns:
-            collect_validation_errors(df, missing_columns, error_indices, error_reasons)
+            collect_validation_errors(
+                df, missing_columns, error_indices, error_reasons
+            )
         else:
             # Only perform type checking if all required columns are present
             check_column_types(df, error_indices, error_reasons)
@@ -170,7 +174,8 @@ def validate_data(df):
         anomalies_df = pd.DataFrame()
         if error_indices:
             anomalies_df = (
-                df.iloc[list(error_indices)].copy() if not df.empty else pd.DataFrame()
+                df.iloc[list(error_indices)].copy()
+                if not df.empty else pd.DataFrame()
             )
             # Only add anomaly_reason if there are actual errors
             if not anomalies_df.empty:
@@ -182,7 +187,9 @@ def validate_data(df):
         if not anomalies_df.empty or missing_columns:
             error_message = ""
             if missing_columns:
-                error_message += f"Missing columns: {', '.join(missing_columns)}. "
+                error_message += (
+                    f"Missing columns: {', '.join(missing_columns)}. "
+                )
             if not anomalies_df.empty:
                 error_message += f"{len(anomalies_df)} rows failed validation."
 
@@ -251,7 +258,9 @@ def generate_numeric_stats(
     try:
         json_df = pl.DataFrame([{"stats": grouped_stats}])
         upload_to_gcs(
-            json_df, bucket_name="metadata_stats", destination_blob_name=filename
+            json_df,
+            bucket_name="metadata_stats",
+            destination_blob_name=filename,
         )
         logger.info(f"Numeric statistics saved to {filename}.")
     except Exception as e:

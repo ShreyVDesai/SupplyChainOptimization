@@ -1,6 +1,7 @@
-import pandas as pd
-import numpy as np
 import random
+
+import numpy as np
+import pandas as pd
 
 
 def mess_up_data(input_file, output_file):
@@ -26,17 +27,15 @@ def mess_up_data(input_file, output_file):
 
     for col, pct in missing_values.items():
         if col in df.columns:
-            df.loc[df.sample(frac=pct).index, col] = (
-                np.nan
-            )  # Introduce missing values globally
+            df.loc[df.sample(frac=pct).index,
+                   col] = (np.nan)  # Introduce missing values globally
 
     # Introduce inconsistent date formats
     if "Date" in df.columns:
         date_indices = df.sample(frac=0.02).index  # 2% inconsistent dates
         df.loc[date_indices, "Date"] = df.loc[date_indices, "Date"].apply(
             lambda x: (
-                x.strftime("%d/%m/%Y")
-                if pd.notna(x) and random.random() > 0.5
+                x.strftime("%d/%m/%Y") if pd.notna(x) and random.random() > 0.5
                 else x.strftime("%m-%d-%Y") if pd.notna(x) else x
             )
         )
@@ -47,7 +46,7 @@ def mess_up_data(input_file, output_file):
     processed_chunks = []  # List to store processed chunks
 
     for i in range(num_chunks):
-        chunk = df[i * chunk_size : (i + 1) * chunk_size]
+        chunk = df[i * chunk_size:(i + 1) * chunk_size]
 
         if chunk.empty:
             continue  # Skip empty chunks
@@ -60,13 +59,10 @@ def mess_up_data(input_file, output_file):
 
         if "Product Name" in chunk.columns:
             chunk.loc[chunk.sample(frac=0.03).index, "Product Name"] = (
-                chunk["Product Name"]
-                .astype(str)
-                .apply(
+                chunk["Product Name"].astype(str).apply(
                     lambda x: (
                         x.replace("a", "@")
-                        if random.random() > 0.5
-                        else x.replace("o", "0")
+                        if random.random() > 0.5 else x.replace("o", "0")
                     )
                 )
             )  # 3% misspelled Product Names
@@ -100,7 +96,9 @@ def mess_up_data(input_file, output_file):
             inconsistent_indices = chunk.sample(
                 frac=0.02
             ).index  # 1% logical inconsistencies
-            chunk.loc[inconsistent_indices, "Cost Price"] = 0  # Cost Price is zero
+            chunk.loc[inconsistent_indices, "Cost Price"] = (
+                0  # Cost Price is zero
+            )
             chunk.loc[inconsistent_indices, "Quantity"] = random.randint(
                 1, 10
             )  # Quantity is non-zero
@@ -119,6 +117,8 @@ def mess_up_data(input_file, output_file):
 
 
 # Example usage
-input_file = "transactions_20190103_20241231.xlsx"  # Replace with actual file path
+input_file = (
+    "transactions_20190103_20241231.xlsx"  # Replace with actual file path
+)
 output_file = "messy_transactions_20190103_20241231.xlsx"
 mess_up_data(input_file, output_file)

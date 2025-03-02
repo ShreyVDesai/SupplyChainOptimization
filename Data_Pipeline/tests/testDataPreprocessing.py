@@ -1,35 +1,35 @@
-import polars as pl
-from polars.testing import assert_frame_equal
-from datetime import datetime, timedelta
 import io
 import unittest
-from datetime import date
-from unittest.mock import MagicMock, patch, call
+from datetime import date, datetime, timedelta
+from unittest.mock import MagicMock, call, patch
+
+import polars as pl
+from polars.testing import assert_frame_equal
 from scripts.preprocessing import (
+    aggregate_daily_products,
+    calculate_zscore,
+    compute_most_frequent_price,
     convert_feature_types,
-    load_bucket_data,
+    convert_string_columns_to_lowercase,
+    delete_blob_from_bucket,
     detect_anomalies,
-    upload_to_gcs,
+    detect_date_order,
+    extract_datetime_features,
+    extracting_time_series_and_lagged_features,
+    filling_missing_cost_price,
+    filling_missing_dates,
+    filter_invalid_products,
+    iqr_bounds,
+    list_bucket_blobs,
+    load_bucket_data,
+    main,
+    process_file,
     remove_duplicate_records,
     remove_invalid_records,
-    standardize_product_name,
-    filling_missing_cost_price,
-    convert_string_columns_to_lowercase,
-    compute_most_frequent_price,
-    standardize_date_format,
-    detect_date_order,
-    filling_missing_dates,
-    extract_datetime_features,
     send_anomaly_alert,
-    aggregate_daily_products,
-    extracting_time_series_and_lagged_features,
-    calculate_zscore,
-    iqr_bounds,
-    process_file,
-    delete_blob_from_bucket,
-    list_bucket_blobs,
-    filter_invalid_products,
-    main,
+    standardize_date_format,
+    standardize_product_name,
+    upload_to_gcs,
 )
 
 
@@ -58,7 +58,7 @@ class TestDataPreprocessing(unittest.TestCase):
             }
         )
 
-    ### Unit Tests for convert_types.
+    # Unit Tests for convert_types.
 
     def test_convert_feature_types(self):
         # Setup
@@ -88,9 +88,10 @@ class TestDataPreprocessing(unittest.TestCase):
 
     def test_convert_feature_types_missing_column(self):
         # Setup
-        df = pl.DataFrame({"Date": ["2024-01-01"], "Quantity": [5]}).with_columns(
-            pl.col("Date").str.strptime(pl.Date, "%Y-%m-%d")
-        )
+        df = pl.DataFrame({
+            "Date": ["2024-01-01"],
+            "Quantity": [5]
+        }).with_columns(pl.col("Date").str.strptime(pl.Date, "%Y-%m-%d"))
 
         # Test
         converted_df = convert_feature_types(df)
@@ -125,14 +126,17 @@ class TestDataPreprocessing(unittest.TestCase):
     def test_convert_feature_types_invalid_data(self):
         # Setup
         df_invalid = pl.DataFrame(
-            {"Date": ["invalid_date"], "Quantity": ["not_a_number"]}
+            {
+                "Date": ["invalid_date"],
+                "Quantity": ["not_a_number"]
+            }
         )
 
         # Test
         with self.assertRaises(Exception):
             convert_feature_types(df_invalid)
 
-    ### Unit tests for standardize_date_format function.
+    # Unit tests for standardize_date_format function.
 
     # Test case where date has multiple formats.
     def test_standardize_date_format_multiple_formats(self):
@@ -218,14 +222,16 @@ class TestDataPreprocessing(unittest.TestCase):
         df = pl.DataFrame({"Date": ["2020-01-01", "2020-02-02"]})
 
         # Test
-        with patch.object(df, "with_columns", side_effect=Exception("Forced error")):
+        with patch.object(
+            df, "with_columns", side_effect=Exception("Forced error")
+        ):
             with self.assertRaises(Exception) as context:
                 standardize_date_format(df, "Date")
 
         # Assert
         self.assertEqual(str(context.exception), "Forced error")
 
-    ### Unit tests for detect_date_order function.
+    # Unit tests for detect_date_order function.
 
     # Test case where date order is Ascending.
     def test_detect_date_order_ascending_order(self):
@@ -284,7 +290,16 @@ class TestDataPreprocessing(unittest.TestCase):
     def test_detect_date_order_null_values(self):
         # Setup
         df = pl.DataFrame(
-            {"Date": ["2021-01-01", None, None, None, "2021-03-01", "2022-01-01"]}
+            {
+                "Date": [
+                    "2021-01-01",
+                    None,
+                    None,
+                    None,
+                    "2021-03-01",
+                    "2022-01-01",
+                ]
+            }
         )
         df = standardize_date_format(df)
 
@@ -313,7 +328,9 @@ class TestDataPreprocessing(unittest.TestCase):
 
         # Test
         with patch.object(
-            pl.DataFrame, "with_columns", side_effect=Exception("Forced error")
+            pl.DataFrame,
+            "with_columns",
+            side_effect=Exception("Forced error")
         ):
             with self.assertRaises(Exception) as context:
                 detect_date_order(df, "Date")
@@ -321,13 +338,16 @@ class TestDataPreprocessing(unittest.TestCase):
         # Assert
         self.assertEqual(str(context.exception), "Forced error")
 
-    ### Unit Tests for filling_missing_dates function.
+    # Unit Tests for filling_missing_dates function.
 
-    ### Helper function.
-    def convert_dates_to_str(self, df: pl.DataFrame, col: str = "Date") -> pl.DataFrame:
+    # Helper function.
+    def convert_dates_to_str(
+        self, df: pl.DataFrame, col: str = "Date"
+    ) -> pl.DataFrame:
         return df.with_columns(pl.col(col).dt.strftime("%Y-%m-%d").alias(col))
 
-    # Test case where Ascending order with missing dates, different day records dropped.
+    # Test case where Ascending order with missing dates, different day
+    # records dropped.
     @patch("scripts.preprocessing.detect_date_order", return_value="Ascending")
     @patch(
         "scripts.preprocessing.standardize_date_format",
@@ -335,7 +355,9 @@ class TestDataPreprocessing(unittest.TestCase):
             pl.col(date_column).str.strptime(pl.Datetime, "%Y-%m-%d")
         ),
     )
-    def test_filling_missing_dates_ascending(self, mock_standardize, mock_detect):
+    def test_filling_missing_dates_ascending(
+        self, mock_standardize, mock_detect
+    ):
         # Setup
         data = {"Date": ["2020-01-01", None, "2020-01-03", None, "2020-01-05"]}
         df = pl.DataFrame(data)
@@ -350,15 +372,20 @@ class TestDataPreprocessing(unittest.TestCase):
         # Assert
         self.assertEqual(result_dates, expected_dates)
 
-    # Test case where Descending order with missing dates, different day records dropped.
-    @patch("scripts.preprocessing.detect_date_order", return_value="Descending")
+    # Test case where Descending order with missing dates, different day
+    # records dropped.
+    @patch(
+        "scripts.preprocessing.detect_date_order", return_value="Descending"
+    )
     @patch(
         "scripts.preprocessing.standardize_date_format",
         side_effect=lambda df, date_column: df.with_columns(
             pl.col(date_column).str.strptime(pl.Datetime, "%Y-%m-%d")
         ),
     )
-    def test_filling_missing_dates_descending(self, mock_standardize, mock_detect):
+    def test_filling_missing_dates_descending(
+        self, mock_standardize, mock_detect
+    ):
         # Setup
         data = {"Date": ["2020-01-05", None, "2020-01-03", None, "2020-01-01"]}
         df = pl.DataFrame(data)
@@ -402,7 +429,9 @@ class TestDataPreprocessing(unittest.TestCase):
         )
 
     # Test case where Descending order with missing dates on same day.
-    @patch("scripts.preprocessing.detect_date_order", return_value="Descending")
+    @patch(
+        "scripts.preprocessing.detect_date_order", return_value="Descending"
+    )
     @patch(
         "scripts.preprocessing.standardize_date_format",
         side_effect=lambda df, date_column: df,
@@ -437,7 +466,9 @@ class TestDataPreprocessing(unittest.TestCase):
             pl.col(date_column).str.strptime(pl.Datetime, "%Y-%m-%d")
         ),
     )
-    def test_filling_missing_dates_random_order(self, mock_standardize, mock_detect):
+    def test_filling_missing_dates_random_order(
+        self, mock_standardize, mock_detect
+    ):
         # Setup
         data = {"Date": ["2022-01-02", None, "2020-01-03", None, "2025-01-01"]}
         df = pl.DataFrame(data)
@@ -522,7 +553,7 @@ class TestDataPreprocessing(unittest.TestCase):
         # Assert
         self.assertIn("Standardization error", str(context.exception))
 
-    ### Unit Tests for extract_datetime_features function.
+    # Unit Tests for extract_datetime_features function.
 
     # Test case where all features are extracted correctly.
     def test_extract_datetime_feature_successfully(self):
@@ -559,7 +590,7 @@ class TestDataPreprocessing(unittest.TestCase):
         with self.assertRaises(Exception):
             extract_datetime_features(df)
 
-    ### Unit tests for compute_most_frequent_price function.
+    # Unit tests for compute_most_frequent_price function.
 
     # Test case where compute_most_frequent_price has [year, month, week].
     def test_compute_most_frequent_price_with_year_month_week(self):
@@ -569,13 +600,22 @@ class TestDataPreprocessing(unittest.TestCase):
                 "Year": [2020, 2020, 2020, 2021, 2022, 2022],
                 "Month": [1, 1, 1, 1, 1, 1],
                 "Week_of_year": [1, 1, 2, 1, 2, 2],
-                "Product Name": ["Milk", "Milk", "Milk", "Milk", "Milk", "Milk"],
+                "Product Name": [
+                    "Milk",
+                    "Milk",
+                    "Milk",
+                    "Milk",
+                    "Milk",
+                    "Milk",
+                ],
                 "Unit Price": [1.5, 1.5, 2.0, 2.0, 2.5, 2.5],
             }
         )
 
         # Test
-        result = compute_most_frequent_price(df, ["Year", "Month", "Week_of_year"])
+        result = compute_most_frequent_price(
+            df, ["Year", "Month", "Week_of_year"]
+        )
 
         expected = pl.DataFrame(
             {
@@ -588,7 +628,9 @@ class TestDataPreprocessing(unittest.TestCase):
         )
 
         # Sort by Week_of_year for comparison.
-        result_sorted = result.sort(["Year", "Month", "Week_of_year", "Product Name"])
+        result_sorted = result.sort(
+            ["Year", "Month", "Week_of_year", "Product Name"]
+        )
         expected_sorted = expected.sort(
             ["Year", "Month", "Week_of_year", "Product Name"]
         )
@@ -724,7 +766,7 @@ class TestDataPreprocessing(unittest.TestCase):
         with self.assertRaises(Exception) as context:
             compute_most_frequent_price(df, ["Year", "Month"])
 
-    ### Unit Tests for convert_string_columns_to_lowercase function.
+    # Unit Tests for convert_string_columns_to_lowercase function.
 
     # Test case where all features are string.
     def test_convert_string_columns_to_lowercase_all_features_string(self):
@@ -743,7 +785,9 @@ class TestDataPreprocessing(unittest.TestCase):
         self.assertEqual(
             df_result["Product Name"].to_list(), ["milk", "beans", "coffee"]
         )
-        self.assertEqual(df_result["Transaction ID"].to_list(), ["xyz", "12lmn", "opq"])
+        self.assertEqual(
+            df_result["Transaction ID"].to_list(), ["xyz", "12lmn", "opq"]
+        )
 
     # Test case where no features are string.
     def test_convert_string_columns_to_lowercase_no_string(self):
@@ -759,13 +803,20 @@ class TestDataPreprocessing(unittest.TestCase):
     # Test case where mix of string and non-string feature.
     def test_convert_string_columns_to_lowercase_mixed_string_features(self):
         # Setup
-        df = pl.DataFrame({"Product Name": ["MILK", "COFFee"], "Unit Price": [30, 25]})
+        df = pl.DataFrame(
+            {
+                "Product Name": ["MILK", "COFFee"],
+                "Unit Price": [30, 25]
+            }
+        )
 
         # Test
         result_df = convert_string_columns_to_lowercase(df)
 
         # Assert
-        self.assertEqual(result_df["Product Name"].to_list(), ["milk", "coffee"])
+        self.assertEqual(
+            result_df["Product Name"].to_list(), ["milk", "coffee"]
+        )
         self.assertEqual(result_df["Unit Price"].to_list(), [30, 25])
 
     # Test case where empty dataframe.
@@ -793,7 +844,7 @@ class TestDataPreprocessing(unittest.TestCase):
         # Assert
         self.assertIn("Test error", str(context.exception))
 
-    ### Unit tests for filling_missing_cost_price functions.
+    # Unit tests for filling_missing_cost_price functions.
 
     # Test case where cost price filled by Week.
     @patch("scripts.preprocessing.extract_datetime_features")
@@ -828,22 +879,25 @@ class TestDataPreprocessing(unittest.TestCase):
 
         price_by_month_df = pl.DataFrame(
             {
-                "Year": pl.Series("Year", [], dtype=pl.Int64),
-                "Month": pl.Series("Month", [], dtype=pl.Int64),
-                "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
-                "Most_Frequent_Cost": pl.Series(
-                    "Most_Frequent_Cost", [], dtype=pl.Float64
-                ),
+                "Year":
+                pl.Series("Year", [], dtype=pl.Int64),
+                "Month":
+                pl.Series("Month", [], dtype=pl.Int64),
+                "Product Name":
+                pl.Series("Product Name", [], dtype=pl.Utf8),
+                "Most_Frequent_Cost":
+                pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64),
             }
         )
 
         price_by_year_df = pl.DataFrame(
             {
-                "Year": pl.Series("Year", [], dtype=pl.Int64),
-                "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
-                "Most_Frequent_Cost": pl.Series(
-                    "Most_Frequent_Cost", [], dtype=pl.Float64
-                ),
+                "Year":
+                pl.Series("Year", [], dtype=pl.Int64),
+                "Product Name":
+                pl.Series("Product Name", [], dtype=pl.Utf8),
+                "Most_Frequent_Cost":
+                pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64),
             }
         )
 
@@ -900,11 +954,12 @@ class TestDataPreprocessing(unittest.TestCase):
         # Year-level aggregation: return an empty DataFrame with proper schema.
         price_by_year = pl.DataFrame(
             {
-                "Year": pl.Series("Year", [], dtype=pl.Int64),
-                "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
-                "Most_Frequent_Cost": pl.Series(
-                    "Most_Frequent_Cost", [], dtype=pl.Float64
-                ),
+                "Year":
+                pl.Series("Year", [], dtype=pl.Int64),
+                "Product Name":
+                pl.Series("Product Name", [], dtype=pl.Utf8),
+                "Most_Frequent_Cost":
+                pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64),
             }
         )
         mock_compute_most_frequent_price.side_effect = [
@@ -940,29 +995,38 @@ class TestDataPreprocessing(unittest.TestCase):
         # Week-level: empty DataFrame with correct schema.
         price_by_week = pl.DataFrame(
             {
-                "Year": pl.Series("Year", [], dtype=pl.Int64),
-                "Month": pl.Series("Month", [], dtype=pl.Int64),
-                "Week_of_year": pl.Series("Week_of_year", [], dtype=pl.Int64),
-                "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
-                "Most_Frequent_Cost": pl.Series(
-                    "Most_Frequent_Cost", [], dtype=pl.Float64
-                ),
+                "Year":
+                pl.Series("Year", [], dtype=pl.Int64),
+                "Month":
+                pl.Series("Month", [], dtype=pl.Int64),
+                "Week_of_year":
+                pl.Series("Week_of_year", [], dtype=pl.Int64),
+                "Product Name":
+                pl.Series("Product Name", [], dtype=pl.Utf8),
+                "Most_Frequent_Cost":
+                pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64),
             }
         )
         # Month-level: empty.
         price_by_month = pl.DataFrame(
             {
-                "Year": pl.Series("Year", [], dtype=pl.Int64),
-                "Month": pl.Series("Month", [], dtype=pl.Int64),
-                "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
-                "Most_Frequent_Cost": pl.Series(
-                    "Most_Frequent_Cost", [], dtype=pl.Float64
-                ),
+                "Year":
+                pl.Series("Year", [], dtype=pl.Int64),
+                "Month":
+                pl.Series("Month", [], dtype=pl.Int64),
+                "Product Name":
+                pl.Series("Product Name", [], dtype=pl.Utf8),
+                "Most_Frequent_Cost":
+                pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64),
             }
         )
         # Year-level: returns a value.
         price_by_year = pl.DataFrame(
-            {"Year": [2023], "Product Name": ["milk"], "Most_Frequent_Cost": [20.0]}
+            {
+                "Year": [2023],
+                "Product Name": ["milk"],
+                "Most_Frequent_Cost": [20.0],
+            }
         )
         mock_compute_most_frequent_price.side_effect = [
             price_by_week,
@@ -996,34 +1060,40 @@ class TestDataPreprocessing(unittest.TestCase):
 
         empty_week = pl.DataFrame(
             {
-                "Year": pl.Series("Year", [], dtype=pl.Int64),
-                "Month": pl.Series("Month", [], dtype=pl.Int64),
-                "Week_of_year": pl.Series("Week_of_year", [], dtype=pl.Int64),
-                "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
-                "Most_Frequent_Cost": pl.Series(
-                    "Most_Frequent_Cost", [], dtype=pl.Float64
-                ),
+                "Year":
+                pl.Series("Year", [], dtype=pl.Int64),
+                "Month":
+                pl.Series("Month", [], dtype=pl.Int64),
+                "Week_of_year":
+                pl.Series("Week_of_year", [], dtype=pl.Int64),
+                "Product Name":
+                pl.Series("Product Name", [], dtype=pl.Utf8),
+                "Most_Frequent_Cost":
+                pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64),
             }
         )
 
         empty_month = pl.DataFrame(
             {
-                "Year": pl.Series("Year", [], dtype=pl.Int64),
-                "Month": pl.Series("Month", [], dtype=pl.Int64),
-                "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
-                "Most_Frequent_Cost": pl.Series(
-                    "Most_Frequent_Cost", [], dtype=pl.Float64
-                ),
+                "Year":
+                pl.Series("Year", [], dtype=pl.Int64),
+                "Month":
+                pl.Series("Month", [], dtype=pl.Int64),
+                "Product Name":
+                pl.Series("Product Name", [], dtype=pl.Utf8),
+                "Most_Frequent_Cost":
+                pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64),
             }
         )
 
         empty_year = pl.DataFrame(
             {
-                "Year": pl.Series("Year", [], dtype=pl.Int64),
-                "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
-                "Most_Frequent_Cost": pl.Series(
-                    "Most_Frequent_Cost", [], dtype=pl.Float64
-                ),
+                "Year":
+                pl.Series("Year", [], dtype=pl.Int64),
+                "Product Name":
+                pl.Series("Product Name", [], dtype=pl.Utf8),
+                "Most_Frequent_Cost":
+                pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64),
             }
         )
         mock_compute_most_frequent_price.side_effect = [
@@ -1058,34 +1128,40 @@ class TestDataPreprocessing(unittest.TestCase):
 
         empty_week = pl.DataFrame(
             {
-                "Year": pl.Series("Year", [], dtype=pl.Int64),
-                "Month": pl.Series("Month", [], dtype=pl.Int64),
-                "Week_of_year": pl.Series("Week_of_year", [], dtype=pl.Int64),
-                "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
-                "Most_Frequent_Cost": pl.Series(
-                    "Most_Frequent_Cost", [], dtype=pl.Float64
-                ),
+                "Year":
+                pl.Series("Year", [], dtype=pl.Int64),
+                "Month":
+                pl.Series("Month", [], dtype=pl.Int64),
+                "Week_of_year":
+                pl.Series("Week_of_year", [], dtype=pl.Int64),
+                "Product Name":
+                pl.Series("Product Name", [], dtype=pl.Utf8),
+                "Most_Frequent_Cost":
+                pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64),
             }
         )
 
         empty_month = pl.DataFrame(
             {
-                "Year": pl.Series("Year", [], dtype=pl.Int64),
-                "Month": pl.Series("Month", [], dtype=pl.Int64),
-                "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
-                "Most_Frequent_Cost": pl.Series(
-                    "Most_Frequent_Cost", [], dtype=pl.Float64
-                ),
+                "Year":
+                pl.Series("Year", [], dtype=pl.Int64),
+                "Month":
+                pl.Series("Month", [], dtype=pl.Int64),
+                "Product Name":
+                pl.Series("Product Name", [], dtype=pl.Utf8),
+                "Most_Frequent_Cost":
+                pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64),
             }
         )
 
         empty_year = pl.DataFrame(
             {
-                "Year": pl.Series("Year", [], dtype=pl.Int64),
-                "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
-                "Most_Frequent_Cost": pl.Series(
-                    "Most_Frequent_Cost", [], dtype=pl.Float64
-                ),
+                "Year":
+                pl.Series("Year", [], dtype=pl.Int64),
+                "Product Name":
+                pl.Series("Product Name", [], dtype=pl.Utf8),
+                "Most_Frequent_Cost":
+                pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64),
             }
         )
 
@@ -1106,7 +1182,9 @@ class TestDataPreprocessing(unittest.TestCase):
         "scripts.preprocessing.extract_datetime_features",
         side_effect=Exception("Test Exception"),
     )
-    def test_cost_price_filled_throws_exception(self, mock_extract_datetime_features):
+    def test_cost_price_filled_throws_exception(
+        self, mock_extract_datetime_features
+    ):
         # Setup
         df = pl.DataFrame(
             {
@@ -1125,7 +1203,7 @@ class TestDataPreprocessing(unittest.TestCase):
         # Assert
         self.assertIn("Test Exception", str(context.exception))
 
-    ### Unit tests remove_invalid_records functions.
+    # Unit tests remove_invalid_records functions.
 
     # Test case where records are valid.
     def test_remove_invalid_records_valid_records(self):
@@ -1148,11 +1226,17 @@ class TestDataPreprocessing(unittest.TestCase):
     def test_remove_invalid_records_missing_Quantity(self):
         # Setup
         df = pl.DataFrame(
-            {"Quantity": [10, None, 30], "Product Name": ["milk", "bread", "cheese"]}
+            {
+                "Quantity": [10, None, 30],
+                "Product Name": ["milk", "bread", "cheese"],
+            }
         )
 
         expected_df = pl.DataFrame(
-            {"Quantity": [10, 30], "Product Name": ["milk", "cheese"]}
+            {
+                "Quantity": [10, 30],
+                "Product Name": ["milk", "cheese"]
+            }
         )
 
         # Test
@@ -1165,10 +1249,16 @@ class TestDataPreprocessing(unittest.TestCase):
     def test_remove_invalid_records_missing_Product_Name(self):
         # Setup
         df = pl.DataFrame(
-            {"Quantity": [10, 20, 30], "Product Name": ["milk", None, "cheese"]}
+            {
+                "Quantity": [10, 20, 30],
+                "Product Name": ["milk", None, "cheese"],
+            }
         )
         expected_df = pl.DataFrame(
-            {"Quantity": [10, 30], "Product Name": ["milk", "cheese"]}
+            {
+                "Quantity": [10, 30],
+                "Product Name": ["milk", "cheese"]
+            }
         )
 
         # Test
@@ -1187,7 +1277,12 @@ class TestDataPreprocessing(unittest.TestCase):
             }
         )
 
-        expected_df = pl.DataFrame({"Quantity": [10], "Product Name": ["milk"]})
+        expected_df = pl.DataFrame(
+            {
+                "Quantity": [10],
+                "Product Name": ["milk"]
+            }
+        )
 
         # Test
         result_df = remove_invalid_records(df)
@@ -1218,7 +1313,7 @@ class TestDataPreprocessing(unittest.TestCase):
         # Assert
         self.assertIn("Product Name", str(context.exception))
 
-    ### Unit tests for standardize_product_name function.
+    # Unit tests for standardize_product_name function.
 
     # Test case where empty string.
     def test_standardize_product_name_with_empty_string(self):
@@ -1244,7 +1339,9 @@ class TestDataPreprocessing(unittest.TestCase):
 
     # Test case where exception handling is done.
     @patch("scripts.preprocessing.pl.col", side_effect=Exception("Test error"))
-    def test_standardize_product_name_with_exception_handling(self, mock_to_lowercase):
+    def test_standardize_product_name_with_exception_handling(
+        self, mock_to_lowercase
+    ):
         # Setup
         df = pl.DataFrame({"Product Name": ["MILK"]})
 
@@ -1255,7 +1352,7 @@ class TestDataPreprocessing(unittest.TestCase):
         # Assert
         self.assertIn("Test error", str(context.exception))
 
-    ### Unit tests for remove_duplicate_records function.
+    # Unit tests for remove_duplicate_records function.
 
     # Test case where duplicte records exist.
     def test_remove_duplicate_records_duplicate_records_exist(self):
@@ -1268,7 +1365,10 @@ class TestDataPreprocessing(unittest.TestCase):
         )
 
         expected_df = pl.DataFrame(
-            {"Transaction ID": ["T001", "T002", "T003"], "Value": [100, 200, 300]}
+            {
+                "Transaction ID": ["T001", "T002", "T003"],
+                "Value": [100, 200, 300],
+            }
         )
 
         # Test
@@ -1281,7 +1381,10 @@ class TestDataPreprocessing(unittest.TestCase):
     def test_remove_duplicate_records_no_duplicate_records(self):
         # Setup
         df = pl.DataFrame(
-            {"Transaction ID": ["T001", "T002", "T003"], "Value": [100, 200, 300]}
+            {
+                "Transaction ID": ["T001", "T002", "T003"],
+                "Value": [100, 200, 300],
+            }
         )
 
         # Test
@@ -1306,7 +1409,10 @@ class TestDataPreprocessing(unittest.TestCase):
     def test_remove_duplicate_records_exception_handling(self, mock_unique):
         # Setup
         df = pl.DataFrame(
-            {"Transaction ID": ["T001", "T002", "T001"], "Value": [100, 200, 150]}
+            {
+                "Transaction ID": ["T001", "T002", "T001"],
+                "Value": [100, 200, 150],
+            }
         )
 
         # Test
@@ -1316,12 +1422,14 @@ class TestDataPreprocessing(unittest.TestCase):
         # Assert
         self.assertIn("Test error", str(context.exception))
 
-    ### Unit tests for send_anomaly_alert function.
+    # Unit tests for send_anomaly_alert function.
 
     # Test case where no anomalies.
     @patch("scripts.preprocessing.send_email", side_effect=True)
     @patch("scripts.preprocessing.logger")
-    def test_send_anomaly_alert_no_anomalies(self, mock_logger, mock_send_email):
+    def test_send_anomaly_alert_no_anomalies(
+        self, mock_logger, mock_send_email
+    ):
         # Setup
         anomalies = {
             "price_anomalies": pl.DataFrame(),
@@ -1329,7 +1437,9 @@ class TestDataPreprocessing(unittest.TestCase):
         }
 
         # Test
-        send_anomaly_alert(anomalies, recipient="test@example.com", subject="Alert")
+        send_anomaly_alert(
+            anomalies, recipient="test@example.com", subject="Alert"
+        )
 
         # Assert
         mock_send_email.assert_not_called()
@@ -1340,7 +1450,9 @@ class TestDataPreprocessing(unittest.TestCase):
     # Test case where with anomalies.
     @patch("scripts.preprocessing.send_email")
     @patch("scripts.preprocessing.logger")
-    def test_send_anomaly_alert_with_anomalies(self, mock_logger, mock_send_email):
+    def test_send_anomaly_alert_with_anomalies(
+        self, mock_logger, mock_send_email
+    ):
         # Setup
         data = {"col": [1, 2, 3]}
         non_empty_df = pl.DataFrame(data)
@@ -1352,7 +1464,9 @@ class TestDataPreprocessing(unittest.TestCase):
         mock_send_email.return_value = None
 
         # Test
-        send_anomaly_alert(anomalies, recipient="test@example.com", subject="Alert")
+        send_anomaly_alert(
+            anomalies, recipient="test@example.com", subject="Alert"
+        )
 
         # Assert
         mock_send_email.assert_called_once()
@@ -1371,7 +1485,9 @@ class TestDataPreprocessing(unittest.TestCase):
 
         attachment_df = kwargs["attachment"]
         self.assertIn("anomaly_type", attachment_df.columns)
-        self.assertTrue("quantity_anomalies" in attachment_df["anomaly_type"].values)
+        self.assertTrue(
+            "quantity_anomalies" in attachment_df["anomaly_type"].values
+        )
         mock_logger.info.assert_any_call("Anomaly alert email sent.")
 
     # Test case where Exception handled.
@@ -1380,14 +1496,18 @@ class TestDataPreprocessing(unittest.TestCase):
         side_effect=Exception("Error sending an alert email."),
     )
     @patch("scripts.preprocessing.logger")
-    def test_send_anomaly_alert_throws_exception(self, mock_logger, mock_send_email):
+    def test_send_anomaly_alert_throws_exception(
+        self, mock_logger, mock_send_email
+    ):
         # Setup
         data = {"col": [1, 2, 3]}
         non_empty_df = pl.DataFrame(data)
         anomalies = {"price_anomalies": non_empty_df}
 
         # Test
-        send_anomaly_alert(anomalies, recipient="test@example.com", subject="Alert")
+        send_anomaly_alert(
+            anomalies, recipient="test@example.com", subject="Alert"
+        )
 
         # Assert
         mock_send_email.assert_called_once()
@@ -1395,7 +1515,7 @@ class TestDataPreprocessing(unittest.TestCase):
             "Error sending an alert email: Error sending an alert email."
         )
 
-    ### Unit tests for aggregate_daily_products function.
+    # Unit tests for aggregate_daily_products function.
 
     # Test case where aggregation is done.
     def test_aggregate_daily_products_multiple_records(self):
@@ -1410,7 +1530,14 @@ class TestDataPreprocessing(unittest.TestCase):
                     "2023-01-02",
                     "2023-01-01",
                 ],
-                "Product Name": ["milk", "milk", "coffee", "milk", "coffee", "milk"],
+                "Product Name": [
+                    "milk",
+                    "milk",
+                    "coffee",
+                    "milk",
+                    "coffee",
+                    "milk",
+                ],
                 "Unit Price": [2.5, 2.5, 3.0, 2.5, 3.0, 2.5],
                 "Quantity": [10, 5, 8, 7, 6, 3],
             }
@@ -1418,11 +1545,18 @@ class TestDataPreprocessing(unittest.TestCase):
 
         expected_df = pl.DataFrame(
             {
-                "Date": ["2023-01-01", "2023-01-01", "2023-01-02", "2023-01-02"],
+                "Date": [
+                    "2023-01-01",
+                    "2023-01-01",
+                    "2023-01-02",
+                    "2023-01-02",
+                ],
                 "Product Name": ["coffee", "milk", "coffee", "milk"],
                 "Total Quantity": [8, 18, 6, 7],
             }
-        ).with_columns(pl.col("Date").str.strptime(pl.Datetime, "%Y-%m-%d").dt.date())
+        ).with_columns(
+            pl.col("Date").str.strptime(pl.Datetime, "%Y-%m-%d").dt.date()
+        )
 
         # Test
         result_df = aggregate_daily_products(df).sort(["Date", "Product Name"])
@@ -1447,7 +1581,9 @@ class TestDataPreprocessing(unittest.TestCase):
                 "Product Name": ["milk", "coffee"],
                 "Total Quantity": [10, 8],
             }
-        ).with_columns(pl.col("Date").str.strptime(pl.Datetime, "%Y-%m-%d").dt.date())
+        ).with_columns(
+            pl.col("Date").str.strptime(pl.Datetime, "%Y-%m-%d").dt.date()
+        )
 
         # Test
         result_df = aggregate_daily_products(df).sort(["Date", "Product Name"])
@@ -1458,11 +1594,20 @@ class TestDataPreprocessing(unittest.TestCase):
     def test_aggregate_daily_products_empty_dataframe(self):
         # Setup
         df = pl.DataFrame(
-            {"Date": [], "Product Name": [], "Unit Price": [], "Quantity": []}
+            {
+                "Date": [],
+                "Product Name": [],
+                "Unit Price": [],
+                "Quantity": []
+            }
         ).with_columns(pl.col("Date").cast(pl.Date))
 
         expected_df = pl.DataFrame(
-            {"Date": [], "Product Name": [], "Total Quantity": []}
+            {
+                "Date": [],
+                "Product Name": [],
+                "Total Quantity": []
+            }
         ).with_columns(pl.col("Date").cast(pl.Date))
 
         # Test
@@ -1499,18 +1644,20 @@ class TestDataPreprocessing(unittest.TestCase):
         # Check that storage.Client was created.
         mock_storage_client.assert_called_once()
 
-        # Check that get_bucket and blob were called with the correct parameters.
+        # Check that get_bucket and blob were called with the correct
+        # parameters.
         mock_client_instance.get_bucket.assert_called_once_with("test_bucket")
         mock_bucket.blob.assert_called_once_with("test_blob")
 
         # Check that blob.delete was called.
         mock_blob.delete.assert_called_once()
 
-        # Check that logger.info was called with a message containing the blob and bucket names.
+        # Check that logger.info was called with a message containing the blob
+        # and bucket names.
         mock_logger.info.assert_called_once()
         self.assertTrue(
-            "Blob test_blob deleted from bucket test_bucket"
-            in mock_logger.info.call_args[0][0]
+            "Blob test_blob deleted from bucket test_bucket" in
+            mock_logger.info.call_args[0][0]
         )
 
         # Finally, assert that the function returns True.
@@ -1546,11 +1693,12 @@ class TestDataPreprocessing(unittest.TestCase):
         # Verify that blob.delete was attempted.
         mock_blob.delete.assert_called_once()
 
-        # Check that logger.error was called with a message indicating the deletion error.
+        # Check that logger.error was called with a message indicating the
+        # deletion error.
         mock_logger.error.assert_called_once()
         self.assertTrue(
-            "Error deleting blob test_blob from bucket test_bucket"
-            in mock_logger.error.call_args[0][0]
+            "Error deleting blob test_blob from bucket test_bucket" in
+            mock_logger.error.call_args[0][0]
         )
 
         # Assert that the function returns False.
@@ -1585,14 +1733,17 @@ class TestDataPreprocessing(unittest.TestCase):
         # Check that the credentials were set up.
         mock_setup_creds.assert_called_once()
 
-        # Verify that storage.Client was instantiated and get_bucket was called correctly.
+        # Verify that storage.Client was instantiated and get_bucket was called
+        # correctly.
         mock_storage_client.assert_called_once()
         dummy_storage_client.get_bucket.assert_called_once_with(bucket_name)
         dummy_bucket.list_blobs.assert_called_once()
 
         # Verify that the logger.info was called with the correct message.
         mock_logger.info.assert_called_once()
-        expected_info = f"Found {len(dummy_blobs)} files in bucket '{bucket_name}'"
+        expected_info = (
+            f"Found {len(dummy_blobs)} files in bucket '{bucket_name}'"
+        )
         self.assertIn(expected_info, mock_logger.info.call_args[0][0])
 
         # Assert that the function returns the list of blob names.
@@ -1606,7 +1757,9 @@ class TestDataPreprocessing(unittest.TestCase):
     ):
         # Simulate an exception when trying to get the bucket.
         dummy_storage_client = MagicMock()
-        dummy_storage_client.get_bucket.side_effect = Exception("Bucket not found")
+        dummy_storage_client.get_bucket.side_effect = Exception(
+            "Bucket not found"
+        )
         mock_storage_client.return_value = dummy_storage_client
 
         bucket_name = "test_bucket"
@@ -1622,13 +1775,21 @@ class TestDataPreprocessing(unittest.TestCase):
         # Check that logger.error was called with an error message.
         mock_logger.error.assert_called_once()
         error_message = mock_logger.error.call_args[0][0]
-        self.assertIn(f"Error listing blobs in bucket '{bucket_name}':", error_message)
+        self.assertIn(
+            f"Error listing blobs in bucket '{bucket_name}':", error_message
+        )
         self.assertIn("Bucket not found", error_message)
 
     @patch("scripts.preprocessing.logger")
     def test_empty_dataframe(self, mock_logger):
         # Setup
-        empty_df = pl.DataFrame({"Date": [], "Product Name": [], "Total Quantity": []})
+        empty_df = pl.DataFrame(
+            {
+                "Date": [],
+                "Product Name": [],
+                "Total Quantity": []
+            }
+        )
 
         # Test
         result = extracting_time_series_and_lagged_features(empty_df)
@@ -1660,7 +1821,9 @@ class TestDataPreprocessing(unittest.TestCase):
         # Setup
         df = pl.DataFrame(
             {
-                "Date": [date(2023, 1, 1), date(2023, 1, 2), date(2023, 1, 8)],
+                "Date": [date(2023, 1, 1),
+                         date(2023, 1, 2),
+                         date(2023, 1, 8)],
                 "Product Name": ["milk", "milk", "milk"],
                 "Total Quantity": [10.0, 20.0, 30.0],
             }
@@ -1697,7 +1860,10 @@ class TestDataPreprocessing(unittest.TestCase):
     def test_missing_date_column(self, mock_logger):
         # Setup
         df_missing_date = pl.DataFrame(
-            {"Product Name": ["milk"], "Total Quantity": [10.0]}
+            {
+                "Product Name": ["milk"],
+                "Total Quantity": [10.0]
+            }
         )
 
         # Test
@@ -1755,8 +1921,7 @@ class TestDataPreprocessing(unittest.TestCase):
                 blob_name=blob,
                 destination_bucket_name=destination_bucket,
                 delete_after_processing=delete_after_processing,
-            )
-            for blob in blob_names
+            ) for blob in blob_names
         ]
         mock_process_file.assert_has_calls(expected_calls, any_order=True)
 
@@ -1790,7 +1955,11 @@ class TestDataPreprocessing(unittest.TestCase):
 
         # Test
         with self.assertRaises(Exception) as context:
-            main(source_bucket, destination_bucket, delete_after_processing=True)
+            main(
+                source_bucket,
+                destination_bucket,
+                delete_after_processing=True
+            )
 
         # Assert
         mock_logger.error.assert_called_once()
@@ -1812,12 +1981,17 @@ class TestDataPreprocessing(unittest.TestCase):
 
         # Expect only rows with "milk" and "coffee" remain.
         expected_df = pl.DataFrame(
-            {"Product Name": ["milk", "coffee"], "Quantity": [10, 20]}
+            {
+                "Product Name": ["milk", "coffee"],
+                "Quantity": [10, 20]
+            }
         )
         assert_frame_equal(result, expected_df)
 
         # Verify logging: should log filtering info.
-        mock_logger.info.assert_any_call("Filtering out invalid product names...")
+        mock_logger.info.assert_any_call(
+            "Filtering out invalid product names..."
+        )
         # The filtered count should be 2 rows (tea and juice removed).
         expected_log_msg = "Filtered out 2 rows with invalid product names."
         mock_logger.info.assert_any_call(expected_log_msg)
@@ -1825,7 +1999,12 @@ class TestDataPreprocessing(unittest.TestCase):
     @patch("scripts.preprocessing.logger")
     def test_no_filtering_needed(self, mock_logger):
         # Setup
-        df = pl.DataFrame({"Product Name": ["milk", "coffee"], "Quantity": [10, 20]})
+        df = pl.DataFrame(
+            {
+                "Product Name": ["milk", "coffee"],
+                "Quantity": [10, 20]
+            }
+        )
         reference_list = ["milk", "coffee"]
 
         # Test
@@ -1839,7 +2018,12 @@ class TestDataPreprocessing(unittest.TestCase):
     @patch("scripts.preprocessing.logger")
     def test_all_rows_filtered_product_invalid(self, mock_logger):
         # Setup
-        df = pl.DataFrame({"Product Name": ["tea", "juice"], "Quantity": [15, 5]})
+        df = pl.DataFrame(
+            {
+                "Product Name": ["tea", "juice"],
+                "Quantity": [15, 5]
+            }
+        )
         reference_list = ["milk", "coffee"]
 
         # Test
@@ -1892,12 +2076,16 @@ class TestTimeSeriesFeatureExtraction(unittest.TestCase):
                     for i in range(10)
                 ],
                 "Product Name": ["A"] * 10,
-                "Total Quantity": list(range(10)),
+                "Total Quantity":
+                list(range(10)),
             }
         )
-        self.df = self.df.with_columns(pl.col("Date").str.strptime(pl.Date, "%Y-%m-%d"))
+        self.df = self.df.with_columns(
+            pl.col("Date").str.strptime(pl.Date, "%Y-%m-%d")
+        )
 
-    # Test case where datetime_extraction_and_lagged_features executes successfully.
+    # Test case where datetime_extraction_and_lagged_features executes
+    # successfully.
     def test_datetime_extraction_executes_successfully(self):
         # Test
         result_df = extracting_time_series_and_lagged_features(self.df)
@@ -1914,7 +2102,9 @@ class TestTimeSeriesFeatureExtraction(unittest.TestCase):
         # Test
         result_df = extracting_time_series_and_lagged_features(self.df)
         expected_lag_1 = [None] + list(range(9))  # First row should be None
-        expected_lag_7 = [None] * 7 + list(range(3))  # First 7 rows should be None
+        expected_lag_7 = [None] * 7 + list(
+            range(3)
+        )  # First 7 rows should be None
 
         # Assert
 
@@ -1929,12 +2119,15 @@ class TestTimeSeriesFeatureExtraction(unittest.TestCase):
         ]
 
         # Assert
-        self.assertEqual(result_df["rolling_mean_7"].to_list(), expected_rolling)
+        self.assertEqual(
+            result_df["rolling_mean_7"].to_list(), expected_rolling
+        )
 
     def test_multiple_products(self):
         # Setup
         df_multi = pl.concat(
-            [self.df, self.df.with_columns(pl.lit("B").alias("Product Name"))]
+            [self.df,
+             self.df.with_columns(pl.lit("B").alias("Product Name"))]
         )
 
         # Test
@@ -1949,7 +2142,13 @@ class TestTimeSeriesFeatureExtraction(unittest.TestCase):
     # Test case where dataframe is empty.
     def test_empty_dataframe(self):
         # Setup
-        df_empty = pl.DataFrame({"Date": [], "Product Name": [], "Total Quantity": []})
+        df_empty = pl.DataFrame(
+            {
+                "Date": [],
+                "Product Name": [],
+                "Total Quantity": []
+            }
+        )
 
         # Test
         result_df = extracting_time_series_and_lagged_features(df_empty)
@@ -1982,7 +2181,7 @@ class TestTimeSeriesFeatureExtraction(unittest.TestCase):
         with self.assertRaises(Exception):
             extracting_time_series_and_lagged_features(df_invalid)
 
-    ### Unit Tests for z-score function.
+    # Unit Tests for z-score function.
 
     def test_calculate_zscore(self):
         # Setup
@@ -2099,7 +2298,7 @@ class TestTimeSeriesFeatureExtraction(unittest.TestCase):
         with self.assertRaises(ValueError):
             iqr_bounds(series)
 
-    ### Unit Tests for process function.
+    # Unit Tests for process function.
     @patch("scripts.preprocessing.post_validation")
     @patch("scripts.preprocessing.delete_blob_from_bucket")
     @patch("scripts.preprocessing.upload_to_gcs")
@@ -2168,9 +2367,12 @@ class TestTimeSeriesFeatureExtraction(unittest.TestCase):
             delete_after_processing=True,
         )
 
-        mock_load_bucket_data.assert_called_once_with(source_bucket_name, blob_name)
+        mock_load_bucket_data.assert_called_once_with(
+            source_bucket_name, blob_name
+        )
 
-        # Verify upload_to_gcs was called with the dummy DataFrame and a unique destination filename.
+        # Verify upload_to_gcs was called with the dummy DataFrame and a unique
+        # destination filename.
         mock_upload_to_gcs.assert_called_once()
         args, _ = mock_upload_to_gcs.call_args
         # self.assertTrue(dummy_df.frame_equal(args[0]))
@@ -2185,7 +2387,8 @@ class TestTimeSeriesFeatureExtraction(unittest.TestCase):
             source_bucket_name, blob_name
         )
 
-        # Verify that post_validation was called with the cleaned DataFrame and a stats filename.
+        # Verify that post_validation was called with the cleaned DataFrame and
+        # a stats filename.
         mock_post_validation.assert_called_once()
         args, _ = mock_post_validation.call_args
         assert_frame_equal(dummy_df, args[0])
@@ -2200,7 +2403,8 @@ class TestTimeSeriesFeatureExtraction(unittest.TestCase):
         side_effect=Exception("Test Exception"),
     )
     def test_process_file_failure(self, mock_load_bucket_data, mock_logger):
-        # When load_bucket_data raises an exception, process_file should log the error and return.
+        # When load_bucket_data raises an exception, process_file should log
+        # the error and return.
         source_bucket_name = "source_bucket"
         blob_name = "test_file.csv"
         destination_bucket_name = "destination_bucket"
@@ -2406,7 +2610,8 @@ class TestTimeSeriesFeatureExtraction(unittest.TestCase):
         mock_upload_to_gcs.return_value = None
         # Simulate deletion failure.
         mock_delete_blob_from_bucket.return_value = False
-        # Patch send_anomaly_alert and post_validation to prevent unintended exceptions.
+        # Patch send_anomaly_alert and post_validation to prevent unintended
+        # exceptions.
         mock_send_anomaly_alert.return_value = None
         mock_post_validation.return_value = True
 
@@ -2417,7 +2622,8 @@ class TestTimeSeriesFeatureExtraction(unittest.TestCase):
             delete_after_processing=True,
         )
 
-        # Assert that delete_blob_from_bucket was called with the correct parameters.
+        # Assert that delete_blob_from_bucket was called with the correct
+        # parameters.
         mock_delete_blob_from_bucket.assert_called_once_with(
             "source_bucket", "test_file.csv"
         )
@@ -2431,6 +2637,7 @@ class TestTimeSeriesFeatureExtraction(unittest.TestCase):
 
 
 class TestLoadBucketData(unittest.TestCase):
+
     def setUp(self):
 
         # Create mock data for tests
@@ -2438,7 +2645,12 @@ class TestLoadBucketData(unittest.TestCase):
         self.mock_file_name = "test-file.xlsx"
 
         # Create a sample DataFrame for testing
-        self.sample_df = pl.DataFrame({"col1": [1, 2, 3], "col2": ["a", "b", "c"]})
+        self.sample_df = pl.DataFrame(
+            {
+                "col1": [1, 2, 3],
+                "col2": ["a", "b", "c"]
+            }
+        )
 
     @patch("dataPreprocessing.storage.Client")
     @patch("dataPreprocessing.pl.read_excel")
@@ -2461,17 +2673,21 @@ class TestLoadBucketData(unittest.TestCase):
         result = load_bucket_data(self.mock_bucket_name, self.mock_file_name)
 
         # Assert function called the expected methods
-        mock_storage_client.get_bucket.assert_called_once_with(self.mock_bucket_name)
+        mock_storage_client.get_bucket.assert_called_once_with(
+            self.mock_bucket_name
+        )
         mock_bucket.blob.assert_called_once_with(self.mock_file_name)
         mock_blob.download_as_string.assert_called_once()
 
-        # Assert read_excel was called with BytesIO object containing the blob content
+        # Assert read_excel was called with BytesIO object containing the blob
+        # content
         mock_read_excel.assert_called_once()
         # Check the first argument of the first call is a BytesIO object
         args, _ = mock_read_excel.call_args
         self.assertIsInstance(args[0], io.BytesIO)
 
-        # Assert the return value is correct - proper way to compare Polars DataFrames
+        # Assert the return value is correct - proper way to compare Polars
+        # DataFrames
         self.assertTrue(result.equals(self.sample_df))
 
     @patch("scripts.preprocessing.storage.Client")
@@ -2479,14 +2695,18 @@ class TestLoadBucketData(unittest.TestCase):
         # Mock to raise an exception when getting bucket
         mock_storage_client = MagicMock()
         mock_client.return_value = mock_storage_client
-        mock_storage_client.get_bucket.side_effect = Exception("Bucket not found")
+        mock_storage_client.get_bucket.side_effect = Exception(
+            "Bucket not found"
+        )
 
         # Call the function and assert it raises an exception
         with self.assertRaises(Exception):
             load_bucket_data(self.mock_bucket_name, self.mock_file_name)
 
         # Verify method was called
-        mock_storage_client.get_bucket.assert_called_once_with(self.mock_bucket_name)
+        mock_storage_client.get_bucket.assert_called_once_with(
+            self.mock_bucket_name
+        )
 
     @patch("scripts.preprocessing.storage.Client")
     def test_load_bucket_data_blob_error(self, mock_client):
@@ -2504,7 +2724,9 @@ class TestLoadBucketData(unittest.TestCase):
             load_bucket_data(self.mock_bucket_name, self.mock_file_name)
 
         # Verify methods were called
-        mock_storage_client.get_bucket.assert_called_once_with(self.mock_bucket_name)
+        mock_storage_client.get_bucket.assert_called_once_with(
+            self.mock_bucket_name
+        )
         mock_bucket.blob.assert_called_once_with(self.mock_file_name)
 
     @patch("scripts.preprocessing.storage.Client")
@@ -2525,7 +2747,9 @@ class TestLoadBucketData(unittest.TestCase):
             load_bucket_data(self.mock_bucket_name, self.mock_file_name)
 
         # Verify methods were called
-        mock_storage_client.get_bucket.assert_called_once_with(self.mock_bucket_name)
+        mock_storage_client.get_bucket.assert_called_once_with(
+            self.mock_bucket_name
+        )
         mock_bucket.blob.assert_called_once_with(self.mock_file_name)
         mock_blob.download_as_string.assert_called_once()
 
@@ -2549,7 +2773,9 @@ class TestLoadBucketData(unittest.TestCase):
             load_bucket_data(self.mock_bucket_name, self.mock_file_name)
 
         # Verify methods were called
-        mock_storage_client.get_bucket.assert_called_once_with(self.mock_bucket_name)
+        mock_storage_client.get_bucket.assert_called_once_with(
+            self.mock_bucket_name
+        )
         mock_bucket.blob.assert_called_once_with(self.mock_file_name)
         mock_blob.download_as_string.assert_called_once()
         mock_read_excel.assert_called_once()
@@ -2562,7 +2788,8 @@ class TestDetectAnomalies(unittest.TestCase):
         # Create sample transaction data
         self.test_data = pl.DataFrame(
             {
-                "Transaction ID": range(1, 21),
+                "Transaction ID":
+                range(1, 21),
                 "Date": [
                     # Normal business hours transactions
                     datetime(2023, 1, 1, 10, 0),
@@ -2660,7 +2887,8 @@ class TestDetectAnomalies(unittest.TestCase):
                     4,
                     3,
                     5,
-                    # Day 3 Cherries - One normal, one quantity anomaly (30), two normal
+                    # Day 3 Cherries - One normal, one quantity anomaly (30),
+                    # two normal
                     2,
                     30,
                     3,
@@ -2681,7 +2909,8 @@ class TestDetectAnomalies(unittest.TestCase):
             }
         )
 
-        # Create a small dataframe with insufficient data points for IQR analysis
+        # Create a small dataframe with insufficient data points for IQR
+        # analysis
         self.small_data = pl.DataFrame(
             {
                 "Transaction ID": [1, 2, 3],
@@ -2711,7 +2940,8 @@ class TestDetectAnomalies(unittest.TestCase):
 
         print(price_anomalies)
 
-        # Should detect 2 price anomalies: Apple with price 100.0 and Banana with price 0.5
+        # Should detect 2 price anomalies: Apple with price 100.0 and Banana
+        # with price 0.5
         self.assertEqual(len(price_anomalies), 2)
 
         # Verify specific anomalies
@@ -2735,7 +2965,8 @@ class TestDetectAnomalies(unittest.TestCase):
 
         print(f"quantity: {quantity_anomalies}")
 
-        # Should detect 2 quantity anomalies: Banana with quantity 20 and Cherry with quantity 30
+        # Should detect 2 quantity anomalies: Banana with quantity 20 and
+        # Cherry with quantity 30
         self.assertEqual(len(quantity_anomalies), 2)
 
         # Verify specific anomalies
@@ -2759,7 +2990,8 @@ class TestDetectAnomalies(unittest.TestCase):
         self.assertIn("time_anomalies", anomalies)
         time_anomalies = anomalies["time_anomalies"]
 
-        # Should detect 3 time anomalies: two at 2:00 AM, one at 3:00 AM, and one at 11:30 PM
+        # Should detect 3 time anomalies: two at 2:00 AM, one at 3:00 AM, and
+        # one at 11:30 PM
         self.assertEqual(len(time_anomalies), 3)
 
         # Verify specific anomalies
@@ -2827,7 +3059,8 @@ class TestDetectAnomalies(unittest.TestCase):
         # Run the function with small data
         anomalies, clean_df = detect_anomalies(self.small_data)
 
-        # Should not detect price or quantity anomalies due to insufficient data
+        # Should not detect price or quantity anomalies due to insufficient
+        # data
         self.assertIn("price_anomalies", anomalies)
         self.assertEqual(len(anomalies["price_anomalies"]), 0)
 
@@ -2867,19 +3100,25 @@ class TestDetectAnomalies(unittest.TestCase):
         all_anomaly_ids = set()
         for anomaly_type in anomalies.values():
             if len(anomaly_type) > 0:
-                all_anomaly_ids.update(anomaly_type["Transaction ID"].to_list())
+                all_anomaly_ids.update(
+                    anomaly_type["Transaction ID"].to_list()
+                )
 
-        # Verify the clean data contains exactly the records that aren't anomalies
+        # Verify the clean data contains exactly the records that aren't
+        # anomalies
         expected_clean_count = len(self.test_data) - len(all_anomaly_ids)
         self.assertEqual(len(clean_df), expected_clean_count)
 
         # Verify each non-anomalous transaction is present in clean data
         for transaction_id in range(1, 21):
             if transaction_id not in all_anomaly_ids:
-                self.assertIn(transaction_id, clean_df["Transaction ID"].to_list())
+                self.assertIn(
+                    transaction_id, clean_df["Transaction ID"].to_list()
+                )
 
 
 class TestLoadBucketData(unittest.TestCase):
+
     def setUp(self):
 
         # Create mock data for tests
@@ -2887,7 +3126,12 @@ class TestLoadBucketData(unittest.TestCase):
         self.mock_file_name = "test-file.xlsx"
 
         # Create a sample DataFrame for testing
-        self.sample_df = pl.DataFrame({"col1": [1, 2, 3], "col2": ["a", "b", "c"]})
+        self.sample_df = pl.DataFrame(
+            {
+                "col1": [1, 2, 3],
+                "col2": ["a", "b", "c"]
+            }
+        )
 
     @patch("scripts.preprocessing.storage.Client")
     @patch("scripts.preprocessing.pl.read_excel")
@@ -2910,17 +3154,21 @@ class TestLoadBucketData(unittest.TestCase):
         result = load_bucket_data(self.mock_bucket_name, self.mock_file_name)
 
         # Assert function called the expected methods
-        mock_storage_client.get_bucket.assert_called_once_with(self.mock_bucket_name)
+        mock_storage_client.get_bucket.assert_called_once_with(
+            self.mock_bucket_name
+        )
         mock_bucket.blob.assert_called_once_with(self.mock_file_name)
         mock_blob.download_as_string.assert_called_once()
 
-        # Assert read_excel was called with BytesIO object containing the blob content
+        # Assert read_excel was called with BytesIO object containing the blob
+        # content
         mock_read_excel.assert_called_once()
         # Check the first argument of the first call is a BytesIO object
         args, _ = mock_read_excel.call_args
         self.assertIsInstance(args[0], io.BytesIO)
 
-        # Assert the return value is correct - proper way to compare Polars DataFrames
+        # Assert the return value is correct - proper way to compare Polars
+        # DataFrames
         self.assertTrue(result.equals(self.sample_df))
 
     @patch("scripts.preprocessing.storage.Client")
@@ -2928,14 +3176,18 @@ class TestLoadBucketData(unittest.TestCase):
         # Mock to raise an exception when getting bucket
         mock_storage_client = MagicMock()
         mock_client.return_value = mock_storage_client
-        mock_storage_client.get_bucket.side_effect = Exception("Bucket not found")
+        mock_storage_client.get_bucket.side_effect = Exception(
+            "Bucket not found"
+        )
 
         # Call the function and assert it raises an exception
         with self.assertRaises(Exception):
             load_bucket_data(self.mock_bucket_name, self.mock_file_name)
 
         # Verify method was called
-        mock_storage_client.get_bucket.assert_called_once_with(self.mock_bucket_name)
+        mock_storage_client.get_bucket.assert_called_once_with(
+            self.mock_bucket_name
+        )
 
     @patch("scripts.preprocessing.storage.Client")
     def test_load_bucket_data_blob_error(self, mock_client):
@@ -2953,7 +3205,9 @@ class TestLoadBucketData(unittest.TestCase):
             load_bucket_data(self.mock_bucket_name, self.mock_file_name)
 
         # Verify methods were called
-        mock_storage_client.get_bucket.assert_called_once_with(self.mock_bucket_name)
+        mock_storage_client.get_bucket.assert_called_once_with(
+            self.mock_bucket_name
+        )
         mock_bucket.blob.assert_called_once_with(self.mock_file_name)
 
     @patch("scripts.preprocessing.storage.Client")
@@ -2974,7 +3228,9 @@ class TestLoadBucketData(unittest.TestCase):
             load_bucket_data(self.mock_bucket_name, self.mock_file_name)
 
         # Verify methods were called
-        mock_storage_client.get_bucket.assert_called_once_with(self.mock_bucket_name)
+        mock_storage_client.get_bucket.assert_called_once_with(
+            self.mock_bucket_name
+        )
         mock_bucket.blob.assert_called_once_with(self.mock_file_name)
         mock_blob.download_as_string.assert_called_once()
 
@@ -2998,7 +3254,9 @@ class TestLoadBucketData(unittest.TestCase):
             load_bucket_data(self.mock_bucket_name, self.mock_file_name)
 
         # Verify methods were called
-        mock_storage_client.get_bucket.assert_called_once_with(self.mock_bucket_name)
+        mock_storage_client.get_bucket.assert_called_once_with(
+            self.mock_bucket_name
+        )
         mock_bucket.blob.assert_called_once_with(self.mock_file_name)
         mock_blob.download_as_string.assert_called_once()
         mock_read_excel.assert_called_once()
@@ -3011,7 +3269,8 @@ class TestDetectAnomalies(unittest.TestCase):
         # Create sample transaction data
         self.test_data = pl.DataFrame(
             {
-                "Transaction ID": range(1, 21),
+                "Transaction ID":
+                range(1, 21),
                 "Date": [
                     # Normal business hours transactions
                     datetime(2023, 1, 1, 10, 0),
@@ -3109,7 +3368,8 @@ class TestDetectAnomalies(unittest.TestCase):
                     4,
                     3,
                     5,
-                    # Day 3 Cherries - One normal, one quantity anomaly (30), two normal
+                    # Day 3 Cherries - One normal, one quantity anomaly (30),
+                    # two normal
                     2,
                     30,
                     3,
@@ -3130,7 +3390,8 @@ class TestDetectAnomalies(unittest.TestCase):
             }
         )
 
-        # Create a small dataframe with insufficient data points for IQR analysis
+        # Create a small dataframe with insufficient data points for IQR
+        # analysis
         self.small_data = pl.DataFrame(
             {
                 "Transaction ID": [1, 2, 3],
@@ -3156,7 +3417,8 @@ class TestDetectAnomalies(unittest.TestCase):
 
         print(price_anomalies)
 
-        # Should detect 2 price anomalies: Apple with price 100.0 and Banana with price 0.5
+        # Should detect 2 price anomalies: Apple with price 100.0 and Banana
+        # with price 0.5
         self.assertEqual(len(price_anomalies), 2)
 
         # Verify specific anomalies
@@ -3178,7 +3440,8 @@ class TestDetectAnomalies(unittest.TestCase):
 
         print(f"quantity: {quantity_anomalies}")
 
-        # Should detect 2 quantity anomalies: Banana with quantity 20 and Cherry with quantity 30
+        # Should detect 2 quantity anomalies: Banana with quantity 20 and
+        # Cherry with quantity 30
         self.assertEqual(len(quantity_anomalies), 2)
 
         # Verify specific anomalies
@@ -3200,7 +3463,8 @@ class TestDetectAnomalies(unittest.TestCase):
         self.assertIn("time_anomalies", anomalies)
         time_anomalies = anomalies["time_anomalies"]
 
-        # Should detect 3 time anomalies: two at 2:00 AM, one at 3:00 AM, and one at 11:30 PM
+        # Should detect 3 time anomalies: two at 2:00 AM, one at 3:00 AM, and
+        # one at 11:30 PM
         self.assertEqual(len(time_anomalies), 3)
 
         # Verify specific anomalies
@@ -3261,7 +3525,8 @@ class TestDetectAnomalies(unittest.TestCase):
         # Run the function with small data
         anomalies, clean_df = detect_anomalies(self.small_data)
 
-        # Should not detect price or quantity anomalies due to insufficient data
+        # Should not detect price or quantity anomalies due to insufficient
+        # data
         self.assertIn("price_anomalies", anomalies)
         self.assertEqual(len(anomalies["price_anomalies"]), 0)
 
@@ -3297,16 +3562,21 @@ class TestDetectAnomalies(unittest.TestCase):
         all_anomaly_ids = set()
         for anomaly_type in anomalies.values():
             if len(anomaly_type) > 0:
-                all_anomaly_ids.update(anomaly_type["Transaction ID"].to_list())
+                all_anomaly_ids.update(
+                    anomaly_type["Transaction ID"].to_list()
+                )
 
-        # Verify the clean data contains exactly the records that aren't anomalies
+        # Verify the clean data contains exactly the records that aren't
+        # anomalies
         expected_clean_count = len(self.test_data) - len(all_anomaly_ids)
         self.assertEqual(len(clean_df), expected_clean_count)
 
         # Verify each non-anomalous transaction is present in clean data
         for transaction_id in range(1, 21):
             if transaction_id not in all_anomaly_ids:
-                self.assertIn(transaction_id, clean_df["Transaction ID"].to_list())
+                self.assertIn(
+                    transaction_id, clean_df["Transaction ID"].to_list()
+                )
 
 
 if __name__ == "__main__":

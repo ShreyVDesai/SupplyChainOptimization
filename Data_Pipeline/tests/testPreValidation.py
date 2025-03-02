@@ -1,9 +1,9 @@
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 import pandas as pd
 import polars as pl
 
-# Import validate_data from your module.
 from Data_Pipeline.scripts.pre_validation import *
 
 
@@ -62,7 +62,9 @@ class TestPreValidateData(unittest.TestCase):
     @patch("Data_Pipeline.scripts.pre_validation.collect_validation_errors")
     @patch("Data_Pipeline.scripts.pre_validation.send_email")
     @patch("Data_Pipeline.scripts.logger")
-    def test_missing_columns(self, mock_logger, mock_send_email, mock_collect_errors):
+    def test_missing_columns(
+        self, mock_logger, mock_send_email, mock_collect_errors
+    ):
         """
         When one or more required columns are missing (pandas DataFrame),
         validate_data should return False, call collect_validation_errors and send_email,
@@ -186,7 +188,9 @@ class TestPreValidateData(unittest.TestCase):
         missing_columns = ["col1", "col2"]
         error_indices = set()
         error_reasons = {}
-        collect_validation_errors(df, missing_columns, error_indices, error_reasons)
+        collect_validation_errors(
+            df, missing_columns, error_indices, error_reasons
+        )
         expected_indices = {0, 1, 2}
         self.assertEqual(error_indices, expected_indices)
         expected_message = f"Missing columns: {', '.join(missing_columns)}"
@@ -202,7 +206,9 @@ class TestPreValidateData(unittest.TestCase):
         missing_columns = ["col1", "col2"]
         error_indices = set()
         error_reasons = {}
-        collect_validation_errors(df, missing_columns, error_indices, error_reasons)
+        collect_validation_errors(
+            df, missing_columns, error_indices, error_reasons
+        )
         self.assertEqual(error_indices, set())
         self.assertEqual(error_reasons, {})
 
@@ -215,7 +221,9 @@ class TestPreValidateData(unittest.TestCase):
         missing_columns = ["colX"]
         error_indices = set()
         error_reasons = {}
-        collect_validation_errors(df, missing_columns, error_indices, error_reasons)
+        collect_validation_errors(
+            df, missing_columns, error_indices, error_reasons
+        )
         expected_indices = {0, 1, 2, 3}
         self.assertEqual(error_indices, expected_indices)
         expected_message = f"Missing columns: {', '.join(missing_columns)}"
@@ -254,8 +262,11 @@ class TestPreValidateData(unittest.TestCase):
         dummy_storage_instance.get_bucket.assert_called_once_with(bucket_name)
         dummy_bucket.list_blobs.assert_called_once()
 
-        # Check that logger.info was called with a message that includes the correct file count.
-        expected_info = f"Found {len(dummy_blobs)} files in bucket '{bucket_name}'"
+        # Check that logger.info was called with a message that includes the
+        # correct file count.
+        expected_info = (
+            f"Found {len(dummy_blobs)} files in bucket '{bucket_name}'"
+        )
         mock_logger.info.assert_any_call(expected_info)
 
         # Verify that the function returns the correct list of blob names.
@@ -271,7 +282,9 @@ class TestPreValidateData(unittest.TestCase):
 
         # Simulate an exception when get_bucket is called.
         dummy_storage_instance = MagicMock()
-        dummy_storage_instance.get_bucket.side_effect = Exception("Bucket error")
+        dummy_storage_instance.get_bucket.side_effect = Exception(
+            "Bucket error"
+        )
         mock_storage_client.return_value = dummy_storage_instance
 
         with self.assertRaises(Exception) as context:
@@ -281,8 +294,11 @@ class TestPreValidateData(unittest.TestCase):
         # Verify that setup_gcp_credentials was called.
         mock_setup_creds.assert_called_once()
 
-        # Check that logger.error was called with an error message that includes "Bucket error"
-        error_calls = [str(args[0]) for args, _ in mock_logger.error.call_args_list]
+        # Check that logger.error was called with an error message that
+        # includes "Bucket error"
+        error_calls = [
+            str(args[0]) for args, _ in mock_logger.error.call_args_list
+        ]
         self.assertTrue(
             any("Bucket error" in msg for msg in error_calls),
             "Expected error log containing 'Bucket error'.",
@@ -320,7 +336,9 @@ class TestPreValidateData(unittest.TestCase):
         dummy_blob.delete.assert_called_once()
 
         # Check that the success log message was recorded.
-        expected_log_msg = f"Blob {blob_name} deleted from bucket {bucket_name}"
+        expected_log_msg = (
+            f"Blob {blob_name} deleted from bucket {bucket_name}"
+        )
         mock_logger.info.assert_any_call(expected_log_msg)
 
         # The function should return True.
@@ -332,7 +350,8 @@ class TestPreValidateData(unittest.TestCase):
     def test_delete_blob_failure_delete_blob(
         self, mock_storage_client, mock_logger, mock_setup_creds
     ):
-        # Set up a dummy bucket and blob that will raise an exception on delete.
+        # Set up a dummy bucket and blob that will raise an exception on
+        # delete.
         dummy_blob = MagicMock()
         dummy_blob.delete.side_effect = Exception("Deletion failed")
         dummy_bucket = MagicMock()
@@ -358,7 +377,9 @@ class TestPreValidateData(unittest.TestCase):
 
         # Check that an error was logged.
         error_calls = [
-            str(arg) for args, _ in mock_logger.error.call_args_list for arg in args
+            str(arg)
+            for args, _ in mock_logger.error.call_args_list
+            for arg in args
         ]
         self.assertTrue(
             any("Deletion failed" in msg for msg in error_calls),
@@ -374,12 +395,17 @@ class TestPreValidateData(unittest.TestCase):
     @patch("Data_Pipeline.scripts.pre_validation.load_bucket_data")
     @patch("Data_Pipeline.scripts.logger")
     def test_valid_file(
-        self, mock_logger, mock_load_bucket_data, mock_validate_data, mock_delete_blob
+        self,
+        mock_logger,
+        mock_load_bucket_data,
+        mock_validate_data,
+        mock_delete_blob,
     ):
         bucket_name = "test_bucket"
         blob_name = "valid_file.csv"
 
-        # Simulate load_bucket_data returns a DataFrame (could be pandas or polars).
+        # Simulate load_bucket_data returns a DataFrame (could be pandas or
+        # polars).
         df = pd.DataFrame({"dummy": [1]})
         mock_load_bucket_data.return_value = df
         # Simulate validation passes.
@@ -395,7 +421,11 @@ class TestPreValidateData(unittest.TestCase):
     @patch("Data_Pipeline.scripts.pre_validation.load_bucket_data")
     @patch("Data_Pipeline.scripts.logger")
     def test_invalid_file_delete_success(
-        self, mock_logger, mock_load_bucket_data, mock_validate_data, mock_delete_blob
+        self,
+        mock_logger,
+        mock_load_bucket_data,
+        mock_validate_data,
+        mock_delete_blob,
     ):
         bucket_name = "test_bucket"
         blob_name = "invalid_file.csv"
@@ -418,7 +448,11 @@ class TestPreValidateData(unittest.TestCase):
     @patch("Data_Pipeline.scripts.pre_validation.load_bucket_data")
     @patch("Data_Pipeline.scripts.logger")
     def test_invalid_file_delete_failure(
-        self, mock_logger, mock_load_bucket_data, mock_validate_data, mock_delete_blob
+        self,
+        mock_logger,
+        mock_load_bucket_data,
+        mock_validate_data,
+        mock_delete_blob,
     ):
         bucket_name = "test_bucket"
         blob_name = "invalid_file.csv"
@@ -439,7 +473,11 @@ class TestPreValidateData(unittest.TestCase):
     @patch("Data_Pipeline.scripts.pre_validation.load_bucket_data")
     @patch("Data_Pipeline.scripts.logger")
     def test_invalid_file_no_deletion(
-        self, mock_logger, mock_load_bucket_data, mock_validate_data, mock_delete_blob
+        self,
+        mock_logger,
+        mock_load_bucket_data,
+        mock_validate_data,
+        mock_delete_blob,
     ):
         bucket_name = "test_bucket"
         blob_name = "invalid_file.csv"
@@ -452,7 +490,8 @@ class TestPreValidateData(unittest.TestCase):
         self.assertFalse(result)
         mock_delete_blob.assert_not_called()
 
-    # Case 5: Exception occurs during validation with deletion enabled and deletion succeeds.
+    # Case 5: Exception occurs during validation with deletion enabled and
+    # deletion succeeds.
     @patch("Data_Pipeline.scripts.pre_validation.delete_blob_from_bucket")
     @patch("Data_Pipeline.scripts.pre_validation.load_bucket_data")
     @patch("Data_Pipeline.scripts.logger")
@@ -471,7 +510,8 @@ class TestPreValidateData(unittest.TestCase):
         self.assertFalse(result)
         mock_delete_blob.assert_called_once_with(bucket_name, blob_name)
 
-    # Case 6: Exception occurs during validation with deletion enabled and deletion fails.
+    # Case 6: Exception occurs during validation with deletion enabled and
+    # deletion fails.
     @patch("Data_Pipeline.scripts.pre_validation.delete_blob_from_bucket")
     @patch("Data_Pipeline.scripts.pre_validation.load_bucket_data")
     @patch("Data_Pipeline.scripts.logger")

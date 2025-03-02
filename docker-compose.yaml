@@ -19,7 +19,7 @@ x-airflow-common:
     _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-apache-airflow-providers-google>=8.0.0,<9.0.0 google-cloud-storage>=1.30.0,<2.0.0 docker>=6.1.0 apache-airflow-providers-docker>=3.7.0}
     GOOGLE_APPLICATION_CREDENTIALS: /opt/airflow/gcp-key.json
     PYTHONPATH: /opt/airflow/workspace
-    
+
   volumes: &airflow-common-volumes
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs

@@ -16,7 +16,7 @@ A structured guide and checklist for building a robust data pipeline and ensurin
 
 ## Overview
 
-This project requires the development of a data pipeline using Airflow (or a similar orchestration tool) to handle the journey from data acquisition to preprocessing, testing, versioning, and workflow management.  
+This project requires the development of a data pipeline using Airflow (or a similar orchestration tool) to handle the journey from data acquisition to preprocessing, testing, versioning, and workflow management.
 **Goal**: Ensure reproducibility, reliability, data quality, and fairness at every stage of your machine learning pipeline.
 
 ---
@@ -95,15 +95,15 @@ This project requires the development of a data pipeline using Airflow (or a sim
 
 ## Additional Guidelines
 
-1. **Folder Structure**  
-   /ProjectRepo  
-   ├─ Data_Pipeline/  
-   │ ├─ dags/  
-   │ ├─ data/  
-   │ ├─ scripts/  
-   │ ├─ tests/  
-   │ └─ logs/  
-   ├─ dvc.yaml  
+1. **Folder Structure**
+   /ProjectRepo
+   ├─ Data_Pipeline/
+   │ ├─ dags/
+   │ ├─ data/
+   │ ├─ scripts/
+   │ ├─ tests/
+   │ └─ logs/
+   ├─ dvc.yaml
    └─ README.md
 
    - [ ] Ensure consistent organization of code, data, and logs.

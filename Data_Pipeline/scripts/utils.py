@@ -1,7 +1,9 @@
-import os
-import polars as pl
-import pandas as pd
 import json
+import os
+
+import numpy as np
+import pandas as pd
+import polars as pl
 
 try:
     from logger import logger
@@ -9,10 +11,11 @@ except ImportError:  # For testing purposes
     from Data_Pipeline.scripts.logger import logger
 
 import io
-from google.cloud import storage
-from dotenv import load_dotenv
 import smtplib
 from email.message import EmailMessage
+
+from dotenv import load_dotenv
+from google.cloud import storage
 
 load_dotenv()
 
@@ -134,14 +137,18 @@ def send_email(
     msg["To"] = emailid
     msg.set_content(body)
 
-    # If an attachment is provided and it's a DataFrame, attach it as a CSV file.
+    # If an attachment is provided and it's a DataFrame, attach it as a CSV
+    # file.
     if attachment is not None and isinstance(attachment, pd.DataFrame):
         csv_buffer = io.StringIO()
         attachment.to_csv(csv_buffer, index=False)
         # Encode the CSV content to bytes to avoid calling set_text_content.
         csv_bytes = csv_buffer.getvalue().encode("utf-8")
         msg.add_attachment(
-            csv_bytes, maintype="text", subtype="csv", filename="anomalies.csv"
+            csv_bytes,
+            maintype="text",
+            subtype="csv",
+            filename="anomalies.csv"
         )
 
     try:
@@ -195,7 +202,9 @@ def upload_to_gcs(
             try:
                 # First try standard write_json method
                 json_data = df.write_json()
-                blob.upload_from_string(json_data, content_type="application/json")
+                blob.upload_from_string(
+                    json_data, content_type="application/json"
+                )
                 logger.info("JSON data uploaded successfully using write_json")
             except Exception as e:
                 logger.warning(
@@ -204,7 +213,8 @@ def upload_to_gcs(
 
                 # If that fails, try to convert to dict and then to JSON
                 try:
-                    # Helper function to convert numpy/pandas types to Python types
+                    # Helper function to convert numpy/pandas types to Python
+                    # types
                     def convert_to_python_types(obj):
                         if isinstance(
                             obj,
@@ -224,30 +234,39 @@ def upload_to_gcs(
                         ):
                             return int(obj)
                         elif isinstance(
-                            obj, (np.float_, np.float16, np.float32, np.float64)
+                            obj,
+                            (np.float_, np.float16, np.float32, np.float64),
                         ):
                             return float(obj)
                         elif isinstance(obj, (np.bool_)):
                             return bool(obj)
-                        elif isinstance(obj, (np.ndarray,)):
+                        elif isinstance(obj, (np.ndarray, )):
                             return obj.tolist()
                         elif isinstance(obj, dict):
                             return {
-                                k: convert_to_python_types(v) for k, v in obj.items()
+                                k: convert_to_python_types(v)
+                                for k, v in obj.items()
                             }
                         elif isinstance(obj, list):
-                            return [convert_to_python_types(item) for item in obj]
+                            return [
+                                convert_to_python_types(item) for item in obj
+                            ]
                         else:
                             return obj
 
-                    # If DataFrame has a single row and contains dictionaries, extract the first row
+                    # If DataFrame has a single row and contains dictionaries,
+                    # extract the first row
                     if df.shape[0] == 1 and df.shape[1] == 1:
                         cell_value = df[0, 0]
                         if isinstance(cell_value, dict):
                             data_dict = cell_value
-                            logger.info("Found dictionary in single cell DataFrame")
+                            logger.info(
+                                "Found dictionary in single cell DataFrame"
+                            )
                         else:
-                            data_dict = df.to_pandas().to_dict(orient="records")[0]
+                            data_dict = df.to_pandas().to_dict(
+                                orient="records"
+                            )[0]
                     else:
                         data_dict = df.to_pandas().to_dict(orient="records")
 
@@ -256,8 +275,12 @@ def upload_to_gcs(
 
                     # Convert to JSON
                     json_data = json.dumps(python_typed_dict, indent=2)
-                    blob.upload_from_string(json_data, content_type="application/json")
-                    logger.info("JSON data uploaded successfully using dict conversion")
+                    blob.upload_from_string(
+                        json_data, content_type="application/json"
+                    )
+                    logger.info(
+                        "JSON data uploaded successfully using dict conversion"
+                    )
                 except Exception as e2:
                     logger.warning(
                         f"Dict conversion failed: {e2}, trying pandas direct conversion"
@@ -265,7 +288,9 @@ def upload_to_gcs(
                     # Last resort: try pandas to_json
                     pd_df = df.to_pandas()
                     json_data = pd_df.to_json(orient="records")
-                    blob.upload_from_string(json_data, content_type="application/json")
+                    blob.upload_from_string(
+                        json_data, content_type="application/json"
+                    )
                     logger.info(
                         "JSON data uploaded successfully using pandas conversion"
                     )
@@ -280,7 +305,9 @@ def upload_to_gcs(
         else:
             raise ValueError(f"Unsupported file extension: {file_extension}")
 
-        logger.info("Upload successful to GCS. Blob name: %s", destination_blob_name)
+        logger.info(
+            "Upload successful to GCS. Blob name: %s", destination_blob_name
+        )
 
     except Exception as e:
         logger.error("Error uploading DataFrame to GCS. Error: %s", e)
@@ -333,11 +360,15 @@ def delete_blob_from_bucket(bucket_name: str, blob_name: str) -> bool:
         logger.info(f"Blob {blob_name} deleted from bucket {bucket_name}")
         return True
     except Exception as e:
-        logger.error(f"Error deleting blob {blob_name} from bucket {bucket_name}: {e}")
+        logger.error(
+            f"Error deleting blob {blob_name} from bucket {bucket_name}: {e}"
+        )
         return False
 
 
-def collect_validation_errors(df, missing_columns, error_indices, error_reasons):
+def collect_validation_errors(
+    df, missing_columns, error_indices, error_reasons
+):
     """
     Collect validation errors and update error indices and reasons.
 
@@ -351,7 +382,9 @@ def collect_validation_errors(df, missing_columns, error_indices, error_reasons)
         # If columns are missing, mark all rows as having errors
         for idx in range(len(df)):
             error_indices.add(idx)
-            error_reasons[idx] = [f"Missing columns: {', '.join(missing_columns)}"]
+            error_reasons[idx] = [
+                f"Missing columns: {', '.join(missing_columns)}"
+            ]
 
 
 def send_anomaly_alert(
@@ -408,7 +441,9 @@ def send_anomaly_alert(
         # Handle the direct DataFrame case (from post_validation.py)
         elif df is not None:
             send_email(recipient, subject=subject, body=message, attachment=df)
-            logger.info(f"Data Validation Anomaly alert sent to user: {recipient}")
+            logger.info(
+                f"Data Validation Anomaly alert sent to user: {recipient}"
+            )
         else:
             logger.info("No anomalies provided; no alert email sent.")
 

@@ -7,15 +7,15 @@ preprocessing, and post-validation.
 
 # Import from the same directory for local/unit test usage
 from .logger import logger
-from .utils import (
-    setup_gcp_credentials,
-    load_bucket_data,
-    send_email,
-    upload_to_gcs,
-)
+from .post_validation import post_validation
 from .pre_validation import main as pre_validation_main
 from .preprocessing import main as preprocessing_main
-from .post_validation import post_validation
+from .utils import (
+    load_bucket_data,
+    send_email,
+    setup_gcp_credentials,
+    upload_to_gcs,
+)
 
 # Re-export everything for absolute imports
 __all__ = [

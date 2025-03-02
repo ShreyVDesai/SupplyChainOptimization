@@ -4,13 +4,12 @@ Supply Chain Optimization - Common Module
 This module contains shared functions and parameters used by the preprocessing DAGs.
 """
 
-import os
 from datetime import datetime, timedelta
-import docker
 
+import docker
+from airflow.exceptions import AirflowSkipException
 from airflow.operators.python import PythonOperator
 from airflow.providers.google.cloud.hooks.gcs import GCSHook
-from airflow.exceptions import AirflowSkipException
 
 # Define default arguments
 DEFAULT_ARGS = {
@@ -113,7 +112,8 @@ def run_pre_validation(**context):
             context["ti"].xcom_push(key="validation_status", value="partial")
         elif exit_code == 2:
             # If there are still files in the bucket, there must be valid files
-            # This handles the case where pre_validation.py miscategorized some files
+            # This handles the case where pre_validation.py miscategorized some
+            # files
             if remaining_files:
                 print("Partial validation - continuing with remaining files in bucket")
                 context["ti"].xcom_push(key="validation_status", value="partial")

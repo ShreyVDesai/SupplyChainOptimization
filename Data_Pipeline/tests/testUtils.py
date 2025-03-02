@@ -1,18 +1,17 @@
 import io
 import os
-import json
 import unittest
-from unittest.mock import patch, MagicMock, call
-import polars as pl
+from unittest.mock import MagicMock, call, patch
+
 import pandas as pd
+import polars as pl
 from polars.testing import assert_frame_equal
 from scripts.utils import (
     load_bucket_data,
     send_email,
-    upload_to_gcs,
     setup_gcp_credentials,
+    upload_to_gcs,
 )
-from google.api_core.exceptions import GoogleAPICallError
 
 
 class TestUtils(unittest.TestCase):
@@ -88,7 +87,8 @@ class TestUtils(unittest.TestCase):
         mock_bucket = MagicMock()
         mock_bucket.blob.return_value = mock_blob
 
-        # Set up a mock client instance whose get_bucket returns the mock bucket.
+        # Set up a mock client instance whose get_bucket returns the mock
+        # bucket.
         mock_client_instance = MagicMock()
         mock_client_instance.get_bucket.return_value = mock_bucket
         mock_storage_client.return_value = mock_client_instance
@@ -102,7 +102,8 @@ class TestUtils(unittest.TestCase):
         # Verify the exception message contains our simulated error.
         self.assertIn(error_message, str(context.exception))
 
-        # Verify that logger.error was called with a message that includes the error.
+        # Verify that logger.error was called with a message that includes the
+        # error.
         mock_logger.error.assert_called_once()
         error_log_msg = mock_logger.error.call_args[0][0]
         self.assertIn(error_message, error_log_msg)
@@ -134,21 +135,23 @@ class TestUtils(unittest.TestCase):
 
         # Assert
         self.assertIn("is empty", str(context.exception))
-        expected_substring = (
-            "DataFrame loaded from bucket 'dummy-bucket', file 'dummy.xlsx' is empty."
-        )
-        error_messages = [args[0][0] for args in mock_logger.error.call_args_list]
+        expected_substring = "DataFrame loaded from bucket 'dummy-bucket', file 'dummy.xlsx' is empty."
+        error_messages = [
+            args[0][0] for args in mock_logger.error.call_args_list
+        ]
         self.assertTrue(
             any(expected_substring in message for message in error_messages),
             f"None of the error messages contained '{expected_substring}'.",
         )
 
-    ### Unit tests for send_email
+    # Unit tests for send_email
 
     # Test case where send_email executes successfully without attachment.
     @patch("scripts.utils.logger")
     @patch("scripts.utils.smtplib.SMTP")
-    def test_send_email_success_without_attachment(self, mock_smtp, mock_logger):
+    def test_send_email_success_without_attachment(
+        self, mock_smtp, mock_logger
+    ):
         # Setup
         smtp_instance = MagicMock()
         mock_smtp.return_value.__enter__.return_value = smtp_instance
@@ -167,7 +170,9 @@ class TestUtils(unittest.TestCase):
             "talksick530@gmail.com", "celm dfaq qllh ymjv"
         )
         smtp_instance.send_message.assert_called_once()
-        mock_logger.info.assert_any_call(f"Email sent successfully to: {emailid}")
+        mock_logger.info.assert_any_call(
+            f"Email sent successfully to: {emailid}"
+        )
 
     # Test case where send_email executes successfully with attachment.
     @patch("scripts.utils.logger")
@@ -204,7 +209,9 @@ class TestUtils(unittest.TestCase):
             "EmailMessage should be multipart when an attachment is added.",
         )
         attachments = [part for part in sent_msg.iter_attachments()]
-        self.assertEqual(len(attachments), 1, "There should be exactly one attachment.")
+        self.assertEqual(
+            len(attachments), 1, "There should be exactly one attachment."
+        )
         attachment_part = attachments[0]
         self.assertEqual(attachment_part.get_filename(), "anomalies.csv")
         csv_content = attachment_part.get_content()
@@ -524,7 +531,9 @@ class TestUtils(unittest.TestCase):
 
         # Assert
         self.assertIn("Excel read error", str(context.exception))
-        expected_log = f"Error reading '{file_name}' as Excel: Excel read error"
+        expected_log = (
+            f"Error reading '{file_name}' as Excel: Excel read error"
+        )
         mock_logger.error.assert_any_call(expected_log)
 
     @patch("scripts.utils.logger")
@@ -601,7 +610,9 @@ class TestUtils(unittest.TestCase):
         # Create a dummy Polars DataFrame.
         df = pl.DataFrame({"a": [1, 2], "b": [3, 4]})
         csv_content = "a,b\n1,3\n2,4\n"
-        with patch.object(df, "write_csv", return_value=csv_content) as mock_write_csv:
+        with patch.object(
+            df, "write_csv", return_value=csv_content
+        ) as mock_write_csv:
             # Set up fake GCS objects.
             mock_blob = MagicMock()
             mock_blob.upload_from_string = MagicMock()
@@ -621,7 +632,8 @@ class TestUtils(unittest.TestCase):
             )
             mock_logger.info.assert_any_call("CSV data uploaded successfully")
             mock_logger.info.assert_any_call(
-                "Upload successful to GCS. Blob name: %s", destination_blob_name
+                "Upload successful to GCS. Blob name: %s",
+                destination_blob_name,
             )
 
     @patch("scripts.utils.setup_gcp_credentials")
@@ -669,7 +681,9 @@ class TestUtils(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             upload_to_gcs(df, bucket_name, destination_blob_name)
 
-        self.assertIn("Unsupported file extension: txt", str(context.exception))
+        self.assertIn(
+            "Unsupported file extension: txt", str(context.exception)
+        )
 
     @patch("scripts.utils.setup_gcp_credentials")
     @patch("scripts.preprocessing.storage.Client")
@@ -758,7 +772,9 @@ class TestUtils(unittest.TestCase):
         expected_final_call = call(
             "Upload successful to GCS. Blob name: %s", destination_blob_name
         )
-        self.assertIn(expected_csv_success_call, mock_logger.info.call_args_list)
+        self.assertIn(
+            expected_csv_success_call, mock_logger.info.call_args_list
+        )
         self.assertIn(expected_final_call, mock_logger.info.call_args_list)
 
     @patch("scripts.utils.setup_gcp_credentials")
@@ -804,7 +820,9 @@ class TestUtils(unittest.TestCase):
             "Upload successful to GCS. Blob name: %s", destination_blob_name
         )
         self.assertIn(expected_start_call, mock_logger.info.call_args_list)
-        self.assertIn(expected_csv_success_call, mock_logger.info.call_args_list)
+        self.assertIn(
+            expected_csv_success_call, mock_logger.info.call_args_list
+        )
         self.assertIn(expected_final_call, mock_logger.info.call_args_list)
 
     @patch("scripts.utils.setup_gcp_credentials")
@@ -842,7 +860,9 @@ class TestUtils(unittest.TestCase):
         expected_final_call = call(
             "Upload successful to GCS. Blob name: %s", destination_blob_name
         )
-        self.assertIn(expected_json_success_call, mock_logger.info.call_args_list)
+        self.assertIn(
+            expected_json_success_call, mock_logger.info.call_args_list
+        )
         self.assertIn(expected_final_call, mock_logger.info.call_args_list)
 
     # @patch("scripts.utils.setup_gcp_credentials")
@@ -943,13 +963,16 @@ class TestUtils(unittest.TestCase):
         bucket_name = "test_bucket"
 
         dummy_storage_instance = MagicMock()
-        dummy_storage_instance.get_bucket.side_effect = Exception("Bucket error")
+        dummy_storage_instance.get_bucket.side_effect = Exception(
+            "Bucket error"
+        )
         mock_storage_client.return_value = dummy_storage_instance
 
         with self.assertRaises(Exception) as context:
             upload_to_gcs(df, bucket_name, destination_blob_name)
         self.assertIn("Bucket error", str(context.exception))
-        # Check that an error was logged by inspecting all positional arguments.
+        # Check that an error was logged by inspecting all positional
+        # arguments.
         self.assertTrue(
             any(
                 "Bucket error" in str(arg)

@@ -1,14 +1,15 @@
-import polars as pl
 import argparse
+
+import polars as pl
 
 try:
     from logger import logger
     from utils import (
-        send_email,
-        load_bucket_data,
-        list_bucket_blobs,
-        delete_blob_from_bucket,
         collect_validation_errors,
+        delete_blob_from_bucket,
+        list_bucket_blobs,
+        load_bucket_data,
+        send_email,
     )
 except ImportError:  # For testing purposes
     from Data_Pipeline.scripts.logger import logger
@@ -20,8 +21,8 @@ except ImportError:  # For testing purposes
         collect_validation_errors,
     )
 
-from google.cloud import storage
 from dotenv import load_dotenv
+from google.cloud import storage
 
 load_dotenv()
 
@@ -60,7 +61,9 @@ def validate_data(df):
             # If columns are missing, collect the errors
             error_indices = set()
             error_reasons = {}
-            collect_validation_errors(df, missing_columns, error_indices, error_reasons)
+            collect_validation_errors(
+                df, missing_columns, error_indices, error_reasons
+            )
 
             error_message = f"Missing columns: {', '.join(missing_columns)}"
             send_email(
@@ -108,18 +111,25 @@ def validate_file(
                 logger.info(
                     f"Deleting invalid file: {blob_name} from bucket {bucket_name}"
                 )
-                delete_success = delete_blob_from_bucket(bucket_name, blob_name)
+                delete_success = delete_blob_from_bucket(
+                    bucket_name, blob_name
+                )
                 if delete_success:
-                    logger.info(f"Successfully deleted invalid file: {blob_name}")
+                    logger.info(
+                        f"Successfully deleted invalid file: {blob_name}"
+                    )
                 else:
-                    logger.warning(f"Failed to delete invalid file: {blob_name}")
+                    logger.warning(
+                        f"Failed to delete invalid file: {blob_name}"
+                    )
 
             return False
 
     except Exception as e:
         logger.error(f"Error validating file {blob_name}: {e}")
 
-        # Delete the file if exception occurred during validation and deletion is enabled
+        # Delete the file if exception occurred during validation and deletion
+        # is enabled
         if delete_invalid:
             logger.info(
                 f"Deleting file that caused exception: {blob_name} from bucket {bucket_name}"
@@ -198,12 +208,16 @@ if __name__ == "__main__":
         "--bucket", type=str, default="full-raw-data", help="GCP bucket name"
     )
     parser.add_argument(
-        "--keep_invalid", action="store_true", help="Don't delete invalid files"
+        "--keep_invalid",
+        action="store_true",
+        help="Don't delete invalid files",
     )
     args = parser.parse_args()
 
     # Call main function with arguments
-    status_code = main(bucket_name=args.bucket, delete_invalid=not args.keep_invalid)
+    status_code = main(
+        bucket_name=args.bucket, delete_invalid=not args.keep_invalid
+    )
 
     # Exit with appropriate code
     if status_code == 0:
