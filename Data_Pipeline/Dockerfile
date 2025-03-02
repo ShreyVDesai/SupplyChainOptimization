@@ -4,7 +4,8 @@ FROM python:3.10-slim
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DEFAULT_TIMEOUT=100
 
 # Set the working directory
 WORKDIR /app
@@ -14,16 +15,10 @@ COPY requirements.txt /app/
 
 # Install Python packages
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r /app/requirements.txt && \
-    pip install --no-cache-dir 'dvc[gs]>=3.36.1'
+    pip install --no-cache-dir -r /app/requirements.txt
 
 # Copy the rest of the application
 COPY . /app/
-
-# Install the package in development mode to support both import styles
-WORKDIR /
-COPY .. /workspace/
-RUN pip install -e /workspace/
 
 # Set working directory for scripts
 WORKDIR /app/scripts
