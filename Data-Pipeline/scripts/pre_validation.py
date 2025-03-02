@@ -94,13 +94,34 @@ def list_bucket_blobs(bucket_name: str) -> list:
         raise
 
 
-def validate_file(bucket_name: str, blob_name: str) -> bool:
+def delete_blob_from_bucket(bucket_name: str, blob_name: str) -> bool:
+    """
+    Deletes a blob from a Google Cloud Storage bucket. Returns True if successful.
+    """
+    setup_gcp_credentials()
+    try:
+        storage_client = storage.Client()
+        bucket = storage_client.get_bucket(bucket_name)
+        blob = bucket.blob(blob_name)
+        blob.delete()
+        logger.info(f"Blob {blob_name} deleted from bucket {bucket_name}")
+        return True
+    except Exception as e:
+        logger.error(f"Error deleting blob {blob_name} from bucket {bucket_name}: {e}")
+        return False
+
+
+def validate_file(
+    bucket_name: str, blob_name: str, delete_invalid: bool = True
+) -> bool:
     """
     Validates a single file from the specified GCP bucket.
+    Deletes the file if validation fails and delete_invalid is True.
 
     Parameters:
         bucket_name (str): Name of the GCS bucket.
         blob_name (str): Name of the blob/file to validate.
+        delete_invalid (bool): Whether to delete files that fail validation.
 
     Returns:
         bool: True if validation passes, False otherwise.
@@ -117,20 +138,54 @@ def validate_file(bucket_name: str, blob_name: str) -> bool:
             return True
         else:
             logger.error(f"Validation failed for file: {blob_name}")
+
+            # Delete the file if it failed validation and deletion is enabled
+            if delete_invalid:
+                logger.info(
+                    f"Deleting invalid file: {blob_name} from bucket {bucket_name}"
+                )
+                delete_success = delete_blob_from_bucket(bucket_name, blob_name)
+                if delete_success:
+                    logger.info(f"Successfully deleted invalid file: {blob_name}")
+                else:
+                    logger.warning(f"Failed to delete invalid file: {blob_name}")
+
             return False
 
     except Exception as e:
         logger.error(f"Error validating file {blob_name}: {e}")
+
+        # Delete the file if exception occurred during validation and deletion is enabled
+        if delete_invalid:
+            logger.info(
+                f"Deleting file that caused exception: {blob_name} from bucket {bucket_name}"
+            )
+            delete_success = delete_blob_from_bucket(bucket_name, blob_name)
+            if delete_success:
+                logger.info(
+                    f"Successfully deleted file that caused exception: {blob_name}"
+                )
+            else:
+                logger.warning(
+                    f"Failed to delete file that caused exception: {blob_name}"
+                )
+
         return False
 
 
-def main(cloud: bool = False, bucket_name: str = "full-raw-data"):
+def main(
+    cloud: bool = False, bucket_name: str = "full-raw-data", delete_invalid: bool = True
+):
     """
     Main function to run the validation workflow on all files in a bucket.
 
     Parameters:
         cloud (bool): Whether to use cloud storage or local files.
         bucket_name (str): Name of the GCS bucket to validate files from.
+        delete_invalid (bool): Whether to delete files that fail validation.
+
+    Returns:
+        int: 0 = all files valid, 1 = some files invalid but some valid, 2 = all files invalid or no files
     """
     try:
         if cloud:
@@ -138,22 +193,38 @@ def main(cloud: bool = False, bucket_name: str = "full-raw-data"):
             blob_names = list_bucket_blobs(bucket_name)
             if not blob_names:
                 logger.warning(f"No files found in bucket '{bucket_name}'")
-                return False
+                print("No files found in bucket")
+                return 2  # No files to process
 
-            all_valid = True
+            initial_file_count = len(blob_names)
+            valid_files = []
+            invalid_files = []
+
             for blob_name in blob_names:
                 logger.info(f"Validating file: {blob_name}")
-                file_valid = validate_file(bucket_name, blob_name)
-                # Update overall validation status
-                if not file_valid:
-                    all_valid = False
+                file_valid = validate_file(bucket_name, blob_name, delete_invalid)
+                if file_valid:
+                    valid_files.append(blob_name)
+                else:
+                    invalid_files.append(blob_name)
 
-            if all_valid:
+            # Check validation results
+            if len(valid_files) == initial_file_count:
                 logger.info("All files in the bucket passed validation.")
-                return True
+                print(f"All files valid: {len(valid_files)} files")
+                return 0  # All files valid
+            elif len(valid_files) > 0:
+                logger.info(
+                    f"{len(valid_files)}/{initial_file_count} files passed validation."
+                )
+                print(
+                    f"Partial validation: {len(valid_files)}/{initial_file_count} files valid, {len(invalid_files)} files invalid"
+                )
+                return 1  # Some files valid, some invalid
             else:
-                logger.error("One or more files failed validation.")
-                return False
+                logger.error("All files failed validation.")
+                print("All files invalid")
+                return 2  # All files invalid
         else:
             # Local file validation (original behavior)
             file_name = "messy_transactions_20190103_20241231.xlsx"
@@ -161,14 +232,14 @@ def main(cloud: bool = False, bucket_name: str = "full-raw-data"):
 
             if not validate_data(df):
                 logger.error("Validation failed. Exiting process.")
-                return False
+                return 2
 
             logger.info("Workflow completed successfully.")
-            return True
+            return 0
 
     except Exception as e:
         logger.error(f"Workflow failed: {e}")
-        return False
+        return 2
 
 
 if __name__ == "__main__":
@@ -180,13 +251,23 @@ if __name__ == "__main__":
     parser.add_argument(
         "--bucket", type=str, default="full-raw-data", help="GCP bucket name"
     )
+    parser.add_argument(
+        "--keep_invalid", action="store_true", help="Don't delete invalid files"
+    )
     args = parser.parse_args()
 
-    # Exit with non-zero code if validation fails
-    success = main(cloud=args.cloud, bucket_name=args.bucket)
-    if not success:
-        print("Validation failed")
-        exit(1)
-    else:
+    # Call main function with arguments
+    status_code = main(
+        cloud=args.cloud, bucket_name=args.bucket, delete_invalid=not args.keep_invalid
+    )
+
+    # Exit with appropriate code
+    if status_code == 0:
         print("Validation successful")
         exit(0)
+    elif status_code == 1:
+        print("Validation partial - some files valid, some invalid")
+        exit(1)  # We'll handle this special case in the DAG
+    else:
+        print("Validation failed - no valid files")
+        exit(2)  # Critical failure

@@ -1,21 +1,19 @@
 """
-Supply Chain Optimization - GCP Preprocessing DAG
+Supply Chain Optimization - Common Module
 
-This DAG is triggered when a new file is uploaded to the 'full-raw-data' GCP bucket.
-It then runs the preprocessing.py script in the existing data-pipeline-container.
+This module contains shared functions and parameters used by the preprocessing DAGs.
 """
 
 import os
 from datetime import datetime, timedelta
+import docker
 
-from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.providers.google.cloud.hooks.gcs import GCSHook
-from airflow.models.param import Param
 from airflow.exceptions import AirflowSkipException
 
 # Define default arguments
-default_args = {
+DEFAULT_ARGS = {
     "owner": "airflow",
     "depends_on_past": False,
     "start_date": datetime(2024, 3, 1),
@@ -74,8 +72,6 @@ def list_new_files(**context):
 
 def run_pre_validation(**context):
     """Run the pre_validation script to validate data before processing"""
-    import docker
-
     client = docker.from_env()
 
     try:
@@ -97,18 +93,48 @@ def run_pre_validation(**context):
         output_str = output.decode("utf-8")
         print(f"Pre-validation output: {output_str}")
 
-        if exit_code != 0:
-            print(f"Pre-validation failed with exit code: {exit_code}")
-            raise Exception(f"pre_validation.py failed with exit code {exit_code}")
+        # Check if there are any files left in the bucket after validation
+        hook = GCSHook(gcp_conn_id=GCP_CONNECTION_ID)
+        remaining_files = hook.list(bucket_name=gcs_bucket)
 
-        # Check if validation was successful (this depends on how pre_validation.py reports success/failure)
-        if "Validation failed" in output_str:
-            print(
-                "Pre-validation detected issues with the data. Skipping preprocessing."
-            )
-            raise AirflowSkipException("Pre-validation failed, skipping preprocessing")
+        if not remaining_files:
+            print("No valid files remain in the bucket after pre-validation.")
+            raise AirflowSkipException("No valid files to process")
 
-        print("Pre-validation completed successfully")
+        # Interpret exit code from pre_validation.py:
+        # 0 = All files valid
+        # 1 = Some files valid, some invalid (removed)
+        # 2 = Critical failure or all files invalid
+        if exit_code == 0:
+            print("Pre-validation completed successfully for all files")
+            context["ti"].xcom_push(key="validation_status", value="full")
+        elif exit_code == 1:
+            print("Some files failed validation, but continuing with valid ones")
+            context["ti"].xcom_push(key="validation_status", value="partial")
+        elif exit_code == 2:
+            # If there are still files in the bucket, there must be valid files
+            # This handles the case where pre_validation.py miscategorized some files
+            if remaining_files:
+                print("Partial validation - continuing with remaining files in bucket")
+                context["ti"].xcom_push(key="validation_status", value="partial")
+            else:
+                print("No valid files to process after pre-validation")
+                raise AirflowSkipException("No valid files after pre-validation")
+        else:
+            # Unknown exit code, check remaining files to decide
+            if remaining_files:
+                print(
+                    f"Unknown validation status (code {exit_code}), but files remain. Continuing."
+                )
+                context["ti"].xcom_push(key="validation_status", value="unknown")
+            else:
+                print(
+                    f"Unknown validation status (code {exit_code}) and no files remain."
+                )
+                raise AirflowSkipException(
+                    "Unknown validation status and no files remain"
+                )
+
         return output_str
 
     except docker.errors.NotFound:
@@ -125,8 +151,6 @@ def run_pre_validation(**context):
 
 def run_preprocessing_script(**context):
     """Run the preprocessing script in the existing data-pipeline-container"""
-    import docker
-
     client = docker.from_env()
 
     try:
@@ -164,38 +188,48 @@ def run_preprocessing_script(**context):
         raise
 
 
-with DAG(
-    "gcp_preprocessing_dag",
-    default_args=default_args,
-    description="Process files from GCP bucket using preprocessing.py",
-    schedule_interval="* * * * *",  # Run every minute
-    catchup=False,
-    tags=["supply-chain", "preprocessing"],
-) as dag:
+def create_preprocessing_tasks(dag):
+    """Create all preprocessing tasks for a given DAG"""
 
     # Print information about the GCS event
-    print_gcs_info = PythonOperator(
+    print_gcs_info_task = PythonOperator(
         task_id="print_gcs_info",
         python_callable=print_gcs_info,
+        dag=dag,
     )
 
     # Get list of files in the bucket
-    get_file_list = PythonOperator(
+    get_file_list_task = PythonOperator(
         task_id="get_file_list",
         python_callable=list_new_files,
+        dag=dag,
     )
 
     # Run pre-validation to check data quality
-    run_pre_validation = PythonOperator(
+    run_pre_validation_task = PythonOperator(
         task_id="run_pre_validation",
         python_callable=run_pre_validation,
+        dag=dag,
     )
 
     # Run the preprocessing script in the existing data-pipeline-container
-    run_preprocessing = PythonOperator(
+    run_preprocessing_task = PythonOperator(
         task_id="run_preprocessing",
         python_callable=run_preprocessing_script,
+        dag=dag,
     )
 
     # Define the task dependencies
-    print_gcs_info >> get_file_list >> run_pre_validation >> run_preprocessing
+    (
+        print_gcs_info_task
+        >> get_file_list_task
+        >> run_pre_validation_task
+        >> run_preprocessing_task
+    )
+
+    return {
+        "print_gcs_info": print_gcs_info_task,
+        "get_file_list": get_file_list_task,
+        "run_pre_validation": run_pre_validation_task,
+        "run_preprocessing": run_preprocessing_task,
+    }
