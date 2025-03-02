@@ -92,7 +92,7 @@ def load_bucket_data(bucket_name: str, file_name: str) -> pl.DataFrame:
 
         elif file_extension == "json":
             try:
-                df = pd.read_json(io.BytesIO(blob_content))
+                df = pl.read_json(io.BytesIO(blob_content))
                 logger.info(
                     f"'{file_name}' from bucket '{bucket_name}' successfully read as JSON into DataFrame."
                 )
@@ -151,7 +151,7 @@ def send_email(
       sender (str): Sender's email address.
       username (str): Username for SMTP login.
       password (str): Password for SMTP login.
-      attachment (pd.DataFrame, optional): If provided, attached as a CSV file.
+      attachment (pl.DataFrame, optional): If provided, attached as a CSV file.
     """
     msg = EmailMessage()
     msg["Subject"] = subject
@@ -160,7 +160,7 @@ def send_email(
     msg.set_content(body)
 
     # If an attachment is provided and it's a DataFrame, attach it as a CSV file.
-    if attachment is not None and isinstance(attachment, pd.DataFrame):
+    if attachment is not None and isinstance(attachment, pl.DataFrame):
         csv_buffer = io.StringIO()
         attachment.to_csv(csv_buffer, index=False)
         # Encode the CSV content to bytes to avoid calling set_text_content.
