@@ -1,13 +1,13 @@
 {
-  "success": false,
+  "success": true,
   "results": [
     {
       "success": true,
       "expectation_config": {
         "expectation_type": "expect_column_to_exist",
         "kwargs": {
-          "column": "Product Name",
-          "result_format": "BASIC"
+          "result_format": "COMPLETE",
+          "column": "Product Name"
         },
         "meta": {}
       },
@@ -26,139 +26,144 @@
         "kwargs": {
           "column": "Product Name",
           "type_": "str",
-          "result_format": "BASIC"
-        },
-        "meta": {}
-      },
-      "result": {
-        "element_count": 25,
-        "missing_count": 1,
-        "missing_percent": 4.0,
-        "unexpected_count": 0,
-        "unexpected_percent": 0.0,
-        "unexpected_percent_total": 0.0,
-        "unexpected_percent_nonmissing": 0.0,
-        "partial_unexpected_list": []
-      },
-      "meta": {},
-      "exception_info": {
-        "raised_exception": false,
-        "exception_message": null,
-        "exception_traceback": null
-      }
-    },
-    {
-      "success": true,
-      "expectation_config": {
-        "expectation_type": "expect_column_to_exist",
-        "kwargs": {
-          "column": "Transaction ID",
-          "result_format": "BASIC"
-        },
-        "meta": {}
-      },
-      "result": {},
-      "meta": {},
-      "exception_info": {
-        "raised_exception": false,
-        "exception_message": null,
-        "exception_traceback": null
-      }
-    },
-    {
-      "success": true,
-      "expectation_config": {
-        "expectation_type": "expect_column_to_exist",
-        "kwargs": {
-          "column": "Quantity",
-          "result_format": "BASIC"
-        },
-        "meta": {}
-      },
-      "result": {},
-      "meta": {},
-      "exception_info": {
-        "raised_exception": false,
-        "exception_message": null,
-        "exception_traceback": null
-      }
-    },
-    {
-      "success": false,
-      "expectation_config": {
-        "expectation_type": "expect_column_values_to_be_of_type",
-        "kwargs": {
-          "column": "Quantity",
-          "type_": "int",
-          "result_format": "BASIC"
-        },
-        "meta": {}
-      },
-      "result": {
-        "observed_value": "float64"
-      },
-      "meta": {},
-      "exception_info": {
-        "raised_exception": false,
-        "exception_message": null,
-        "exception_traceback": null
-      }
-    },
-    {
-      "success": true,
-      "expectation_config": {
-        "expectation_type": "expect_column_to_exist",
-        "kwargs": {
-          "column": "Date",
-          "result_format": "BASIC"
-        },
-        "meta": {}
-      },
-      "result": {},
-      "meta": {},
-      "exception_info": {
-        "raised_exception": false,
-        "exception_message": null,
-        "exception_traceback": null
-      }
-    },
-    {
-      "success": false,
-      "expectation_config": {
-        "expectation_type": "expect_column_values_to_match_regex",
-        "kwargs": {
-          "column": "Date",
-          "regex": "^(?:\\d{4}-\\d{2}-\\d{2}(?: \\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?){0,1}|\\d{2}-\\d{2}-\\d{4}|\\d{2}/\\d{2}/\\d{4})$",
           "result_format": "COMPLETE"
         },
         "meta": {}
       },
       "result": {
-        "element_count": 25,
-        "missing_count": 7,
-        "missing_percent": 28.000000000000004,
-        "unexpected_count": 1,
-        "unexpected_percent": 5.555555555555555,
-        "unexpected_percent_total": 4.0,
-        "unexpected_percent_nonmissing": 5.555555555555555,
-        "partial_unexpected_list": [
-          "true"
-        ],
-        "partial_unexpected_index_list": [
-          11
-        ],
-        "partial_unexpected_counts": [
-          {
-            "value": "true",
-            "count": 1
-          }
-        ],
-        "unexpected_list": [
-          "true"
-        ],
-        "unexpected_index_list": [
-          11
-        ]
+        "element_count": 17520,
+        "missing_count": 0,
+        "missing_percent": 0.0,
+        "unexpected_count": 0,
+        "unexpected_percent": 0.0,
+        "unexpected_percent_total": 0.0,
+        "unexpected_percent_nonmissing": 0.0,
+        "partial_unexpected_list": [],
+        "partial_unexpected_index_list": [],
+        "partial_unexpected_counts": [],
+        "unexpected_list": [],
+        "unexpected_index_list": []
+      },
+      "meta": {},
+      "exception_info": {
+        "raised_exception": false,
+        "exception_message": null,
+        "exception_traceback": null
+      }
+    },
+    {
+      "success": true,
+      "expectation_config": {
+        "expectation_type": "expect_column_to_exist",
+        "kwargs": {
+          "result_format": "COMPLETE",
+          "column": "Total Quantity"
+        },
+        "meta": {}
+      },
+      "result": {},
+      "meta": {},
+      "exception_info": {
+        "raised_exception": false,
+        "exception_message": null,
+        "exception_traceback": null
+      }
+    },
+    {
+      "success": true,
+      "expectation_config": {
+        "expectation_type": "expect_column_values_to_be_of_type",
+        "kwargs": {
+          "column": "Total Quantity",
+          "type_": "int",
+          "result_format": "COMPLETE"
+        },
+        "meta": {}
+      },
+      "result": {
+        "observed_value": "int64"
+      },
+      "meta": {},
+      "exception_info": {
+        "raised_exception": false,
+        "exception_message": null,
+        "exception_traceback": null
+      }
+    },
+    {
+      "success": true,
+      "expectation_config": {
+        "expectation_type": "expect_column_values_to_be_between",
+        "kwargs": {
+          "min_value": 1,
+          "result_format": "COMPLETE",
+          "column": "Total Quantity"
+        },
+        "meta": {}
+      },
+      "result": {
+        "element_count": 17520,
+        "missing_count": 0,
+        "missing_percent": 0.0,
+        "unexpected_count": 0,
+        "unexpected_percent": 0.0,
+        "unexpected_percent_total": 0.0,
+        "unexpected_percent_nonmissing": 0.0,
+        "partial_unexpected_list": [],
+        "partial_unexpected_index_list": [],
+        "partial_unexpected_counts": [],
+        "unexpected_list": [],
+        "unexpected_index_list": []
+      },
+      "meta": {},
+      "exception_info": {
+        "raised_exception": false,
+        "exception_message": null,
+        "exception_traceback": null
+      }
+    },
+    {
+      "success": true,
+      "expectation_config": {
+        "expectation_type": "expect_column_to_exist",
+        "kwargs": {
+          "result_format": "COMPLETE",
+          "column": "Date"
+        },
+        "meta": {}
+      },
+      "result": {},
+      "meta": {},
+      "exception_info": {
+        "raised_exception": false,
+        "exception_message": null,
+        "exception_traceback": null
+      }
+    },
+    {
+      "success": true,
+      "expectation_config": {
+        "expectation_type": "expect_column_values_to_match_regex",
+        "kwargs": {
+          "regex": "^(?:\\d{4}-\\d{2}-\\d{2}(?: \\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?){0,1}|\\d{2}-\\d{2}-\\d{4}|\\d{2}/\\d{2}/\\d{4})$",
+          "result_format": "COMPLETE",
+          "column": "Date"
+        },
+        "meta": {}
+      },
+      "result": {
+        "element_count": 17520,
+        "missing_count": 0,
+        "missing_percent": 0.0,
+        "unexpected_count": 0,
+        "unexpected_percent": 0.0,
+        "unexpected_percent_total": 0.0,
+        "unexpected_percent_nonmissing": 0.0,
+        "partial_unexpected_list": [],
+        "partial_unexpected_index_list": [],
+        "partial_unexpected_counts": [],
+        "unexpected_list": [],
+        "unexpected_index_list": []
       },
       "meta": {},
       "exception_info": {
@@ -171,23 +176,23 @@
   "evaluation_parameters": {},
   "statistics": {
     "evaluated_expectations": 7,
-    "successful_expectations": 5,
-    "unsuccessful_expectations": 2,
-    "success_percent": 71.42857142857143
+    "successful_expectations": 7,
+    "unsuccessful_expectations": 0,
+    "success_percent": 100.0
   },
   "meta": {
     "great_expectations_version": "0.18.8",
     "expectation_suite_name": "default",
     "run_id": {
       "run_name": null,
-      "run_time": "2025-02-28T20:40:46.437989-05:00"
+      "run_time": "2025-03-01T19:22:34.616872-05:00"
     },
     "batch_kwargs": {
-      "ge_batch_id": "324f15b3-f63e-11ef-a183-00e18cb06755"
+      "ge_batch_id": "7024387b-f6fc-11ef-9bf7-00e18cb06755"
     },
     "batch_markers": {},
     "batch_parameters": {},
-    "validation_time": "20250301T014046.437989Z",
+    "validation_time": "20250302T002234.616872Z",
     "expectation_suite_meta": {
       "great_expectations_version": "0.18.8"
     }

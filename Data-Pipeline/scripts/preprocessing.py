@@ -9,44 +9,10 @@ from google.cloud import storage
 from dotenv import load_dotenv
 from typing import Dict, Tuple
 import os
-from utils import send_email
+from utils import send_email, load_bucket_data, upload_to_gcs, setup_gcp_credentials
+from post_validation import post_validation
 
 load_dotenv()
-
-
-def setup_gcp_credentials():
-    """
-    Sets up the GCP credentials by setting the GOOGLE_APPLICATION_CREDENTIALS
-    environment variable to point to the correct location of the GCP key file.
-    """
-    # First check if GOOGLE_APPLICATION_CREDENTIALS is already set
-    if os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
-        logger.info(
-            f"Using GCP credentials from environment variable: {os.environ['GOOGLE_APPLICATION_CREDENTIALS']}"
-        )
-        return
-
-    # If not set, try to find the key file in various locations
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(os.path.dirname(script_dir))
-    gcp_key_path = os.path.join(project_root, "secret", "gcp-key.json")
-
-    # If the key isn't where we expect, try a couple of fallback locations.
-    if not os.path.exists(gcp_key_path):
-        alt_path = os.path.join(
-            os.path.dirname(script_dir), "..", "secret", "gcp-key.json"
-        )
-        if os.path.exists(alt_path):
-            gcp_key_path = alt_path
-        else:
-            gcp_key_path = "secret/gcp-key.json"
-            if not os.path.exists(gcp_key_path):
-                logger.warning(
-                    f"GCP key not found at {gcp_key_path}. Authentication may fail."
-                )
-
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = gcp_key_path
-    logger.info(f"Using GCP credentials from: {gcp_key_path}")
 
 
 # Reference product names (correct names from the dataset)
@@ -60,30 +26,6 @@ REFERENCE_PRODUCT_NAMES = [
     "corn",
     "soybeans",
 ]
-
-
-
-def load_bucket_data(bucket_name: str, file_name: str) -> pl.DataFrame:
-    """
-    Loads data from a specified file in a Google Cloud Storage bucket
-    and returns it as a Polars DataFrame.
-    """
-    setup_gcp_credentials()
-    try:
-        bucket = storage.Client().get_bucket(bucket_name)
-        blob = bucket.blob(file_name)
-        blob_content = blob.download_as_string()
-        data_frame = pl.read_excel(io.BytesIO(blob_content))
-        logger.info(
-            f"'{file_name}' from bucket '{bucket_name}' successfully read into DataFrame."
-        )
-        return data_frame
-
-    except Exception as e:
-        logger.error(
-            f"Error while loading data from bucket '{bucket_name}', file '{file_name}': {e}"
-        )
-        raise
 
 
 def convert_feature_types(df: pl.DataFrame) -> pl.DataFrame:
@@ -414,27 +356,6 @@ def filter_invalid_products(df: pl.DataFrame, reference_list: list) -> pl.DataFr
         return df
     except Exception as e:
         logger.error(f"Error filtering invalid products: {e}")
-        raise
-
-
-def upload_df_to_gcs(
-    df: pl.DataFrame, bucket_name: str, destination_blob_name: str
-) -> None:
-    """
-    Uploads a DataFrame to Google Cloud Storage (GCS) as a CSV file.
-    """
-    setup_gcp_credentials()
-    try:
-        logger.info(
-            f"Starting upload to GCS. Bucket: {bucket_name}, Blob: {destination_blob_name}"
-        )
-        bucket = storage.Client().get_bucket(bucket_name)
-        blob = bucket.blob(destination_blob_name)
-        csv_data = df.write_csv()
-        blob.upload_from_string(csv_data, content_type="text/csv")
-        logger.info(f"Upload successful to GCS. Blob name: {destination_blob_name}")
-    except Exception as e:
-        logger.error(f"Error uploading DataFrame to GCS. Error: {e}")
         raise
 
 
@@ -795,7 +716,7 @@ def process_file(
         unique_dest_name = f"processed_{base_name}_{timestamp}.csv"
 
         logger.info(f"Uploading cleaned data to GCS → {unique_dest_name}")
-        upload_df_to_gcs(df, destination_bucket_name, unique_dest_name)
+        upload_to_gcs(df, destination_bucket_name, unique_dest_name)
         logger.info(
             f"Data cleaning completed! Cleaned data saved to GCS bucket: {destination_bucket_name}, "
             f"blob: {unique_dest_name}"
@@ -810,6 +731,11 @@ def process_file(
                 logger.info(f"Successfully deleted source file: {blob_name}")
             else:
                 logger.warning(f"Failed to delete source file: {blob_name}")
+
+        
+        logger.info("Performing Post Validation...")
+        unique_dest_blob_name = f"stats_{base_name}_{timestamp}.json"
+        flag = post_validation(df, unique_dest_blob_name)
 
     except Exception as e:
         logger.error(f"Processing file failed: {e}")
