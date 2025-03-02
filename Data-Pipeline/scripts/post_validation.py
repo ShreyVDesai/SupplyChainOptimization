@@ -222,7 +222,7 @@ def generate_numeric_stats(df, filename, include_columns=["Total Quantity", "Uni
 def send_anomaly_alert(df, subject, message):
     """
     Send an anomaly alert using email.
-    
+
     Parameters:
       user_id (str/int): Identifier of the user.
       message (str): Alert message.
@@ -265,5 +265,6 @@ def post_validation(df: pl.DataFrame, file_name: str) -> bool:
     except Exception as e:
         logger.error(f"Workflow failed: {e}")
         raise
+    
 # if __name__ == "__main__":
 #     main()
