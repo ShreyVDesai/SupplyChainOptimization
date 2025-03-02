@@ -6,19 +6,16 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
 
-
 # Set the working directory
 WORKDIR /app
 
 # Copy requirements file first for better caching
 COPY requirements.txt /app/
 
-# Install Python dependencies
+# Install Python packages
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r /app/requirements.txt
-
-# Install pandera separately to ensure it's properly installed
-RUN pip install --no-cache-dir 'pandera>=0.15.1,<0.16.0'
+    pip install --no-cache-dir -r /app/requirements.txt && \
+    pip install --no-cache-dir 'dvc[gs]>=3.36.1'
 
 # Copy the rest of the application
 COPY . /app/
