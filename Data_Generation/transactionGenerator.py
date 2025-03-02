@@ -1,8 +1,9 @@
-import pandas as pd
-import numpy as np
 import os
-from datetime import datetime, timedelta
 import uuid
+from datetime import datetime, timedelta
+
+import numpy as np
+import pandas as pd
 from tqdm import tqdm
 
 # ============================ CONSTANTS ============================
@@ -76,7 +77,9 @@ def generate_base_prices(product_names, fixed_prices=None):
         if product in fixed_prices:
             base_prices[product] = round(fixed_prices[product], 2)
         else:
-            base_prices[product] = round(np.random.uniform(*BASE_PRICE_RANGE), 2)
+            base_prices[product] = round(
+                np.random.uniform(*BASE_PRICE_RANGE), 2
+            )
 
     return base_prices
 
@@ -89,19 +92,25 @@ def adjust_price_for_inflation(base_price, start_year, current_year):
             if year in INFLATION_RATES:
                 adjusted_price *= 1 + INFLATION_RATES[year] / 100
             else:
-                raise ValueError(f"Inflation rate for year {year} is not available.")
+                raise ValueError(
+                    f"Inflation rate for year {year} is not available."
+                )
     return round(adjusted_price, 2)
 
 
 def generate_transactions(demand_df, fixed_prices=None):
     """Generate transaction data based on demand and adjust prices for inflation."""
     transactions = []
-    product_names = list(demand_df.columns)  # Extract product names from demand data
+    product_names = list(
+        demand_df.columns
+    )  # Extract product names from demand data
     base_prices = generate_base_prices(product_names, fixed_prices)
     start_year = demand_df.index.min().year
 
     for date, row in tqdm(
-        demand_df.iterrows(), total=demand_df.shape[0], desc="Processing transactions"
+        demand_df.iterrows(),
+        total=demand_df.shape[0],
+        desc="Processing transactions",
     ):
         current_year = date.year
         daily_transactions = []
@@ -139,7 +148,9 @@ def generate_transactions(demand_df, fixed_prices=None):
                     ]
                 )
 
-        np.random.shuffle(daily_transactions)  # Shuffle transactions for the day
+        np.random.shuffle(
+            daily_transactions
+        )  # Shuffle transactions for the day
 
         # Assign more realistic timestamps (clustered around midday)
         num_transactions = len(daily_transactions)
@@ -156,7 +167,9 @@ def generate_transactions(demand_df, fixed_prices=None):
                 date, datetime.strptime(START_TIME, "%H:%M:%S").time()
             )
             for i, transaction in enumerate(daily_transactions):
-                transaction[0] = start_time + timedelta(seconds=time_intervals[i])
+                transaction[0] = start_time + timedelta(
+                    seconds=time_intervals[i]
+                )
 
         transactions.extend(daily_transactions)
 
@@ -190,7 +203,9 @@ def save_transactions_to_excel(transactions_df):
     filepath = os.path.join(SAVE_DIR, filename)
 
     with pd.ExcelWriter(filepath, engine="xlsxwriter") as writer:
-        transactions_df.to_excel(writer, sheet_name="Transactions", index=False)
+        transactions_df.to_excel(
+            writer, sheet_name="Transactions", index=False
+        )
 
     print(f"Transaction data saved successfully to: {filepath}")
 

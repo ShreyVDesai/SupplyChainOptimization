@@ -2,18 +2,21 @@ import io
 import os
 import json
 import unittest
-from unittest.mock import patch, MagicMock, call
-import polars as pl
+from unittest.mock import MagicMock, call, patch, Mock
+
 import pandas as pd
+import polars as pl
 from polars.testing import assert_frame_equal
 from scripts.utils import (
     load_bucket_data,
     send_email,
-    upload_to_gcs,
-    load_data,
     setup_gcp_credentials,
+    upload_to_gcs,
+    send_anomaly_alert,
+    collect_validation_errors,
+    delete_blob_from_bucket,
+    list_bucket_blobs
 )
-from google.api_core.exceptions import GoogleAPICallError
 
 
 class TestUtils(unittest.TestCase):
@@ -89,7 +92,8 @@ class TestUtils(unittest.TestCase):
         mock_bucket = MagicMock()
         mock_bucket.blob.return_value = mock_blob
 
-        # Set up a mock client instance whose get_bucket returns the mock bucket.
+        # Set up a mock client instance whose get_bucket returns the mock
+        # bucket.
         mock_client_instance = MagicMock()
         mock_client_instance.get_bucket.return_value = mock_bucket
         mock_storage_client.return_value = mock_client_instance
@@ -103,7 +107,8 @@ class TestUtils(unittest.TestCase):
         # Verify the exception message contains our simulated error.
         self.assertIn(error_message, str(context.exception))
 
-        # Verify that logger.error was called with a message that includes the error.
+        # Verify that logger.error was called with a message that includes the
+        # error.
         mock_logger.error.assert_called_once()
         error_log_msg = mock_logger.error.call_args[0][0]
         self.assertIn(error_message, error_log_msg)
@@ -135,21 +140,23 @@ class TestUtils(unittest.TestCase):
 
         # Assert
         self.assertIn("is empty", str(context.exception))
-        expected_substring = (
-            "DataFrame loaded from bucket 'dummy-bucket', file 'dummy.xlsx' is empty."
-        )
-        error_messages = [args[0][0] for args in mock_logger.error.call_args_list]
+        expected_substring = "DataFrame loaded from bucket 'dummy-bucket', file 'dummy.xlsx' is empty."
+        error_messages = [
+            args[0][0] for args in mock_logger.error.call_args_list
+        ]
         self.assertTrue(
             any(expected_substring in message for message in error_messages),
             f"None of the error messages contained '{expected_substring}'.",
         )
 
-    ### Unit tests for send_email
+    # Unit tests for send_email
 
     # Test case where send_email executes successfully without attachment.
     @patch("scripts.utils.logger")
     @patch("scripts.utils.smtplib.SMTP")
-    def test_send_email_success_without_attachment(self, mock_smtp, mock_logger):
+    def test_send_email_success_without_attachment(
+        self, mock_smtp, mock_logger
+    ):
         # Setup
         smtp_instance = MagicMock()
         mock_smtp.return_value.__enter__.return_value = smtp_instance
@@ -168,7 +175,9 @@ class TestUtils(unittest.TestCase):
             "talksick530@gmail.com", "celm dfaq qllh ymjv"
         )
         smtp_instance.send_message.assert_called_once()
-        mock_logger.info.assert_any_call(f"Email sent successfully to: {emailid}")
+        mock_logger.info.assert_any_call(
+            f"Email sent successfully to: {emailid}"
+        )
 
     # Test case where send_email executes successfully with attachment.
     @patch("scripts.utils.logger")
@@ -205,7 +214,9 @@ class TestUtils(unittest.TestCase):
             "EmailMessage should be multipart when an attachment is added.",
         )
         attachments = [part for part in sent_msg.iter_attachments()]
-        self.assertEqual(len(attachments), 1, "There should be exactly one attachment.")
+        self.assertEqual(
+            len(attachments), 1, "There should be exactly one attachment."
+        )
         attachment_part = attachments[0]
         self.assertEqual(attachment_part.get_filename(), "anomalies.csv")
         csv_content = attachment_part.get_content()
@@ -586,7 +597,9 @@ class TestUtils(unittest.TestCase):
 
         # Assert
         self.assertIn("Excel read error", str(context.exception))
-        expected_log = f"Error reading '{file_name}' as Excel: Excel read error"
+        expected_log = (
+            f"Error reading '{file_name}' as Excel: Excel read error"
+        )
         mock_logger.error.assert_any_call(expected_log)
 
     @patch("scripts.utils.logger")
@@ -663,7 +676,9 @@ class TestUtils(unittest.TestCase):
         # Create a dummy Polars DataFrame.
         df = pl.DataFrame({"a": [1, 2], "b": [3, 4]})
         csv_content = "a,b\n1,3\n2,4\n"
-        with patch.object(df, "write_csv", return_value=csv_content) as mock_write_csv:
+        with patch.object(
+            df, "write_csv", return_value=csv_content
+        ) as mock_write_csv:
             # Set up fake GCS objects.
             mock_blob = MagicMock()
             mock_blob.upload_from_string = MagicMock()
@@ -683,7 +698,8 @@ class TestUtils(unittest.TestCase):
             )
             mock_logger.info.assert_any_call("CSV data uploaded successfully")
             mock_logger.info.assert_any_call(
-                "Upload successful to GCS. Blob name: %s", destination_blob_name
+                "Upload successful to GCS. Blob name: %s",
+                destination_blob_name,
             )
 
     @patch("scripts.utils.setup_gcp_credentials")
@@ -731,7 +747,9 @@ class TestUtils(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             upload_to_gcs(df, bucket_name, destination_blob_name)
 
-        self.assertIn("Unsupported file extension: txt", str(context.exception))
+        self.assertIn(
+            "Unsupported file extension: txt", str(context.exception)
+        )
 
     @patch("scripts.utils.setup_gcp_credentials")
     @patch("scripts.preprocessing.storage.Client")
@@ -765,21 +783,23 @@ class TestUtils(unittest.TestCase):
             csv_content, content_type="text/csv"
         )
 
-    @patch("scripts.preprocessing.logger")
-    @patch("scripts.preprocessing.storage.Client")
-    @patch("scripts.preprocessing.setup_gcp_credentials")
-    def test_unsupported_extension_upload_to_gcs(
-        self, mock_setup_creds, mock_storage_client, mock_logger
-    ):
-        # Create a dummy DataFrame.
-        df = pl.DataFrame({"col": [1, 2, 3]})
-        destination_blob_name = "test_file.unsupported"
-        bucket_name = "test_bucket"
+    # @patch("scripts.preprocessing.logger")
+    # @patch("scripts.preprocessing.storage.Client")
+    # @patch("scripts.preprocessing.setup_gcp_credentials")
+    # def test_unsupported_extension_upload_to_gcs(
+    #     self, mock_setup_creds, mock_storage_client, mock_logger
+    # ):
+    #     # Create a dummy DataFrame.
+    #     df = pl.DataFrame({"col": [1, 2, 3]})
+    #     destination_blob_name = "test_file.unsupported"
+    #     bucket_name = "test_bucket"
 
-        # Expect ValueError for unsupported file extension.
-        with self.assertRaises(ValueError) as context:
-            upload_to_gcs(df, bucket_name, destination_blob_name)
-        self.assertIn("Unsupported file extension", str(context.exception))
+    #     # Expect ValueError for unsupported file extension.
+    #     with self.assertRaises(ValueError) as context:
+    #         upload_to_gcs(df, bucket_name, destination_blob_name)
+    #     self.assertIn("Unsupported file extension", str(context.exception))
+
+
 
     @patch("scripts.utils.setup_gcp_credentials")
     @patch("scripts.preprocessing.storage.Client")
@@ -820,7 +840,9 @@ class TestUtils(unittest.TestCase):
         expected_final_call = call(
             "Upload successful to GCS. Blob name: %s", destination_blob_name
         )
-        self.assertIn(expected_csv_success_call, mock_logger.info.call_args_list)
+        self.assertIn(
+            expected_csv_success_call, mock_logger.info.call_args_list
+        )
         self.assertIn(expected_final_call, mock_logger.info.call_args_list)
 
     @patch("scripts.utils.setup_gcp_credentials")
@@ -866,7 +888,9 @@ class TestUtils(unittest.TestCase):
             "Upload successful to GCS. Blob name: %s", destination_blob_name
         )
         self.assertIn(expected_start_call, mock_logger.info.call_args_list)
-        self.assertIn(expected_csv_success_call, mock_logger.info.call_args_list)
+        self.assertIn(
+            expected_csv_success_call, mock_logger.info.call_args_list
+        )
         self.assertIn(expected_final_call, mock_logger.info.call_args_list)
 
     @patch("scripts.utils.setup_gcp_credentials")
@@ -904,7 +928,9 @@ class TestUtils(unittest.TestCase):
         expected_final_call = call(
             "Upload successful to GCS. Blob name: %s", destination_blob_name
         )
-        self.assertIn(expected_json_success_call, mock_logger.info.call_args_list)
+        self.assertIn(
+            expected_json_success_call, mock_logger.info.call_args_list
+        )
         self.assertIn(expected_final_call, mock_logger.info.call_args_list)
 
 
@@ -1008,13 +1034,16 @@ class TestUtils(unittest.TestCase):
         bucket_name = "test_bucket"
 
         dummy_storage_instance = MagicMock()
-        dummy_storage_instance.get_bucket.side_effect = Exception("Bucket error")
+        dummy_storage_instance.get_bucket.side_effect = Exception(
+            "Bucket error"
+        )
         mock_storage_client.return_value = dummy_storage_instance
 
         with self.assertRaises(Exception) as context:
             upload_to_gcs(df, bucket_name, destination_blob_name)
         self.assertIn("Bucket error", str(context.exception))
-        # Check that an error was logged by inspecting all positional arguments.
+        # Check that an error was logged by inspecting all positional
+        # arguments.
         self.assertTrue(
             any(
                 "Bucket error" in str(arg)
@@ -1025,59 +1054,415 @@ class TestUtils(unittest.TestCase):
         )
 
     
-    @patch('scripts.utils.logger')
-    @patch('scripts.utils.pl.read_excel')
-    def test_load_data_valid_xlsx(self, mock_read_excel, mock_logger):
+    # Unit tests for send_anomaly_alert function.
+
+    # Test case where no anomalies.
+    @patch("scripts.utils.send_email")
+    @patch("scripts.utils.logger")
+    def test_send_anomaly_alert_no_anomalies(self, mock_logger, mock_send_email):
+        # Setup: use empty DataFrames for each anomaly type.
+        anomalies = {
+            "price_anomalies": pl.DataFrame(),
+            "quantity_anomalies": pl.DataFrame(),
+        }
+
+        # Execute the function with anomalies.
+        send_anomaly_alert(anomalies=anomalies, recipient="test@example.com", subject="Alert")
+
+        # Assert: no email should be sent, and the logger should record that no alert was sent.
+        mock_send_email.assert_not_called()
+        mock_logger.info.assert_any_call("No anomalies detected; no alert email sent.")
+
+
+    # Test case where with anomalies.
+    @patch("scripts.preprocessing.send_email")
+    @patch("scripts.preprocessing.logger")
+    def test_send_anomaly_alert_with_anomalies(
+        self, mock_logger, mock_send_email
+    ):
         # Setup
-        fake_df = pl.DataFrame({"col1": [1, 2, 3], "col2": ["a", "b", "c"]})
-        mock_read_excel.return_value = fake_df
+        data = {"col": [1, 2, 3]}
+        non_empty_df = pl.DataFrame(data)
+        anomalies = {
+            "price_anomalies": pl.DataFrame(),
+            "quantity_anomalies": non_empty_df,
+        }
 
-        # Call load_data with a valid .xlsx file path.
-        file_path = "dummy_file.xlsx"
-        result_df = load_data(file_path)
-
-        # Assert
-        mock_read_excel.assert_called_once_with(file_path)
-        assert_frame_equal(result_df, fake_df)
-        mock_logger.info.assert_called()
-        info_call = mock_logger.info.call_args[0][0]
-        self.assertIn(str(fake_df.shape[0]), info_call)
-        self.assertIn(str(fake_df.shape[1]), info_call)
-
-
-    @patch('scripts.utils.logger')
-    @patch('scripts.utils.pl.read_excel')
-    def test_load_data_file_not_found(self, mock_read_excel, mock_logger):
-        # Setup
-        mock_read_excel.side_effect = FileNotFoundError("File not found.")
-        file_path = "non_existent_file.xlsx"
+        mock_send_email.return_value = None
 
         # Test
-        result_df = load_data(file_path)
+        send_anomaly_alert(
+            anomalies, recipient="test@example.com", subject="Alert"
+        )
 
         # Assert
-        self.assertIsNone(result_df)
-        mock_logger.error.assert_called_with(f"File Not Found: {file_path}")
+        mock_send_email.assert_called_once()
+        args, kwargs = mock_send_email.call_args
+        self.assertEqual(kwargs["emailid"], "test@example.com")
+        self.assertEqual(kwargs["subject"], "Alert")
+
+        # Verify the email body matches the expected message.
+        expected_body = (
+            "Hi,\n\n"
+            "Anomalies have been detected in the dataset. "
+            "Please see the attached CSV file for details.\n\n"
+            "Thank you!"
+        )
+        self.assertEqual(kwargs["body"], expected_body)
+
+        attachment_df = kwargs["attachment"]
+        self.assertIn("anomaly_type", attachment_df.columns)
+        self.assertTrue(
+            "quantity_anomalies" in attachment_df["anomaly_type"].values
+        )
+        mock_logger.info.assert_any_call("Anomaly alert email sent.")
 
 
-    @patch('scripts.utils.logger')
-    @patch('scripts.utils.pl.read_excel')
-    def test_load_data_generic_exception(self, mock_read_excel, mock_logger):
+
+    # Test case where Exception handled.
+    @patch(
+        "scripts.preprocessing.send_email",
+        side_effect=Exception("Error sending an alert email."),
+    )
+    @patch("scripts.preprocessing.logger")
+    def test_send_anomaly_alert_throws_exception(
+        self, mock_logger, mock_send_email
+    ):
         # Setup
-        mock_read_excel.side_effect = Exception("Generic error.")
-        file_path = "dummy_file.xlsx"
+        data = {"col": [1, 2, 3]}
+        non_empty_df = pl.DataFrame(data)
+        anomalies = {"price_anomalies": non_empty_df}
+
         # Test
+        send_anomaly_alert(
+            anomalies, recipient="test@example.com", subject="Alert"
+        )
+
+        # Assert
+        mock_send_email.assert_called_once()
+        mock_logger.error.assert_called_with(
+            "Error sending an alert email: Error sending an alert email."
+        )
+
+
+    
+    @patch("scripts.utils.send_email")
+    @patch("scripts.utils.logger")
+    def test_send_anomaly_alert_with_anomalies(self, mock_logger, mock_send_email):
+        # Setup
+        data = {"col": [1, 2, 3]}
+        non_empty_df = pl.DataFrame(data)
+        anomalies = {
+            "price_anomalies": pl.DataFrame(),
+            "quantity_anomalies": non_empty_df,
+        }
+
+        mock_send_email.return_value = None
+
+        # Test
+        send_anomaly_alert(anomalies=anomalies, recipient="test@example.com", subject="Alert")
+
+        # Assert: verify send_email is called with the expected arguments.
+        mock_send_email.assert_called_once()
+        args, kwargs = mock_send_email.call_args
+        self.assertEqual(kwargs["emailid"], "test@example.com")
+        self.assertEqual(kwargs["subject"], "Alert")
+
+        # Verify the email body matches the expected message.
+        expected_body = (
+            "Hi,\n\n"
+            "Anomalies have been detected in the dataset. "
+            "Please see the attached CSV file for details.\n\n"
+            "Thank you!"
+        )
+        self.assertEqual(kwargs["body"], expected_body)
+
+        # Check that the attachment has the correct anomaly_type.
+        attachment_df = kwargs["attachment"]
+        self.assertIn("anomaly_type", attachment_df.columns)
+        self.assertTrue("quantity_anomalies" in attachment_df["anomaly_type"].values)
+        mock_logger.info.assert_any_call("Anomaly alert email sent.")
+
+
+    # Test case where an Exception is raised during email sending.
+    @patch(
+        "scripts.utils.send_email",
+        side_effect=Exception("Error sending an alert email.")
+    )
+    @patch("scripts.utils.logger")
+    def test_send_anomaly_alert_throws_exception(self, mock_logger, mock_send_email):
+        # Setup
+        data = {"col": [1, 2, 3]}
+        non_empty_df = pl.DataFrame(data)
+        anomalies = {"price_anomalies": non_empty_df}
+
+        # Test and Assert: Expect an exception to be raised.
         with self.assertRaises(Exception) as context:
-            load_data(file_path)
-        self.assertIn("Generic error.", str(context.exception))
-        # Assert
-        mock_logger.error.assert_called()
+            send_anomaly_alert(anomalies=anomalies, recipient="test@example.com", subject="Alert")
+
+        # Verify send_email was called once.
+        mock_send_email.assert_called_once()
+
+        # Verify that the logger.error was called with the expected error message.
+        mock_logger.error.assert_called_with(
+            "Error sending anomaly alert: Error sending an alert email."
+        )
 
 
-    @patch('scripts.utils.logger')
-    def test_load_data_invalid_extension(self, mock_logger):
-        # Setup
-        file_path = "dummy_file.csv"
-        with self.assertRaises(Exception):
-            load_data(file_path)
+    @patch("scripts.utils.send_email")
+    @patch("scripts.utils.logger")
+    def test_no_input_provided(self, mock_logger, mock_send_email):
+        # Neither anomalies nor df is provided.
+        send_anomaly_alert()
+        
+        # Expect that send_email is not called.
+        mock_send_email.assert_not_called()
+        # Expect a log message indicating no anomalies provided.
+        mock_logger.info.assert_any_call("No anomalies provided; no alert email sent.")
 
+    @patch("scripts.utils.send_email")
+    @patch("scripts.utils.logger")
+    def test_empty_anomalies_dict(self, mock_logger, mock_send_email):
+        # Provide anomalies dictionary with only empty DataFrames.
+        anomalies = {
+            "price_anomalies": pl.DataFrame(),
+            "quantity_anomalies": pl.DataFrame(),
+        }
+        send_anomaly_alert(anomalies=anomalies, recipient="test@example.com", subject="Alert")
+        
+        # Expect that send_email is not called.
+        mock_send_email.assert_not_called()
+        # Expect a log message indicating no anomalies detected.
+        mock_logger.info.assert_any_call("No anomalies detected; no alert email sent.")
+
+    @patch("scripts.utils.send_email")
+    @patch("scripts.utils.logger")
+    def test_anomalies_dict_with_nonempty(self, mock_logger, mock_send_email):
+        # Setup an anomalies dictionary with one non-empty DataFrame.
+        data = {"col": [1, 2, 3]}
+        non_empty_df = pl.DataFrame(data)
+        anomalies = {
+            "price_anomalies": pl.DataFrame(),  # empty
+            "quantity_anomalies": non_empty_df,  # non-empty
+        }
+        send_anomaly_alert(anomalies=anomalies, recipient="test@example.com", subject="Alert")
+        
+        # Verify that send_email is called once.
+        mock_send_email.assert_called_once()
+        # Retrieve the call arguments to inspect the attachment.
+        args, kwargs = mock_send_email.call_args
+        
+        self.assertEqual(kwargs["emailid"], "test@example.com")
+        self.assertEqual(kwargs["subject"], "Alert")
+        # Check the default message was used.
+        expected_body = (
+            "Hi,\n\n"
+            "Anomalies have been detected in the dataset. "
+            "Please see the attached CSV file for details.\n\n"
+            "Thank you!"
+        )
+        self.assertEqual(kwargs["body"], expected_body)
+        # The attachment should be a DataFrame with an extra column 'anomaly_type'.
+        attachment_df = kwargs["attachment"]
+        self.assertIn("anomaly_type", attachment_df.columns)
+        # Check that the non-empty anomaly's type was added.
+        self.assertTrue("quantity_anomalies" in attachment_df["anomaly_type"].values)
+        mock_logger.info.assert_any_call("Anomaly alert email sent.")
+
+
+    @patch("scripts.utils.send_email")
+    @patch("scripts.utils.logger")
+    def test_direct_dataframe_mode(self, mock_logger, mock_send_email):
+        # Provide a non-empty DataFrame directly via the df parameter.
+        data = {"col": [10, 20, 30]}
+        direct_df = pd.DataFrame(data)
+        send_anomaly_alert(df=direct_df, recipient="direct@example.com", subject="Direct Alert")
+        
+        # Expect send_email to be called with the provided DataFrame.
+        mock_send_email.assert_called_once()
+        args, kwargs = mock_send_email.call_args
+        
+        # The recipient is passed as the first positional argument.
+        self.assertEqual(args[0], "direct@example.com")
+        self.assertEqual(kwargs["subject"], "Direct Alert")
+        expected_body = (
+            "Hi,\n\n"
+            "Anomalies have been detected in the dataset. "
+            "Please see the attached CSV file for details.\n\n"
+            "Thank you!"
+        )
+        self.assertEqual(kwargs["body"], expected_body)
+        # The attachment should be exactly the direct DataFrame.
+        pd.testing.assert_frame_equal(kwargs["attachment"], direct_df)
+        # Check logger message for direct mode.
+        mock_logger.info.assert_any_call("Data Validation Anomaly alert sent to user: direct@example.com")
+
+
+    @patch("scripts.utils.send_email", side_effect=Exception("Simulated email error"))
+    @patch("scripts.utils.logger")
+    def test_exception_in_send_email(self, mock_logger, mock_send_email):
+        # Setup an anomalies dictionary with a non-empty DataFrame.
+        data = {"col": [5, 6, 7]}
+        non_empty_df = pl.DataFrame(data)
+        anomalies = {"price_anomalies": non_empty_df}
+        
+        with self.assertRaises(Exception) as context:
+            send_anomaly_alert(anomalies=anomalies, recipient="error@example.com", subject="Error Alert")
+        
+        # Ensure send_email was called.
+        mock_send_email.assert_called_once()
+        # Verify that the error was logged.
+        mock_logger.error.assert_called_with("Error sending anomaly alert: Simulated email error")
+        # Optionally, check that the raised exception message matches.
+        self.assertEqual(str(context.exception), "Simulated email error")
+
+
+    
+    def test_no_missing_columns(self):
+        # Test when there are no missing columns.
+        df = pd.DataFrame({"a": [1, 2, 3]})
+        error_indices = set()
+        error_reasons = {}
+        missing_columns = []
+        
+        collect_validation_errors(df, missing_columns, error_indices, error_reasons)
+        
+        # Expect no changes to error_indices or error_reasons.
+        self.assertEqual(len(error_indices), 0)
+        self.assertEqual(len(error_reasons), 0)
+
+    def test_empty_dataframe_with_missing_columns(self):
+        # Test when missing_columns is non-empty but the DataFrame is empty.
+        df = pd.DataFrame({"a": []})
+        error_indices = set()
+        error_reasons = {}
+        missing_columns = ["col1"]
+        
+        collect_validation_errors(df, missing_columns, error_indices, error_reasons)
+        
+        # Even though missing_columns is non-empty, the DataFrame has no rows.
+        self.assertEqual(len(error_indices), 0)
+        self.assertEqual(len(error_reasons), 0)
+
+    def test_dataframe_with_missing_columns(self):
+        # Test when the DataFrame has rows and missing_columns is non-empty.
+        df = pd.DataFrame({"a": [1, 2, 3]})
+        error_indices = set()
+        error_reasons = {}
+        missing_columns = ["colA", "colB"]
+        
+        collect_validation_errors(df, missing_columns, error_indices, error_reasons)
+        
+        # Expect error_indices to contain indices for all rows.
+        self.assertEqual(error_indices, {0, 1, 2})
+        
+        # Each error reason should match the expected message.
+        expected_message = "Missing columns: colA, colB"
+        for idx in range(len(df)):
+            self.assertIn(idx, error_reasons)
+            self.assertEqual(error_reasons[idx], [expected_message])
+
+
+
+
+    @patch("scripts.utils.setup_gcp_credentials")
+    @patch("scripts.utils.logger")
+    @patch("scripts.utils.storage.Client")
+    def test_delete_blob_success(self, mock_storage_client, mock_logger, mock_setup):
+        bucket_name = "test_bucket"
+        blob_name = "test_blob"
+        
+        # Create a mock blob and bucket
+        mock_blob = Mock()
+        mock_bucket = Mock()
+        mock_bucket.blob.return_value = mock_blob
+        mock_storage_client.return_value.get_bucket.return_value = mock_bucket
+        
+        # Call the function under test
+        result = delete_blob_from_bucket(bucket_name, blob_name)
+        
+        # Assert the chain of calls:
+        # 1. bucket.blob(blob_name) was called
+        mock_bucket.blob.assert_called_with(blob_name)
+        # 2. blob.delete() was called
+        mock_blob.delete.assert_called_once()
+        # 3. logger.info was called with the expected message
+        mock_logger.info.assert_called_with(f"Blob {blob_name} deleted from bucket {bucket_name}")
+        # 4. The function returns True
+        self.assertTrue(result)
+
+    @patch("scripts.utils.setup_gcp_credentials")
+    @patch("scripts.utils.logger")
+    @patch("scripts.utils.storage.Client")
+    def test_delete_blob_failure(self, mock_storage_client, mock_logger, mock_setup):
+        bucket_name = "test_bucket"
+        blob_name = "test_blob"
+        
+        # Create a mock blob that raises an Exception on delete
+        mock_blob = Mock()
+        mock_blob.delete.side_effect = Exception("Delete error")
+        mock_bucket = Mock()
+        mock_bucket.blob.return_value = mock_blob
+        mock_storage_client.return_value.get_bucket.return_value = mock_bucket
+        
+        # Call the function under test; expect it to handle the exception and return False.
+        result = delete_blob_from_bucket(bucket_name, blob_name)
+        
+        # Assert that logger.error was called with a message containing the exception text.
+        mock_logger.error.assert_called_with(
+            f"Error deleting blob {blob_name} from bucket {bucket_name}: Delete error"
+        )
+        # The function should return False on exception.
+        self.assertFalse(result)
+
+
+    @patch("scripts.utils.setup_gcp_credentials")
+    @patch("scripts.utils.logger")
+    @patch("scripts.utils.storage.Client")
+    def test_list_bucket_blobs_success(self, mock_storage_client, mock_logger, mock_setup):
+        bucket_name = "test_bucket"
+        
+        # Create mock blob objects with a 'name' attribute.
+        mock_blob1 = Mock()
+        mock_blob1.name = "blob1"
+        mock_blob2 = Mock()
+        mock_blob2.name = "blob2"
+        blobs = [mock_blob1, mock_blob2]
+        
+        # Configure the mock bucket to return the blobs.
+        mock_bucket = Mock()
+        mock_bucket.list_blobs.return_value = blobs
+        
+        # Configure the storage client to return the mock bucket.
+        mock_storage_client.return_value.get_bucket.return_value = mock_bucket
+        
+        # Call the function under test.
+        result = list_bucket_blobs(bucket_name)
+        
+        # Assert that the result is a list of blob names.
+        self.assertEqual(result, ["blob1", "blob2"])
+        
+        # Verify that the logger.info was called with the expected message.
+        mock_logger.info.assert_called_with("Found 2 files in bucket 'test_bucket'")
+
+    @patch("scripts.utils.setup_gcp_credentials")
+    @patch("scripts.utils.logger")
+    @patch("scripts.utils.storage.Client")
+    def test_list_bucket_blobs_exception(self, mock_storage_client, mock_logger, mock_setup):
+        bucket_name = "test_bucket"
+        
+        # Configure the storage client to raise an Exception when getting the bucket.
+        mock_storage_client.return_value.get_bucket.side_effect = Exception("Test error")
+        
+        with self.assertRaises(Exception) as context:
+            list_bucket_blobs(bucket_name)
+        
+        # Verify that the logger.error was called with an error message containing the exception text.
+        mock_logger.error.assert_called_with("Error listing blobs in bucket 'test_bucket': Test error")
+        # Optionally, you can also assert that the raised exception message is correct.
+        self.assertEqual(str(context.exception), "Test error")
+
+
+
+if __name__ == "__main__":
+    unittest.main()

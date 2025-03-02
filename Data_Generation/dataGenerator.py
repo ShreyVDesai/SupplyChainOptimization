@@ -1,13 +1,17 @@
+import os
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import yfinance as yf
-import matplotlib.pyplot as plt
-import os
 
 # Hyperparameters
 START_DATE = "2019-01-03"
 END_DATE = "2024-12-31"
-BASE_DEMAND_RANGE = (100, 500)  # Adjusted for a broader range of daily sales volumes
+BASE_DEMAND_RANGE = (
+    100,
+    500,
+)  # Adjusted for a broader range of daily sales volumes
 NOISE_STD_RANGE = (5, 15)  # Reflecting typical daily sales fluctuations
 STOCK_INFLUENCE_STRENGTH = 0.5
 WEEKLY_VARIATION_RANGE = (0.9, 1.1)
@@ -48,13 +52,17 @@ def generate_synthetic_data(
     # Fetch stock market data for each ETF
     stock_data = {}
     for product, ticker in products_to_etfs.items():
-        stock_prices = yf.download(ticker, start=start_date, end=end_date)["Close"]
+        stock_prices = yf.download(ticker, start=start_date, end=end_date)[
+            "Close"
+        ]
         stock_data[product] = stock_prices.reindex(dates).ffill()
 
     # Base demand per product (fixed values take precedence)
     base_demand = {
         product: (
-            fixed_base_demand.get(product, np.random.randint(*base_demand_range))
+            fixed_base_demand.get(
+                product, np.random.randint(*base_demand_range)
+            )
             if fixed_base_demand
             else np.random.randint(*base_demand_range)
         )
@@ -63,7 +71,8 @@ def generate_synthetic_data(
 
     # Noise: Random variations in demand
     noise_levels = {
-        product: np.random.uniform(*noise_std_range) for product in products_to_etfs
+        product: np.random.uniform(*noise_std_range)
+        for product in products_to_etfs
     }
     noise = {
         product: np.random.normal(0, noise_levels[product], size=num_days)
@@ -80,7 +89,9 @@ def generate_synthetic_data(
     }
 
     # Sudden demand shocks on weekends
-    shock_effects = {product: np.ones(num_days) for product in products_to_etfs}
+    shock_effects = {
+        product: np.ones(num_days) for product in products_to_etfs
+    }
     weekend_indices = np.where(dates.dayofweek >= 5)[0]
     weekend_shocks = np.random.rand(len(weekend_indices)) < shock_probability
     shock_magnitudes = np.random.uniform(
@@ -97,7 +108,8 @@ def generate_synthetic_data(
         stock_prices = stock_data[product]
         stock_prices_normalized = stock_prices / stock_prices.mean()
         stock_influence = (
-            stock_prices_normalized.values.reshape(-1) * stock_influence_strength
+            stock_prices_normalized.values.reshape(-1)
+            * stock_influence_strength
         )
         demand = (
             base_demand[product]
@@ -154,7 +166,9 @@ def save_to_excel(df, start_date, end_date):
     filepath = os.path.join(save_dir, filename)
 
     with pd.ExcelWriter(filepath, engine="xlsxwriter") as writer:
-        df.to_excel(writer, sheet_name="Sheet1", index=True, index_label="Date")
+        df.to_excel(
+            writer, sheet_name="Sheet1", index=True, index_label="Date"
+        )
 
     print(f"Data saved successfully to: {filepath}")
 

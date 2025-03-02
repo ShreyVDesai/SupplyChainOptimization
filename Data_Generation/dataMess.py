@@ -1,6 +1,7 @@
-import pandas as pd
-import numpy as np
 import random
+
+import numpy as np
+import pandas as pd
 
 
 def mess_up_data(input_file, output_file):
@@ -100,7 +101,9 @@ def mess_up_data(input_file, output_file):
             inconsistent_indices = chunk.sample(
                 frac=0.02
             ).index  # 1% logical inconsistencies
-            chunk.loc[inconsistent_indices, "Cost Price"] = 0  # Cost Price is zero
+            chunk.loc[inconsistent_indices, "Cost Price"] = (
+                0  # Cost Price is zero
+            )
             chunk.loc[inconsistent_indices, "Quantity"] = random.randint(
                 1, 10
             )  # Quantity is non-zero
@@ -119,6 +122,8 @@ def mess_up_data(input_file, output_file):
 
 
 # Example usage
-input_file = "transactions_20190103_20241231.xlsx"  # Replace with actual file path
+input_file = (
+    "transactions_20190103_20241231.xlsx"  # Replace with actual file path
+)
 output_file = "messy_transactions_20190103_20241231.xlsx"
 mess_up_data(input_file, output_file)

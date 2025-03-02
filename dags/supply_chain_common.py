@@ -4,13 +4,12 @@ Supply Chain Optimization - Common Module
 This module contains shared functions and parameters used by the preprocessing DAGs.
 """
 
-import os
 from datetime import datetime, timedelta
-import docker
 
+import docker
+from airflow.exceptions import AirflowSkipException
 from airflow.operators.python import PythonOperator
 from airflow.providers.google.cloud.hooks.gcs import GCSHook
-from airflow.exceptions import AirflowSkipException
 
 # Define default arguments
 DEFAULT_ARGS = {
@@ -77,7 +76,9 @@ def run_pre_validation(**context):
     try:
         # Get bucket name from xcom
         gcs_bucket = (
-            context["ti"].xcom_pull(task_ids="print_gcs_info", key="gcs_bucket")
+            context["ti"].xcom_pull(
+                task_ids="print_gcs_info", key="gcs_bucket"
+            )
             or GCP_BUCKET_NAME
         )
 
@@ -86,7 +87,7 @@ def run_pre_validation(**context):
 
         # Execute the pre_validation.py script with bucket parameter
         exit_code, output = container.exec_run(
-            cmd=f"python pre_validation.py --cloud --bucket={gcs_bucket}",
+            cmd=f"python pre_validation.py --bucket={gcs_bucket}",
             workdir="/app/scripts",
         )
 
@@ -109,24 +110,35 @@ def run_pre_validation(**context):
             print("Pre-validation completed successfully for all files")
             context["ti"].xcom_push(key="validation_status", value="full")
         elif exit_code == 1:
-            print("Some files failed validation, but continuing with valid ones")
+            print(
+                "Some files failed validation, but continuing with valid ones"
+            )
             context["ti"].xcom_push(key="validation_status", value="partial")
         elif exit_code == 2:
             # If there are still files in the bucket, there must be valid files
-            # This handles the case where pre_validation.py miscategorized some files
+            # This handles the case where pre_validation.py miscategorized some
+            # files
             if remaining_files:
-                print("Partial validation - continuing with remaining files in bucket")
-                context["ti"].xcom_push(key="validation_status", value="partial")
+                print(
+                    "Partial validation - continuing with remaining files in bucket"
+                )
+                context["ti"].xcom_push(
+                    key="validation_status", value="partial"
+                )
             else:
                 print("No valid files to process after pre-validation")
-                raise AirflowSkipException("No valid files after pre-validation")
+                raise AirflowSkipException(
+                    "No valid files after pre-validation"
+                )
         else:
             # Unknown exit code, check remaining files to decide
             if remaining_files:
                 print(
                     f"Unknown validation status (code {exit_code}), but files remain. Continuing."
                 )
-                context["ti"].xcom_push(key="validation_status", value="unknown")
+                context["ti"].xcom_push(
+                    key="validation_status", value="unknown"
+                )
             else:
                 print(
                     f"Unknown validation status (code {exit_code}) and no files remain."
@@ -138,7 +150,9 @@ def run_pre_validation(**context):
         return output_str
 
     except docker.errors.NotFound:
-        error_msg = "data-pipeline-container not found. Make sure it's running."
+        error_msg = (
+            "data-pipeline-container not found. Make sure it's running."
+        )
         print(error_msg)
         raise Exception(error_msg)
     except AirflowSkipException:
@@ -156,7 +170,9 @@ def run_preprocessing_script(**context):
     try:
         # Get bucket name from xcom
         gcs_bucket = (
-            context["ti"].xcom_pull(task_ids="print_gcs_info", key="gcs_bucket")
+            context["ti"].xcom_pull(
+                task_ids="print_gcs_info", key="gcs_bucket"
+            )
             or GCP_BUCKET_NAME
         )
 
@@ -174,13 +190,17 @@ def run_preprocessing_script(**context):
 
         if exit_code != 0:
             print(f"Script failed with exit code: {exit_code}")
-            raise Exception(f"preprocessing.py failed with exit code {exit_code}")
+            raise Exception(
+                f"preprocessing.py failed with exit code {exit_code}"
+            )
 
         print("Preprocessing completed successfully")
         return output_str
 
     except docker.errors.NotFound:
-        error_msg = "data-pipeline-container not found. Make sure it's running."
+        error_msg = (
+            "data-pipeline-container not found. Make sure it's running."
+        )
         print(error_msg)
         raise Exception(error_msg)
     except Exception as e:
