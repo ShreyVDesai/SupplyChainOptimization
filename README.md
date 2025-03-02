@@ -154,7 +154,7 @@ The project uses several configuration files:
 
 - `.env`: Environment variables for Docker and services
 - `docker-compose.yaml`: Container configuration
-- `Data-Pipeline/requirements.txt`: Python dependencies
+- `Data_Pipeline/requirements.txt`: Python dependencies
 
 ### Google Cloud Configuration
 

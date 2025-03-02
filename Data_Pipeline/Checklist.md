@@ -51,7 +51,7 @@ This project requires the development of a data pipeline using Airflow (or a sim
 
 6. **Tracking and Logging**
 
-   - [ ] Integrate Python’s logging or Airflow’s built-in logging.
+   - [ ] Integrate Python's logging or Airflow's built-in logging.
    - [ ] Set up monitoring for anomalies and notifications for errors.
 
 7. **Data Schema & Statistics Generation**
@@ -65,7 +65,7 @@ This project requires the development of a data pipeline using Airflow (or a sim
    - [ ] Configure alerts (e.g., email, Slack) for anomalies.
 
 9. **Pipeline Flow Optimization**
-   - [ ] Use Airflow’s Gantt chart (or equivalent) to identify bottlenecks.
+   - [ ] Use Airflow's Gantt chart (or equivalent) to identify bottlenecks.
    - [ ] Optimize tasks (parallelization, performance improvements) as needed.
 
 ---
@@ -97,7 +97,7 @@ This project requires the development of a data pipeline using Airflow (or a sim
 
 1. **Folder Structure**  
    /ProjectRepo  
-   ├─ Data-Pipeline/  
+   ├─ Data_Pipeline/  
    │ ├─ dags/  
    │ ├─ data/  
    │ ├─ scripts/  

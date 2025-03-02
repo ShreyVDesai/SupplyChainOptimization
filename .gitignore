@@ -14,7 +14,7 @@ __pycache__/
 __init__.py
 .coverage
 .vscode
-/Data-Pipeline/logs/
+/Data_Pipeline/logs/
 SCO_LOG/
 *.dvc
 /data

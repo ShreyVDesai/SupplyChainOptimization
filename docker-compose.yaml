@@ -23,7 +23,7 @@ x-airflow-common:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
     - ./plugins:/opt/airflow/plugins
-    - ./Data-Pipeline/scripts:/app/scripts
+    - ./Data_Pipeline/scripts:/app/scripts
     - ./secret/gcp-key.json:/opt/airflow/gcp-key.json
     - /var/run/docker.sock:/var/run/docker.sock
   user: "${AIRFLOW_UID:-50000}:999"
@@ -38,12 +38,12 @@ x-airflow-common:
 services:
   data-pipeline:
     build:
-      context: ./Data-Pipeline
+      context: ./Data_Pipeline
       dockerfile: Dockerfile
     platform: linux/amd64
     container_name: data-pipeline-container
     volumes:
-      - ./Data-Pipeline/scripts:/app/scripts
+      - ./Data_Pipeline/scripts:/app/scripts
       - ./data:/data
       - ./secret:/app/secret
     environment:
