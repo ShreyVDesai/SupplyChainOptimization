@@ -15,6 +15,7 @@ __init__.py
 .coverage
 .vscode
 /Data-Pipeline/logs/
+/Data-Pipeline/scripts/mytests.py
 SCO_LOG/
 *.dvc
 /data

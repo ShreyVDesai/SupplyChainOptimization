@@ -196,7 +196,7 @@ This script processes raw transaction data from CSV/XLSX files, performing data 
 - **`remove_invalid_records()` / `remove_duplicate_records()`**: Cleans up bad records.
 - **`aggregate_daily_products()`**: Aggregates sales data by day and product.
 - **`extracting_time_series_and_lagged_features()`**: Adds time-based features.
-- **`upload_df_to_gcs()`**: Uploads cleaned data to GCS.
+- **`upload_to_gcs()`**: Uploads cleaned data to GCS.
 - **`send_anomaly_alert()`**: Sends an email notification if anomalies are detected.
 
 ### Python Files
