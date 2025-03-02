@@ -12,6 +12,7 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.providers.google.cloud.hooks.gcs import GCSHook
 from airflow.models.param import Param
+from airflow.exceptions import AirflowSkipException
 
 # Define default arguments
 default_args = {
@@ -71,6 +72,57 @@ def list_new_files(**context):
     return files
 
 
+def run_pre_validation(**context):
+    """Run the pre_validation script to validate data before processing"""
+    import docker
+
+    client = docker.from_env()
+
+    try:
+        # Get bucket name from xcom
+        gcs_bucket = (
+            context["ti"].xcom_pull(task_ids="print_gcs_info", key="gcs_bucket")
+            or GCP_BUCKET_NAME
+        )
+
+        container = client.containers.get("data-pipeline-container")
+        print(f"Container found: {container.name}")
+
+        # Execute the pre_validation.py script with bucket parameter
+        exit_code, output = container.exec_run(
+            cmd=f"python pre_validation.py --cloud --bucket={gcs_bucket}",
+            workdir="/app/scripts",
+        )
+
+        output_str = output.decode("utf-8")
+        print(f"Pre-validation output: {output_str}")
+
+        if exit_code != 0:
+            print(f"Pre-validation failed with exit code: {exit_code}")
+            raise Exception(f"pre_validation.py failed with exit code {exit_code}")
+
+        # Check if validation was successful (this depends on how pre_validation.py reports success/failure)
+        if "Validation failed" in output_str:
+            print(
+                "Pre-validation detected issues with the data. Skipping preprocessing."
+            )
+            raise AirflowSkipException("Pre-validation failed, skipping preprocessing")
+
+        print("Pre-validation completed successfully")
+        return output_str
+
+    except docker.errors.NotFound:
+        error_msg = "data-pipeline-container not found. Make sure it's running."
+        print(error_msg)
+        raise Exception(error_msg)
+    except AirflowSkipException:
+        # Re-raise AirflowSkipException to ensure downstream tasks are skipped
+        raise
+    except Exception as e:
+        print(f"Error running pre-validation script: {str(e)}")
+        raise
+
+
 def run_preprocessing_script(**context):
     """Run the preprocessing script in the existing data-pipeline-container"""
     import docker
@@ -78,12 +130,19 @@ def run_preprocessing_script(**context):
     client = docker.from_env()
 
     try:
+        # Get bucket name from xcom
+        gcs_bucket = (
+            context["ti"].xcom_pull(task_ids="print_gcs_info", key="gcs_bucket")
+            or GCP_BUCKET_NAME
+        )
+
         container = client.containers.get("data-pipeline-container")
         print(f"Container found: {container.name}")
 
-        # Execute the preprocessing.py script
+        # Execute the preprocessing.py script with bucket parameter
         exit_code, output = container.exec_run(
-            cmd="python preprocessing.py", workdir="/app/scripts"
+            cmd=f"python preprocessing.py --source_bucket={gcs_bucket} --destination_bucket={PROCESSED_BUCKET_NAME} --delete_after",
+            workdir="/app/scripts",
         )
 
         output_str = output.decode("utf-8")
@@ -109,7 +168,7 @@ with DAG(
     "gcp_preprocessing_dag",
     default_args=default_args,
     description="Process files from GCP bucket using preprocessing.py",
-    schedule_interval=None,  # External trigger only
+    schedule_interval="* * * * *",  # Run every minute
     catchup=False,
     tags=["supply-chain", "preprocessing"],
 ) as dag:
@@ -126,6 +185,12 @@ with DAG(
         python_callable=list_new_files,
     )
 
+    # Run pre-validation to check data quality
+    run_pre_validation = PythonOperator(
+        task_id="run_pre_validation",
+        python_callable=run_pre_validation,
+    )
+
     # Run the preprocessing script in the existing data-pipeline-container
     run_preprocessing = PythonOperator(
         task_id="run_preprocessing",
@@ -133,4 +198,4 @@ with DAG(
     )
 
     # Define the task dependencies
-    print_gcs_info >> get_file_list >> run_preprocessing
+    print_gcs_info >> get_file_list >> run_pre_validation >> run_preprocessing

@@ -1,72 +1,135 @@
 import polars as pl
 import pandas as pd
-import re
 import json
-from pandas_schema import Schema, Column
-from pandas_schema.validation import (
-    CustomElementValidation,
-    InRangeValidation,
-    MatchesPatternValidation,
-)
 from logger import logger
 from utils import send_email, upload_to_gcs
 
-
-# Define validation functions for custom checks
-def check_string_type(value):
-    return isinstance(value, str)
+# Post-validation expected columns
+POST_VALIDATION_COLUMNS = ["Product Name", "Total Quantity", "Date"]
 
 
-def check_int_type(value):
-    try:
-        # Check if it can be converted to int without decimal part
-        if isinstance(value, (int, float)):
-            return int(value) == float(value)
-        return False
-    except:
-        return False
+def collect_validation_errors(df, missing_columns, error_indices, error_reasons):
+    """
+    Collect validation errors and update error indices and reasons.
+
+    Parameters:
+      df: The DataFrame being validated.
+      missing_columns: List of columns that are missing.
+      error_indices: A set to store indices of rows with errors.
+      error_reasons: A dictionary to store error reasons for each row.
+    """
+    if missing_columns:
+        # If columns are missing, mark all rows as having errors
+        for idx in range(len(df)):
+            error_indices.add(idx)
+            error_reasons[idx] = [f"Missing columns: {', '.join(missing_columns)}"]
 
 
-# Define the schema using pandas-schema
-VALIDATION_SCHEMA = Schema(
-    [
-        # Product Name validation
-        Column(
-            "Product Name",
-            [
-                CustomElementValidation(lambda x: x is not None, "cannot be null"),
-                CustomElementValidation(check_string_type, "must be a string"),
-            ],
-        ),
-        # Total Quantity validation
-        Column(
-            "Total Quantity",
-            [
-                CustomElementValidation(lambda x: x is not None, "cannot be null"),
-                CustomElementValidation(check_int_type, "must be an integer"),
-                InRangeValidation(1, None, "must be greater than or equal to 1"),
-            ],
-        ),
-        # Date validation
-        Column(
-            "Date",
-            [
-                CustomElementValidation(lambda x: x is not None, "cannot be null"),
-                MatchesPatternValidation(
-                    r"^(?:\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2}:\d{2}(?:\.\d+)?){0,1}|\d{2}-\d{2}-\d{4}|\d{2}/\d{2}/\d{4})$",
-                    "must be in valid date format",
-                ),
-            ],
-        ),
-    ]
-)
+def check_column_types(df, error_indices, error_reasons):
+    """
+    Check column types and data validity using pandas functionality only.
+
+    Parameters:
+        df (pd.DataFrame): DataFrame to validate
+        error_indices (set): Set to track indices of rows with errors
+        error_reasons (dict): Dictionary to track error reasons by row index
+    """
+    # Check Product Name (should be string type)
+    if "Product Name" in df.columns:
+        invalid_product_mask = ~df["Product Name"].apply(lambda x: isinstance(x, str))
+        for idx in df[invalid_product_mask].index:
+            error_indices.add(idx)
+            reason = "Product Name must be a string"
+            if idx in error_reasons:
+                error_reasons[idx].append(reason)
+            else:
+                error_reasons[idx] = [reason]
+
+    # Check Total Quantity (should be numeric and > 0)
+    if "Total Quantity" in df.columns:
+        # Check if numeric
+        try:
+            # Convert to numeric if possible, errors='coerce' will set invalid values to NaN
+            quantity_series = pd.to_numeric(df["Total Quantity"], errors="coerce")
+
+            # Check for NaN values (conversion failures)
+            nan_mask = quantity_series.isna()
+            for idx in df[nan_mask].index:
+                error_indices.add(idx)
+                reason = "Total Quantity must be numeric"
+                if idx in error_reasons:
+                    error_reasons[idx].append(reason)
+                else:
+                    error_reasons[idx] = [reason]
+
+            # Check for values <= 0 (only for valid numeric values)
+            invalid_quantity_mask = (quantity_series <= 0) & ~nan_mask
+            for idx in df[invalid_quantity_mask].index:
+                error_indices.add(idx)
+                reason = "Total Quantity must be greater than 0"
+                if idx in error_reasons:
+                    error_reasons[idx].append(reason)
+                else:
+                    error_reasons[idx] = [reason]
+        except Exception as e:
+            logger.error(f"Error validating Total Quantity: {e}")
+
+    # Check Date (should be convertible to datetime)
+    if "Date" in df.columns:
+        for idx in df.index:
+            date_val = df.loc[idx, "Date"]
+            try:
+                # Try to convert to datetime
+                if pd.isna(date_val):
+                    error_indices.add(idx)
+                    reason = "Date cannot be null"
+                    if idx in error_reasons:
+                        error_reasons[idx].append(reason)
+                    else:
+                        error_reasons[idx] = [reason]
+                else:
+                    # Check if it matches expected date format using string operations
+                    if isinstance(date_val, str):
+                        # Check various date formats using string manipulation
+                        date_formats_valid = any(
+                            [
+                                # YYYY-MM-DD
+                                len(date_val) >= 10
+                                and date_val[4] == "-"
+                                and date_val[7] == "-",
+                                # MM-DD-YYYY or DD-MM-YYYY
+                                len(date_val) >= 10
+                                and date_val[2] == "-"
+                                and date_val[5] == "-",
+                                # MM/DD/YYYY or DD/MM/YYYY
+                                len(date_val) >= 10
+                                and date_val[2] == "/"
+                                and date_val[5] == "/",
+                            ]
+                        )
+
+                        if not date_formats_valid:
+                            error_indices.add(idx)
+                            reason = "Date must be in a valid date format"
+                            if idx in error_reasons:
+                                error_reasons[idx].append(reason)
+                            else:
+                                error_reasons[idx] = [reason]
+            except Exception as e:
+                error_indices.add(idx)
+                reason = f"Invalid date format: {e}"
+                if idx in error_reasons:
+                    error_reasons[idx].append(reason)
+                else:
+                    error_reasons[idx] = [reason]
 
 
 def validate_data(df):
     """
-    Validate the DataFrame using pandas-schema validation.
+    Validate the DataFrame by checking if it contains all required columns
+    and has at least one row of data. Also performs type checking on columns.
     Captures validation results, saves them to a JSON file, and if any anomalies
-    (invalid rows) are detected, saves those records with anomaly reasons and sends an email alert.
+    are detected, saves those records with anomaly reasons and sends an email alert.
 
     Parameters:
       df (pd.DataFrame or pl.DataFrame): DataFrame to validate.
@@ -80,103 +143,66 @@ def validate_data(df):
             df = df.to_pandas()
 
         # Initialize validation results structure
-        validation_results = {"results": []}
-
-        # Perform validation with pandas-schema
-        errors = VALIDATION_SCHEMA.validate(df)
-
-        # Track which rows have errors
+        validation_results = {
+            "results": [],
+            "has_errors": False,
+            "missing_columns": [],
+            "error_count": 0,
+        }
         error_indices = set()
         error_reasons = {}
 
-        # Process validation errors
-        for error in errors:
-            row_index = error.row
-            column_name = error.column
-            error_message = error.message
+        # Check if all required columns are present
+        missing_columns = [
+            col for col in POST_VALIDATION_COLUMNS if col not in df.columns
+        ]
 
-            error_indices.add(row_index)
+        # Check if DataFrame is empty
+        if len(df) == 0:
+            error_message = "DataFrame is empty, no rows found"
+            for idx in range(len(df)):
+                error_indices.add(idx)
+                error_reasons[idx] = [error_message]
 
-            # Create a formatted error reason
-            reason = f"{column_name} {error_message}"
-
-            # Add to error_reasons dict
-            if row_index in error_reasons:
-                error_reasons[row_index].append(reason)
-            else:
-                error_reasons[row_index] = [reason]
-
-            # Add to validation results
-            result = {
-                "success": False,
-                "expectation_config": {
-                    "expectation_type": f"expect_{error.message.split(' ')[0]}",
-                    "kwargs": {"column": column_name},
-                },
-                "unexpected_index_list": [row_index],
-                "unexpected_list": [str(df.iloc[row_index][column_name])],
-            }
-            validation_results["results"].append(result)
-
-        # If no errors, add success entries for each column
-        if not errors:
-            for column in VALIDATION_SCHEMA.columns:
-                column_name = column.name
-                for validation in column.validations:
-                    validation_type = type(validation).__name__
-
-                    # Map validation type to expectation type
-                    if isinstance(validation, InRangeValidation):
-                        expectation_type = "expect_column_values_to_be_between"
-                        kwargs = {
-                            "column": column_name,
-                            "min_value": validation.min_value,
-                        }
-                    elif isinstance(validation, MatchesPatternValidation):
-                        expectation_type = "expect_column_values_to_match_regex"
-                        kwargs = {"column": column_name}
-                    else:
-                        expectation_type = "expect_column_values_to_not_be_null"
-                        kwargs = {"column": column_name}
-
-                    validation_results["results"].append(
-                        {
-                            "success": True,
-                            "expectation_config": {
-                                "expectation_type": expectation_type,
-                                "kwargs": kwargs,
-                            },
-                            "unexpected_index_list": [],
-                            "unexpected_list": [],
-                        }
-                    )
+        # If columns are missing, collect the errors
+        if missing_columns:
+            collect_validation_errors(df, missing_columns, error_indices, error_reasons)
+        else:
+            # Only perform type checking if all required columns are present
+            check_column_types(df, error_indices, error_reasons)
 
         # Create anomalies DataFrame
         anomalies_df = pd.DataFrame()
         if error_indices:
-            anomalies_df = df.iloc[list(error_indices)].copy()
-            anomalies_df["anomaly_reason"] = anomalies_df.index.map(
-                lambda idx: "; ".join(error_reasons.get(idx, []))
+            anomalies_df = (
+                df.iloc[list(error_indices)].copy() if not df.empty else pd.DataFrame()
             )
-
-        # Save the validation results to a JSON file
-        output_path = "validation_results.json"
-        with open(output_path, "w") as f:
-            json.dump(validation_results, f, indent=2)
-        logger.info(f"Validation results saved to {output_path}.")
+            # Only add anomaly_reason if there are actual errors
+            if not anomalies_df.empty:
+                anomalies_df["anomaly_reason"] = anomalies_df.index.map(
+                    lambda idx: "; ".join(error_reasons.get(idx, []))
+                )
 
         # If anomalies are found, send an email alert
-        if not anomalies_df.empty:
-            logger.warning(
-                f"Anomalies detected! {len(anomalies_df)} rows failed validation."
-            )
+        if not anomalies_df.empty or missing_columns:
+            error_message = ""
+            if missing_columns:
+                error_message += f"Missing columns: {', '.join(missing_columns)}. "
+            if not anomalies_df.empty:
+                error_message += f"{len(anomalies_df)} rows failed validation."
+
+            logger.warning(f"Anomalies detected! {error_message}")
             send_anomaly_alert(
                 anomalies_df,
                 subject="Data Validation Anomalies",
-                message="Data Validation Anomalies Found! Please find attached CSV file with anomaly reasons.",
+                message=f"Data Validation Anomalies Found! {error_message} Please find attached CSV file with anomaly details.",
             )
         else:
             logger.info("No anomalies detected. No email sent.")
+
+        validation_results["has_errors"] = len(error_indices) > 0
+        validation_results["missing_columns"] = missing_columns
+        validation_results["error_count"] = len(error_indices)
 
         return validation_results
 

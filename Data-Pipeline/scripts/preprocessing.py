@@ -7,6 +7,7 @@ from google.cloud import storage
 from dotenv import load_dotenv
 from typing import Dict, Tuple
 import os
+import argparse
 from utils import send_email, load_bucket_data, upload_to_gcs, setup_gcp_credentials
 from post_validation import post_validation
 
@@ -775,4 +776,31 @@ def main(
 
 
 if __name__ == "__main__":
-    main()
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="Run preprocessing on data")
+    parser.add_argument(
+        "--source_bucket",
+        type=str,
+        default="full-raw-data",
+        help="GCP bucket name containing source files",
+    )
+    parser.add_argument(
+        "--destination_bucket",
+        type=str,
+        default="fully-processed-data",
+        help="GCP bucket name for processed files",
+    )
+    parser.add_argument(
+        "--delete_after",
+        action="store_true",
+        default=True,
+        help="Delete source files after processing",
+    )
+    args = parser.parse_args()
+
+    # Run main function with provided parameters
+    main(
+        source_bucket_name=args.source_bucket,
+        destination_bucket_name=args.destination_bucket,
+        delete_after_processing=args.delete_after,
+    )

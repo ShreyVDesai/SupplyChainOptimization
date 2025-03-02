@@ -6,17 +6,6 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    curl \
-    git \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create a non-root user and set permissions
-RUN groupadd -r pipeline && useradd -r -g pipeline pipeline \
-    && mkdir -p /app \
-    && chown -R pipeline:pipeline /app
 
 # Set the working directory
 WORKDIR /app
@@ -25,16 +14,14 @@ WORKDIR /app
 COPY requirements.txt /app/
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r /app/requirements.txt
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r /app/requirements.txt
+
+# Install pandera separately to ensure it's properly installed
+RUN pip install --no-cache-dir 'pandera>=0.15.1,<0.16.0'
 
 # Copy the rest of the application
 COPY . /app/
-
-# Ensure correct ownership of copied files
-RUN chown -R pipeline:pipeline /app
-
-# Switch to non-root user
-USER pipeline
 
 # Set working directory for scripts
 WORKDIR /app/scripts
