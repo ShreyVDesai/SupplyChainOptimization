@@ -6,6 +6,7 @@ This module contains shared functions and parameters used by the preprocessing D
 
 from datetime import datetime, timedelta
 import traceback
+import os
 
 import docker
 from airflow.exceptions import AirflowSkipException, AirflowFailException
@@ -38,11 +39,82 @@ METADATA_BUCKET_NAME = "metadata_stats"  # For statistics and metadata
 import platform
 import docker
 
+
 def get_docker_client():
-    """Return a Docker client that works across macOS, Linux, and Windows"""
+    """Return a Docker client that works across macOS, Linux, Windows, and container environments"""
     system_os = platform.system().lower()
 
-    if system_os == "windows":
+    # Check if running inside a container by looking for container-specific files
+    in_container = os.path.exists("/.dockerenv") or os.path.exists(
+        "/run/.containerenv"
+    )
+
+    # Get Docker host from environment variable if set
+    docker_host = os.environ.get("DOCKER_HOST")
+    print(f"Environment DOCKER_HOST: {docker_host}")
+
+    if docker_host:
+        # Use the configured Docker host if explicitly set
+        print(f"Using configured DOCKER_HOST: {docker_host}")
+        try:
+            client = docker.DockerClient(base_url=docker_host)
+            # Test connection
+            client.ping()
+            print(f"Successfully connected to Docker using DOCKER_HOST")
+            return client
+        except Exception as e:
+            print(f"Failed to connect using DOCKER_HOST: {e}")
+            # Fall through to other methods
+
+    if in_container:
+        print("Detected container environment")
+        # Try common Docker socket paths inside containers
+        docker_socket_paths = [
+            "unix:///var/run/docker.sock",  # Standard path
+            "tcp://host.docker.internal:2375",  # Windows/macOS Docker Desktop
+            "tcp://172.17.0.1:2375",  # Docker bridge network
+        ]
+
+        for socket_path in docker_socket_paths:
+            try:
+                print(f"Attempting to connect to Docker using: {socket_path}")
+                client = docker.DockerClient(base_url=socket_path)
+                # Test the connection by calling a simple API endpoint
+                client.ping()
+                print(f"Successfully connected to Docker using: {socket_path}")
+                return client
+            except Exception as e:
+                print(f"Failed to connect to Docker using {socket_path}: {e}")
+                # Check for permission issues and try sudo if available
+                if "Permission denied" in str(e) and socket_path.startswith(
+                    "unix://"
+                ):
+                    # Try to fix permissions using sudo if available
+                    try:
+                        # This only works if the container has sudo and the user has sudo rights
+                        print("Attempting to fix permissions with sudo...")
+                        import subprocess
+
+                        subprocess.run(
+                            ["sudo", "chmod", "666", "/var/run/docker.sock"],
+                            check=False,
+                        )
+                        # Try again
+                        client = docker.DockerClient(base_url=socket_path)
+                        client.ping()
+                        print(
+                            "Successfully connected after fixing permissions"
+                        )
+                        return client
+                    except Exception as sudo_e:
+                        print(f"Failed to fix permissions: {sudo_e}")
+
+        # If we get here, all connection attempts failed
+        raise docker.errors.DockerException(
+            "Could not connect to Docker daemon. Make sure the Docker socket is mounted "
+            "or DOCKER_HOST is correctly set in the environment. Try adding user:0 in docker-compose.override.yml."
+        )
+    elif system_os == "windows":
         # Windows uses TCP connection
         print("Detected Windows OS - Using TCP Docker connection")
         return docker.DockerClient(base_url="tcp://host.docker.internal:2375")
@@ -50,7 +122,6 @@ def get_docker_client():
         # macOS and Linux use UNIX socket
         print("Detected macOS/Linux - Using default Docker socket")
         return docker.from_env()
-    
 
 
 def print_gcs_info(**context):
@@ -103,11 +174,6 @@ def list_new_files(**context):
 
 def run_pre_validation(**context):
     """Run the pre_validation script to validate data before processing"""
-     # Linux/MAC
-    # client = docker.from_env()
-    
-    # Connect to Docker daemon over TCP instead of UNIX socket
-    # client = docker.DockerClient(base_url="tcp://host.docker.internal:2375")
     client = get_docker_client()
 
     try:
@@ -153,8 +219,6 @@ def run_pre_validation(**context):
             context["ti"].xcom_push(key="validation_status", value="partial")
         elif exit_code == 2:
             # If there are still files in the bucket, there must be valid files
-            # This handles the case where pre_validation.py miscategorized some
-            # files
             if remaining_files:
                 print(
                     "Partial validation - continuing with remaining files in bucket"
@@ -202,11 +266,6 @@ def run_pre_validation(**context):
 
 def run_preprocessing_script(**context):
     """Run the preprocessing script in the existing data-pipeline-container"""
-    # Linux/MAC
-    # client = docker.from_env()
-
-    # Connect to Docker daemon over TCP instead of UNIX socket
-    # client = docker.DockerClient(base_url="tcp://host.docker.internal:2375")
     client = get_docker_client()
 
     try:
@@ -221,7 +280,7 @@ def run_preprocessing_script(**context):
         container = client.containers.get("data-pipeline-container")
         print(f"Container found: {container.name}")
 
-        # Execute the preprocessing.py script with bucket parameter
+        # Execute the preprocessing.py script directly with bucket parameter
         exit_code, output = container.exec_run(
             cmd=f"python preprocessing.py --source_bucket={gcs_bucket} --destination_bucket={PROCESSED_BUCKET_NAME} --delete_after",
             workdir="/app/scripts",
