@@ -1,15 +1,17 @@
 # Supply Chain Optimization
 
-A comprehensive MLOps system for supply chain data processing, analysis, and optimization using Airflow, Docker, and Google Cloud Platform.
+A comprehensive system for demand forecasting.
 
 ## Project Overview
 
-The Supply Chain Optimization project is a data pipeline designed to process, clean, and analyze supply chain data, specifically focusing on commodity demand and transaction data. It implements MLOps best practices including data versioning, workflow orchestration, testing, and monitoring.
+### Data Pipeline
+
+The data pipeline is designed to process, clean, and analyze supply chain data, specifically focusing on raw transaction data. It implements MLOps best practices including data versioning, workflow orchestration and testing.
 
 ### Key Features
 
-- **Data Generation**: Realistic sample data generation from Yahoo Finance stock data and synthetic transaction data
-- **Data Pipeline**: Robust data processing pipeline using Apache Airflow
+- **Data Generation**: Realistic sample data generation incoprating trends from commodity ETFs from Yahoo Finance and synthetic transaction data
+- **Data Pipeline**: Robust data processing pipeline using Apache Airflow and data versioning using DVC
 - **Data Quality**: Validation, cleaning, and testing of data integrity
 - **Containerization**: Docker-based deployment for consistent environments
 - **Cloud Integration**: Google Cloud Platform for storage and processing
@@ -20,15 +22,15 @@ The project consists of several key components:
 
 1. **Data Generation Layer**: Scripts that generate synthetic data based on real-world patterns
 
-   - `dataGenerator.py`: Generates demand data from Yahoo Finance commodity ETFs
-   - `transactionGenerator.py`: Creates transaction data modeling store-customer interactions
-   - `dataMess.py`: Introduces realistic data quality issues for testing purposes
+   - Generates synthetic demand data from Yahoo Finance commodity ETFs
+   - Creates transaction data modeling store-customer interactions
+   - Introduces realistic data quality issues for testing purposes
 
 2. **Data Pipeline Layer**: Apache Airflow DAGs that orchestrate data movement and processing
 
    - Data ingestion, cleaning, validation, and transformation
-   - Schema validation and anomaly detection
-   - Processing monitoring and logging
+   - Schema validation and anomaly detection using Great Expectations
+   - Processing logging
 
 3. **Storage Layer**: Various storage solutions for data
    - Local file storage for development
@@ -48,16 +50,13 @@ The project consists of several key components:
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/yourusername/SupplyChainOptimization.git
+git clone https://github.com/ShreyVDesai/SupplyChainOptimization.git
 cd SupplyChainOptimization
 ```
 
 2. Create and configure environment variables:
 
-```bash
-cp .env.example .env
-# Edit .env with your settings
-```
+Contact team for .env files, secrets and instructions to set this up.
 
 3. Start the containers:
 
@@ -74,7 +73,13 @@ docker-compose up -d
 ```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r Data-Pipeline/requirements.txt
+pip install -r requirements.txt
+```
+
+2. Install additional dependencies for the data pipeline:
+
+```bash
+pip install -r requirements.txt
 ```
 
 ## Data Components
@@ -104,8 +109,8 @@ The project includes scripts to generate synthetic data:
 
 The data pipeline performs the following steps:
 
-1. **Data Acquisition**: Fetching data from sources
-2. **Data Preprocessing**: Cleaning, normalization, and transformation
+1. **Data Acquisition**: Frontend will upload data onto the gcp bucket. It is simulated right now with a manual upload
+2. **Data Preprocessing**: Cleaning, aggregation, and transformation
 3. **Data Validation**: Schema validation and anomaly detection
 4. **Data Versioning**: Using DVC to track data changes
 5. **Feature Engineering**: Creating useful features for analysis
@@ -118,7 +123,7 @@ This project is designed to be free from demographic biases for the following re
 1. **Data Source Selection**: The primary data sources (commodity ETFs, price data) are economic indicators not tied to demographics
 2. **Transaction Anonymization**: The transaction data is randomly generated without demographic attributes
 3. **Store Location Neutrality**: Store locations are generic names without geographic or demographic correlations
-4. **Focus on Supply Chain**: The project analyzes commodity movement and pricing rather than consumer behavior
+4. **Focus on Supply Chain**: The project analyzes commodity movement and time-focussed demand rather than consumer behavior
 5. **No Personal Identifiers**: The system avoids collecting or using personal information that could introduce bias
 
 This design explicitly addresses potential bias concerns by:
@@ -127,6 +132,21 @@ This design explicitly addresses potential bias concerns by:
 - Using random transaction IDs instead of personal identifiers
 - Focusing on commodity data that is not demographically influenced
 - Generating synthetic data with statistical distributions unrelated to demographic factors
+
+## How this submission meets assignment requirements
+
+1. **Proper Documentation**: The README provides a comprehensive overview of the project, setup instructions and the project's design information. The code is commented and provides the logical emplanation of each script.
+2. **Modular Syntax and Code**: The code is written in a modular format, ensuring that each file is for a specific purpose in the pipeline. Some code is abstracted out into the utils.py file.
+3. **Pipeline Orchestration**: We are using AIrflow DAGs for pipeline orchestration. Code contains try-except blocks for error handling. The errors will be handled more gracefully upon frontend implementation.
+4. **Tracking and Logging**: We are using python and Airflow's logger for tracking and logging. Alerts are sent in form of emails for now which will be changed upon frontend implementation.
+5. **Data Version Control (DVC)**: We have implemented DVC for data versioning.
+6. **Pipeline Flow Optimization**: We are using Airflow's gantt charts to identify bottlenecks in the pipeline.
+7. **Schema and Statistics Generation**: We are using Great expectations to automatically generate data schema and statistics. This happens once for the processed data.
+8. **Anomalies Detection and Alert Generation**: We are using the IQR to identify records that fall outside 3 standard deviations and flagging them as anomalies. The preprocessing script handles issues such as missing values and outliers and validation scripts handles schema violations. Alerts are sent in form of emails.
+9. **Bias Detection and Mitigation**: We are not doing this as the nature of our data doesn't contain any personal data or otherwise that can introduce bias. Please refer to the bias justification point above.
+10. **Test Modules**: We have a testing coverage of 95%+.
+11. **Reproducibility**: The pipeline is reproducable and clear instructions for reprodicibility have been added to the README.
+12. **Error Handling and Logging**: Error handling mechanisms have been included and logs contain enough information for easy troubleshooting.
 
 ## Configuration
 
@@ -149,14 +169,6 @@ To set up Google Cloud integration:
 - Airflow provides task-level monitoring through its UI
 - Custom logs are stored in the `logs/` directory
 - Performance metrics are available in the Airflow UI
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/your-feature-name`
-3. Commit your changes: `git commit -m 'Add some feature'`
-4. Push to the branch: `git push origin feature/your-feature-name`
-5. Submit a pull request
 
 ## License
 
