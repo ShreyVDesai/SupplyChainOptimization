@@ -14,8 +14,7 @@ WORKDIR /app
 COPY requirements.txt /app/
 
 # Install Python packages
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # Copy the rest of the application
 COPY . /app/
