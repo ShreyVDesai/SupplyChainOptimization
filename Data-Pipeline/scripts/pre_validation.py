@@ -63,11 +63,11 @@ def validate_data(df):
                 validation_errors.append("Invalid date format detected.")
 
         # Quantity should be positive
-        if "Quantity" in df.columns and (df["Quantity"] < 0).any():
+        if "Quantity" in df.columns and (df["Quantity"] <= 0).any():
             validation_errors.append("Negative values found in Quantity.")
 
         # Unit Price should be positive
-        if "Unit Price" in df.columns and (df["Unit Price"] < 0).any():
+        if "Unit Price" in df.columns and (df["Unit Price"] <= 0).any():
             validation_errors.append("Negative values found in Unit Price.")
 
         # If any errors exist, send an email and return False
