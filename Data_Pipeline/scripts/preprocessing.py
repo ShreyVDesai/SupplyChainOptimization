@@ -2,14 +2,14 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 import polars as pl
-from logger import logger
+from Data_Pipeline.scripts.logger import logger
 from google.cloud import storage
 from dotenv import load_dotenv
 from typing import Dict, Tuple
 import os
 import argparse
-from utils import send_email, load_bucket_data, upload_to_gcs, setup_gcp_credentials
-from post_validation import post_validation
+from Data_Pipeline.scripts.utils import send_email, load_bucket_data, upload_to_gcs, setup_gcp_credentials
+from Data_Pipeline.scripts.post_validation import post_validation
 
 load_dotenv()
 
@@ -428,17 +428,18 @@ def detect_anomalies(df: pl.DataFrame) -> Tuple[Dict[str, pl.DataFrame], pl.Data
                 (pl.col("Product Name") == product) & (pl.col("date_only") == date)
             )
 
-            if len(subset) >= 4:
-                lower_bound, upper_bound = iqr_bounds(subset["Unit Price"])
-                iqr_anoms = subset.filter(
-                    (pl.col("Unit Price") < lower_bound)
-                    | (pl.col("Unit Price") > upper_bound)
-                )
-                if len(iqr_anoms) > 0:
-                    price_anomalies.append(iqr_anoms)
-                    anomaly_transaction_ids.update(
-                        iqr_anoms["Transaction ID"].to_list()
+            if "Unit Price" in df.columns:
+                if len(subset) >= 4:
+                    lower_bound, upper_bound = iqr_bounds(subset["Unit Price"])
+                    iqr_anoms = subset.filter(
+                        (pl.col("Unit Price") < lower_bound)
+                        | (pl.col("Unit Price") > upper_bound)
                     )
+                    if len(iqr_anoms) > 0:
+                        price_anomalies.append(iqr_anoms)
+                        anomaly_transaction_ids.update(
+                            iqr_anoms["Transaction ID"].to_list()
+                        )
 
         anomalies["price_anomalies"] = (
             pl.concat(price_anomalies) if price_anomalies else pl.DataFrame()
@@ -479,7 +480,7 @@ def detect_anomalies(df: pl.DataFrame) -> Tuple[Dict[str, pl.DataFrame], pl.Data
 
         # 4. Invalid Format Checks
         format_anomalies = df.filter(
-            (pl.col("Unit Price") <= 0) | (pl.col("Quantity") <= 0)
+            (pl.col("Quantity") <= 0)
         )
         anomalies["format_anomalies"] = format_anomalies
         anomaly_transaction_ids.update(format_anomalies["Transaction ID"].to_list())
@@ -686,8 +687,11 @@ def process_file(
         logger.info("Filtering invalid product names...")
         df = filter_invalid_products(df, REFERENCE_PRODUCT_NAMES)
 
-        logger.info("Filling missing Unit Prices...")
-        df = filling_missing_cost_price(df)
+        if "Unit Price" in df.columns:
+            logger.info("Filling missing Unit Prices...")
+            df = filling_missing_cost_price(df)
+        else:
+            logger.info("Skipping filling missing Unit Price...")
 
         logger.info("Removing invalid records...")
         df = remove_invalid_records(df)

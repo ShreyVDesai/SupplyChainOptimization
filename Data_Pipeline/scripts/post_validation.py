@@ -1,8 +1,8 @@
 import polars as pl
 import pandas as pd
 import json
-from logger import logger
-from utils import send_email, upload_to_gcs
+from Data_Pipeline.scripts.logger import logger
+from Data_Pipeline.scripts.utils import send_email, upload_to_gcs
 
 # Post-validation expected columns
 POST_VALIDATION_COLUMNS = ["Product Name", "Total Quantity", "Date"]

@@ -4,8 +4,6 @@ from datetime import datetime, timedelta
 import io
 import unittest
 from datetime import date
-
-# from scripts.logger import logger
 from unittest.mock import MagicMock, patch, call
 from scripts.preprocessing import (
     convert_feature_types,

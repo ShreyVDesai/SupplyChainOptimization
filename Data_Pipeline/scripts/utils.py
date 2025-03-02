@@ -3,7 +3,7 @@ import polars as pl
 import pandas as pd
 import json
 
-from logger import logger
+from Data_Pipeline.scripts.logger import logger
 
 import io
 from google.cloud import storage
@@ -13,7 +13,6 @@ from email.message import EmailMessage
 import os
 
 load_dotenv()
-
 
 # Set up GCP credentials path
 def setup_gcp_credentials():

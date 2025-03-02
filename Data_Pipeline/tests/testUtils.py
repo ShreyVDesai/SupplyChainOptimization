@@ -3,7 +3,6 @@ import os
 import json
 import unittest
 from unittest.mock import patch, MagicMock, call
-from scripts.logger import logger
 import polars as pl
 import pandas as pd
 from polars.testing import assert_frame_equal

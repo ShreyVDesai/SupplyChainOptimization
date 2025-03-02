@@ -2,11 +2,10 @@ import os
 import polars as pl
 import pandas as pd
 import argparse
-from logger import logger
-from utils import send_email, load_bucket_data, load_data
+from Data_Pipeline.scripts.logger import logger
+from Data_Pipeline.scripts.utils import send_email, load_bucket_data, load_data, setup_gcp_credentials
 from google.cloud import storage
 from dotenv import load_dotenv
-from utils import setup_gcp_credentials
 
 load_dotenv()
 
@@ -111,9 +110,7 @@ def delete_blob_from_bucket(bucket_name: str, blob_name: str) -> bool:
         return False
 
 
-def validate_file(
-    bucket_name: str, blob_name: str, delete_invalid: bool = True
-) -> bool:
+def validate_file(bucket_name: str, blob_name: str, delete_invalid: bool = True) -> bool:
     """
     Validates a single file from the specified GCP bucket.
     Deletes the file if validation fails and delete_invalid is True.
