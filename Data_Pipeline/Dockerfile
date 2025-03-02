@@ -16,11 +16,6 @@ COPY requirements.txt ./requirements.txt
 # Install Python packages
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
-# Install Airflow dependencies separately
-RUN pip install --no-cache-dir apache-airflow>=2.7.0 \
-    apache-airflow-providers-google>=8.0.0,<9.0.0 \
-    apache-airflow-providers-docker>=3.7.0
-
 # Copy the rest of the application
 COPY . /app/
 
