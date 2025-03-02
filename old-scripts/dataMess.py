@@ -58,24 +58,11 @@ def mess_up_data(input_file, output_file):
         )  # 1% duplicate records
         chunk = pd.concat([chunk, duplicate_rows], ignore_index=True)
 
-        if "Product Name" in chunk.columns:
-            chunk.loc[chunk.sample(frac=0.03).index, "Product Name"] = (
-                chunk["Product Name"]
-                .astype(str)
-                .apply(
-                    lambda x: (
-                        x.replace("a", "@")
-                        if random.random() > 0.5
-                        else x.replace("o", "0")
-                    )
-                )
-            )  # 3% misspelled Product Names
-
         # Keep negative values for Cost Price but avoid excessive modifications
-        if "Cost Price" in chunk.columns:
-            chunk.loc[chunk.sample(frac=0.01).index, "Cost Price"] = -abs(
-                chunk["Cost Price"].mean(skipna=True)
-            )  # 1% negative cost prices
+        if "Unit Price" in chunk.columns:
+            chunk.loc[chunk.sample(frac=0.01).index, "Unit Price"] = -abs(
+                chunk["Unit Price"].mean(skipna=True)
+            )  # 1% negative unit prices
 
         # Introduce negative and zero values in Quantity column
         if "Quantity" in chunk.columns:
@@ -96,11 +83,11 @@ def mess_up_data(input_file, output_file):
             )  # 2% numeric store locations
 
         # Introduce logical inconsistencies
-        if "Cost Price" in chunk.columns and "Quantity" in chunk.columns:
+        if "Unit Price" in chunk.columns and "Quantity" in chunk.columns:
             inconsistent_indices = chunk.sample(
                 frac=0.02
             ).index  # 1% logical inconsistencies
-            chunk.loc[inconsistent_indices, "Cost Price"] = 0  # Cost Price is zero
+            chunk.loc[inconsistent_indices, "Unit Price"] = 0  # Cost Price is zero
             chunk.loc[inconsistent_indices, "Quantity"] = random.randint(
                 1, 10
             )  # Quantity is non-zero

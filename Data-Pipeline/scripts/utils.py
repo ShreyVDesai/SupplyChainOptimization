@@ -4,7 +4,7 @@ import pandas as pd
 import json
 
 # from scripts.logger import logger
-from scripts.logger import logger
+from logger import logger
 
 # from data_pipeline.scripts.logger import logger
 import io
