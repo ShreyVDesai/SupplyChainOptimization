@@ -2,7 +2,7 @@
 secret/*
 
 # Ignore environment files
-.env
+# .env
 
 __pycache__/
 .coverage
