@@ -129,8 +129,7 @@ def generate_transactions(demand_df, fixed_prices=None):
             # Determine number of transactions
             num_transactions = np.random.randint(*NUM_TRANSACTIONS_RANGE)
             quantities = np.random.multinomial(
-                int(demand),
-                np.ones(num_transactions) / num_transactions
+                int(demand), np.ones(num_transactions) / num_transactions
             )
 
             for qty in quantities:
@@ -159,14 +158,13 @@ def generate_transactions(demand_df, fixed_prices=None):
             time_intervals = np.linspace(
                 0,
                 (
-                    datetime.strptime(END_TIME, "%H:%M:%S") -
-                    datetime.strptime(START_TIME, "%H:%M:%S")
+                    datetime.strptime(END_TIME, "%H:%M:%S")
+                    - datetime.strptime(START_TIME, "%H:%M:%S")
                 ).total_seconds(),
                 num_transactions,
             )
             start_time = datetime.combine(
-                date,
-                datetime.strptime(START_TIME, "%H:%M:%S").time()
+                date, datetime.strptime(START_TIME, "%H:%M:%S").time()
             )
             for i, transaction in enumerate(daily_transactions):
                 transaction[0] = start_time + timedelta(

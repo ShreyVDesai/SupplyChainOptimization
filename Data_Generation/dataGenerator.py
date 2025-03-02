@@ -24,10 +24,8 @@ PRODUCTS_TO_ETFS = {
     "Wheat": "WEAT",  # Teucrium Wheat Fund
     "Soybeans": "SOYB",  # Teucrium Soybean Fund
     "Sugar": "CANE",  # Teucrium Sugar Fund
-    "Coffee":
-    "JO",  # iPath Series B Bloomberg Coffee Subindex Total Return ETN
-    "Beef":
-    "COW",  # iPath Series B Bloomberg Livestock Subindex Total Return ETN
+    "Coffee": "JO",  # iPath Series B Bloomberg Coffee Subindex Total Return ETN
+    "Beef": "COW",  # iPath Series B Bloomberg Livestock Subindex Total Return ETN
     "Milk": "MOO",  # VanEck Agribusiness ETF (proxy for dairy)
     "Chocolate": "NIB",  # iPath Bloomberg Cocoa Subindex Total Return ETN
 }
@@ -54,8 +52,9 @@ def generate_synthetic_data(
     # Fetch stock market data for each ETF
     stock_data = {}
     for product, ticker in products_to_etfs.items():
-        stock_prices = yf.download(ticker, start=start_date,
-                                   end=end_date)["Close"]
+        stock_prices = yf.download(ticker, start=start_date, end=end_date)[
+            "Close"
+        ]
         stock_data[product] = stock_prices.reindex(dates).ffill()
 
     # Base demand per product (fixed values take precedence)
@@ -63,7 +62,9 @@ def generate_synthetic_data(
         product: (
             fixed_base_demand.get(
                 product, np.random.randint(*base_demand_range)
-            ) if fixed_base_demand else np.random.randint(*base_demand_range)
+            )
+            if fixed_base_demand
+            else np.random.randint(*base_demand_range)
         )
         for product in products_to_etfs
     }
@@ -80,8 +81,7 @@ def generate_synthetic_data(
 
     # Weekly demand fluctuations
     weekly_factors = {
-        product:
-        np.tile(
+        product: np.tile(
             np.random.uniform(*weekly_variation_range, size=7),
             (num_days // 7 + 1),
         )[:num_days]
@@ -90,8 +90,7 @@ def generate_synthetic_data(
 
     # Sudden demand shocks on weekends
     shock_effects = {
-        product: np.ones(num_days)
-        for product in products_to_etfs
+        product: np.ones(num_days) for product in products_to_etfs
     }
     weekend_indices = np.where(dates.dayofweek >= 5)[0]
     weekend_shocks = np.random.rand(len(weekend_indices)) < shock_probability
@@ -109,12 +108,15 @@ def generate_synthetic_data(
         stock_prices = stock_data[product]
         stock_prices_normalized = stock_prices / stock_prices.mean()
         stock_influence = (
-            stock_prices_normalized.values.reshape(-1) *
-            stock_influence_strength
+            stock_prices_normalized.values.reshape(-1)
+            * stock_influence_strength
         )
         demand = (
-            base_demand[product] * (1 + stock_influence) *
-            weekly_factors[product] * shock_effects[product] + noise[product]
+            base_demand[product]
+            * (1 + stock_influence)
+            * weekly_factors[product]
+            * shock_effects[product]
+            + noise[product]
         )
         demand = np.maximum(demand, 0)  # Ensure no negative values
         demand_data[product] = np.round(demand).astype(int)

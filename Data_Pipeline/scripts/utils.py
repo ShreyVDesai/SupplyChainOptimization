@@ -145,10 +145,7 @@ def send_email(
         # Encode the CSV content to bytes to avoid calling set_text_content.
         csv_bytes = csv_buffer.getvalue().encode("utf-8")
         msg.add_attachment(
-            csv_bytes,
-            maintype="text",
-            subtype="csv",
-            filename="anomalies.csv"
+            csv_bytes, maintype="text", subtype="csv", filename="anomalies.csv"
         )
 
     try:
@@ -240,7 +237,7 @@ def upload_to_gcs(
                             return float(obj)
                         elif isinstance(obj, (np.bool_)):
                             return bool(obj)
-                        elif isinstance(obj, (np.ndarray, )):
+                        elif isinstance(obj, (np.ndarray,)):
                             return obj.tolist()
                         elif isinstance(obj, dict):
                             return {

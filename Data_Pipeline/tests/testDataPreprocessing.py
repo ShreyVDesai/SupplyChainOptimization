@@ -88,10 +88,9 @@ class TestDataPreprocessing(unittest.TestCase):
 
     def test_convert_feature_types_missing_column(self):
         # Setup
-        df = pl.DataFrame({
-            "Date": ["2024-01-01"],
-            "Quantity": [5]
-        }).with_columns(pl.col("Date").str.strptime(pl.Date, "%Y-%m-%d"))
+        df = pl.DataFrame(
+            {"Date": ["2024-01-01"], "Quantity": [5]}
+        ).with_columns(pl.col("Date").str.strptime(pl.Date, "%Y-%m-%d"))
 
         # Test
         converted_df = convert_feature_types(df)
@@ -126,10 +125,7 @@ class TestDataPreprocessing(unittest.TestCase):
     def test_convert_feature_types_invalid_data(self):
         # Setup
         df_invalid = pl.DataFrame(
-            {
-                "Date": ["invalid_date"],
-                "Quantity": ["not_a_number"]
-            }
+            {"Date": ["invalid_date"], "Quantity": ["not_a_number"]}
         )
 
         # Test
@@ -328,9 +324,7 @@ class TestDataPreprocessing(unittest.TestCase):
 
         # Test
         with patch.object(
-            pl.DataFrame,
-            "with_columns",
-            side_effect=Exception("Forced error")
+            pl.DataFrame, "with_columns", side_effect=Exception("Forced error")
         ):
             with self.assertRaises(Exception) as context:
                 detect_date_order(df, "Date")
@@ -804,10 +798,7 @@ class TestDataPreprocessing(unittest.TestCase):
     def test_convert_string_columns_to_lowercase_mixed_string_features(self):
         # Setup
         df = pl.DataFrame(
-            {
-                "Product Name": ["MILK", "COFFee"],
-                "Unit Price": [30, 25]
-            }
+            {"Product Name": ["MILK", "COFFee"], "Unit Price": [30, 25]}
         )
 
         # Test
@@ -879,25 +870,22 @@ class TestDataPreprocessing(unittest.TestCase):
 
         price_by_month_df = pl.DataFrame(
             {
-                "Year":
-                pl.Series("Year", [], dtype=pl.Int64),
-                "Month":
-                pl.Series("Month", [], dtype=pl.Int64),
-                "Product Name":
-                pl.Series("Product Name", [], dtype=pl.Utf8),
-                "Most_Frequent_Cost":
-                pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64),
+                "Year": pl.Series("Year", [], dtype=pl.Int64),
+                "Month": pl.Series("Month", [], dtype=pl.Int64),
+                "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
+                "Most_Frequent_Cost": pl.Series(
+                    "Most_Frequent_Cost", [], dtype=pl.Float64
+                ),
             }
         )
 
         price_by_year_df = pl.DataFrame(
             {
-                "Year":
-                pl.Series("Year", [], dtype=pl.Int64),
-                "Product Name":
-                pl.Series("Product Name", [], dtype=pl.Utf8),
-                "Most_Frequent_Cost":
-                pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64),
+                "Year": pl.Series("Year", [], dtype=pl.Int64),
+                "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
+                "Most_Frequent_Cost": pl.Series(
+                    "Most_Frequent_Cost", [], dtype=pl.Float64
+                ),
             }
         )
 
@@ -954,12 +942,11 @@ class TestDataPreprocessing(unittest.TestCase):
         # Year-level aggregation: return an empty DataFrame with proper schema.
         price_by_year = pl.DataFrame(
             {
-                "Year":
-                pl.Series("Year", [], dtype=pl.Int64),
-                "Product Name":
-                pl.Series("Product Name", [], dtype=pl.Utf8),
-                "Most_Frequent_Cost":
-                pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64),
+                "Year": pl.Series("Year", [], dtype=pl.Int64),
+                "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
+                "Most_Frequent_Cost": pl.Series(
+                    "Most_Frequent_Cost", [], dtype=pl.Float64
+                ),
             }
         )
         mock_compute_most_frequent_price.side_effect = [
@@ -995,29 +982,24 @@ class TestDataPreprocessing(unittest.TestCase):
         # Week-level: empty DataFrame with correct schema.
         price_by_week = pl.DataFrame(
             {
-                "Year":
-                pl.Series("Year", [], dtype=pl.Int64),
-                "Month":
-                pl.Series("Month", [], dtype=pl.Int64),
-                "Week_of_year":
-                pl.Series("Week_of_year", [], dtype=pl.Int64),
-                "Product Name":
-                pl.Series("Product Name", [], dtype=pl.Utf8),
-                "Most_Frequent_Cost":
-                pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64),
+                "Year": pl.Series("Year", [], dtype=pl.Int64),
+                "Month": pl.Series("Month", [], dtype=pl.Int64),
+                "Week_of_year": pl.Series("Week_of_year", [], dtype=pl.Int64),
+                "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
+                "Most_Frequent_Cost": pl.Series(
+                    "Most_Frequent_Cost", [], dtype=pl.Float64
+                ),
             }
         )
         # Month-level: empty.
         price_by_month = pl.DataFrame(
             {
-                "Year":
-                pl.Series("Year", [], dtype=pl.Int64),
-                "Month":
-                pl.Series("Month", [], dtype=pl.Int64),
-                "Product Name":
-                pl.Series("Product Name", [], dtype=pl.Utf8),
-                "Most_Frequent_Cost":
-                pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64),
+                "Year": pl.Series("Year", [], dtype=pl.Int64),
+                "Month": pl.Series("Month", [], dtype=pl.Int64),
+                "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
+                "Most_Frequent_Cost": pl.Series(
+                    "Most_Frequent_Cost", [], dtype=pl.Float64
+                ),
             }
         )
         # Year-level: returns a value.
@@ -1060,40 +1042,34 @@ class TestDataPreprocessing(unittest.TestCase):
 
         empty_week = pl.DataFrame(
             {
-                "Year":
-                pl.Series("Year", [], dtype=pl.Int64),
-                "Month":
-                pl.Series("Month", [], dtype=pl.Int64),
-                "Week_of_year":
-                pl.Series("Week_of_year", [], dtype=pl.Int64),
-                "Product Name":
-                pl.Series("Product Name", [], dtype=pl.Utf8),
-                "Most_Frequent_Cost":
-                pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64),
+                "Year": pl.Series("Year", [], dtype=pl.Int64),
+                "Month": pl.Series("Month", [], dtype=pl.Int64),
+                "Week_of_year": pl.Series("Week_of_year", [], dtype=pl.Int64),
+                "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
+                "Most_Frequent_Cost": pl.Series(
+                    "Most_Frequent_Cost", [], dtype=pl.Float64
+                ),
             }
         )
 
         empty_month = pl.DataFrame(
             {
-                "Year":
-                pl.Series("Year", [], dtype=pl.Int64),
-                "Month":
-                pl.Series("Month", [], dtype=pl.Int64),
-                "Product Name":
-                pl.Series("Product Name", [], dtype=pl.Utf8),
-                "Most_Frequent_Cost":
-                pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64),
+                "Year": pl.Series("Year", [], dtype=pl.Int64),
+                "Month": pl.Series("Month", [], dtype=pl.Int64),
+                "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
+                "Most_Frequent_Cost": pl.Series(
+                    "Most_Frequent_Cost", [], dtype=pl.Float64
+                ),
             }
         )
 
         empty_year = pl.DataFrame(
             {
-                "Year":
-                pl.Series("Year", [], dtype=pl.Int64),
-                "Product Name":
-                pl.Series("Product Name", [], dtype=pl.Utf8),
-                "Most_Frequent_Cost":
-                pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64),
+                "Year": pl.Series("Year", [], dtype=pl.Int64),
+                "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
+                "Most_Frequent_Cost": pl.Series(
+                    "Most_Frequent_Cost", [], dtype=pl.Float64
+                ),
             }
         )
         mock_compute_most_frequent_price.side_effect = [
@@ -1128,40 +1104,34 @@ class TestDataPreprocessing(unittest.TestCase):
 
         empty_week = pl.DataFrame(
             {
-                "Year":
-                pl.Series("Year", [], dtype=pl.Int64),
-                "Month":
-                pl.Series("Month", [], dtype=pl.Int64),
-                "Week_of_year":
-                pl.Series("Week_of_year", [], dtype=pl.Int64),
-                "Product Name":
-                pl.Series("Product Name", [], dtype=pl.Utf8),
-                "Most_Frequent_Cost":
-                pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64),
+                "Year": pl.Series("Year", [], dtype=pl.Int64),
+                "Month": pl.Series("Month", [], dtype=pl.Int64),
+                "Week_of_year": pl.Series("Week_of_year", [], dtype=pl.Int64),
+                "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
+                "Most_Frequent_Cost": pl.Series(
+                    "Most_Frequent_Cost", [], dtype=pl.Float64
+                ),
             }
         )
 
         empty_month = pl.DataFrame(
             {
-                "Year":
-                pl.Series("Year", [], dtype=pl.Int64),
-                "Month":
-                pl.Series("Month", [], dtype=pl.Int64),
-                "Product Name":
-                pl.Series("Product Name", [], dtype=pl.Utf8),
-                "Most_Frequent_Cost":
-                pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64),
+                "Year": pl.Series("Year", [], dtype=pl.Int64),
+                "Month": pl.Series("Month", [], dtype=pl.Int64),
+                "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
+                "Most_Frequent_Cost": pl.Series(
+                    "Most_Frequent_Cost", [], dtype=pl.Float64
+                ),
             }
         )
 
         empty_year = pl.DataFrame(
             {
-                "Year":
-                pl.Series("Year", [], dtype=pl.Int64),
-                "Product Name":
-                pl.Series("Product Name", [], dtype=pl.Utf8),
-                "Most_Frequent_Cost":
-                pl.Series("Most_Frequent_Cost", [], dtype=pl.Float64),
+                "Year": pl.Series("Year", [], dtype=pl.Int64),
+                "Product Name": pl.Series("Product Name", [], dtype=pl.Utf8),
+                "Most_Frequent_Cost": pl.Series(
+                    "Most_Frequent_Cost", [], dtype=pl.Float64
+                ),
             }
         )
 
@@ -1233,10 +1203,7 @@ class TestDataPreprocessing(unittest.TestCase):
         )
 
         expected_df = pl.DataFrame(
-            {
-                "Quantity": [10, 30],
-                "Product Name": ["milk", "cheese"]
-            }
+            {"Quantity": [10, 30], "Product Name": ["milk", "cheese"]}
         )
 
         # Test
@@ -1255,10 +1222,7 @@ class TestDataPreprocessing(unittest.TestCase):
             }
         )
         expected_df = pl.DataFrame(
-            {
-                "Quantity": [10, 30],
-                "Product Name": ["milk", "cheese"]
-            }
+            {"Quantity": [10, 30], "Product Name": ["milk", "cheese"]}
         )
 
         # Test
@@ -1278,10 +1242,7 @@ class TestDataPreprocessing(unittest.TestCase):
         )
 
         expected_df = pl.DataFrame(
-            {
-                "Quantity": [10],
-                "Product Name": ["milk"]
-            }
+            {"Quantity": [10], "Product Name": ["milk"]}
         )
 
         # Test
@@ -1594,20 +1555,11 @@ class TestDataPreprocessing(unittest.TestCase):
     def test_aggregate_daily_products_empty_dataframe(self):
         # Setup
         df = pl.DataFrame(
-            {
-                "Date": [],
-                "Product Name": [],
-                "Unit Price": [],
-                "Quantity": []
-            }
+            {"Date": [], "Product Name": [], "Unit Price": [], "Quantity": []}
         ).with_columns(pl.col("Date").cast(pl.Date))
 
         expected_df = pl.DataFrame(
-            {
-                "Date": [],
-                "Product Name": [],
-                "Total Quantity": []
-            }
+            {"Date": [], "Product Name": [], "Total Quantity": []}
         ).with_columns(pl.col("Date").cast(pl.Date))
 
         # Test
@@ -1656,8 +1608,8 @@ class TestDataPreprocessing(unittest.TestCase):
         # and bucket names.
         mock_logger.info.assert_called_once()
         self.assertTrue(
-            "Blob test_blob deleted from bucket test_bucket" in
-            mock_logger.info.call_args[0][0]
+            "Blob test_blob deleted from bucket test_bucket"
+            in mock_logger.info.call_args[0][0]
         )
 
         # Finally, assert that the function returns True.
@@ -1697,8 +1649,8 @@ class TestDataPreprocessing(unittest.TestCase):
         # deletion error.
         mock_logger.error.assert_called_once()
         self.assertTrue(
-            "Error deleting blob test_blob from bucket test_bucket" in
-            mock_logger.error.call_args[0][0]
+            "Error deleting blob test_blob from bucket test_bucket"
+            in mock_logger.error.call_args[0][0]
         )
 
         # Assert that the function returns False.
@@ -1784,11 +1736,7 @@ class TestDataPreprocessing(unittest.TestCase):
     def test_empty_dataframe(self, mock_logger):
         # Setup
         empty_df = pl.DataFrame(
-            {
-                "Date": [],
-                "Product Name": [],
-                "Total Quantity": []
-            }
+            {"Date": [], "Product Name": [], "Total Quantity": []}
         )
 
         # Test
@@ -1821,9 +1769,7 @@ class TestDataPreprocessing(unittest.TestCase):
         # Setup
         df = pl.DataFrame(
             {
-                "Date": [date(2023, 1, 1),
-                         date(2023, 1, 2),
-                         date(2023, 1, 8)],
+                "Date": [date(2023, 1, 1), date(2023, 1, 2), date(2023, 1, 8)],
                 "Product Name": ["milk", "milk", "milk"],
                 "Total Quantity": [10.0, 20.0, 30.0],
             }
@@ -1860,10 +1806,7 @@ class TestDataPreprocessing(unittest.TestCase):
     def test_missing_date_column(self, mock_logger):
         # Setup
         df_missing_date = pl.DataFrame(
-            {
-                "Product Name": ["milk"],
-                "Total Quantity": [10.0]
-            }
+            {"Product Name": ["milk"], "Total Quantity": [10.0]}
         )
 
         # Test
@@ -1921,7 +1864,8 @@ class TestDataPreprocessing(unittest.TestCase):
                 blob_name=blob,
                 destination_bucket_name=destination_bucket,
                 delete_after_processing=delete_after_processing,
-            ) for blob in blob_names
+            )
+            for blob in blob_names
         ]
         mock_process_file.assert_has_calls(expected_calls, any_order=True)
 
@@ -1956,9 +1900,7 @@ class TestDataPreprocessing(unittest.TestCase):
         # Test
         with self.assertRaises(Exception) as context:
             main(
-                source_bucket,
-                destination_bucket,
-                delete_after_processing=True
+                source_bucket, destination_bucket, delete_after_processing=True
             )
 
         # Assert
@@ -1981,10 +1923,7 @@ class TestDataPreprocessing(unittest.TestCase):
 
         # Expect only rows with "milk" and "coffee" remain.
         expected_df = pl.DataFrame(
-            {
-                "Product Name": ["milk", "coffee"],
-                "Quantity": [10, 20]
-            }
+            {"Product Name": ["milk", "coffee"], "Quantity": [10, 20]}
         )
         assert_frame_equal(result, expected_df)
 
@@ -2000,10 +1939,7 @@ class TestDataPreprocessing(unittest.TestCase):
     def test_no_filtering_needed(self, mock_logger):
         # Setup
         df = pl.DataFrame(
-            {
-                "Product Name": ["milk", "coffee"],
-                "Quantity": [10, 20]
-            }
+            {"Product Name": ["milk", "coffee"], "Quantity": [10, 20]}
         )
         reference_list = ["milk", "coffee"]
 
@@ -2019,10 +1955,7 @@ class TestDataPreprocessing(unittest.TestCase):
     def test_all_rows_filtered_product_invalid(self, mock_logger):
         # Setup
         df = pl.DataFrame(
-            {
-                "Product Name": ["tea", "juice"],
-                "Quantity": [15, 5]
-            }
+            {"Product Name": ["tea", "juice"], "Quantity": [15, 5]}
         )
         reference_list = ["milk", "coffee"]
 
@@ -2076,8 +2009,7 @@ class TestTimeSeriesFeatureExtraction(unittest.TestCase):
                     for i in range(10)
                 ],
                 "Product Name": ["A"] * 10,
-                "Total Quantity":
-                list(range(10)),
+                "Total Quantity": list(range(10)),
             }
         )
         self.df = self.df.with_columns(
@@ -2126,8 +2058,7 @@ class TestTimeSeriesFeatureExtraction(unittest.TestCase):
     def test_multiple_products(self):
         # Setup
         df_multi = pl.concat(
-            [self.df,
-             self.df.with_columns(pl.lit("B").alias("Product Name"))]
+            [self.df, self.df.with_columns(pl.lit("B").alias("Product Name"))]
         )
 
         # Test
@@ -2143,11 +2074,7 @@ class TestTimeSeriesFeatureExtraction(unittest.TestCase):
     def test_empty_dataframe(self):
         # Setup
         df_empty = pl.DataFrame(
-            {
-                "Date": [],
-                "Product Name": [],
-                "Total Quantity": []
-            }
+            {"Date": [], "Product Name": [], "Total Quantity": []}
         )
 
         # Test
@@ -2646,10 +2573,7 @@ class TestLoadBucketData(unittest.TestCase):
 
         # Create a sample DataFrame for testing
         self.sample_df = pl.DataFrame(
-            {
-                "col1": [1, 2, 3],
-                "col2": ["a", "b", "c"]
-            }
+            {"col1": [1, 2, 3], "col2": ["a", "b", "c"]}
         )
 
     @patch("dataPreprocessing.storage.Client")
@@ -2788,8 +2712,7 @@ class TestDetectAnomalies(unittest.TestCase):
         # Create sample transaction data
         self.test_data = pl.DataFrame(
             {
-                "Transaction ID":
-                range(1, 21),
+                "Transaction ID": range(1, 21),
                 "Date": [
                     # Normal business hours transactions
                     datetime(2023, 1, 1, 10, 0),
@@ -3127,10 +3050,7 @@ class TestLoadBucketData(unittest.TestCase):
 
         # Create a sample DataFrame for testing
         self.sample_df = pl.DataFrame(
-            {
-                "col1": [1, 2, 3],
-                "col2": ["a", "b", "c"]
-            }
+            {"col1": [1, 2, 3], "col2": ["a", "b", "c"]}
         )
 
     @patch("scripts.preprocessing.storage.Client")
@@ -3269,8 +3189,7 @@ class TestDetectAnomalies(unittest.TestCase):
         # Create sample transaction data
         self.test_data = pl.DataFrame(
             {
-                "Transaction ID":
-                range(1, 21),
+                "Transaction ID": range(1, 21),
                 "Date": [
                     # Normal business hours transactions
                     datetime(2023, 1, 1, 10, 0),

@@ -31,8 +31,9 @@ def check_column_types(df, error_indices, error_reasons):
     """
     # Check Product Name (should be string type)
     if "Product Name" in df.columns:
-        invalid_product_mask = ~df["Product Name"
-                                   ].apply(lambda x: isinstance(x, str))
+        invalid_product_mask = ~df["Product Name"].apply(
+            lambda x: isinstance(x, str)
+        )
         for idx in df[invalid_product_mask].index:
             error_indices.add(idx)
             reason = "Product Name must be a string"
@@ -94,13 +95,16 @@ def check_column_types(df, error_indices, error_reasons):
                         date_formats_valid = any(
                             [
                                 # YYYY-MM-DD
-                                len(date_val) >= 10 and date_val[4] == "-"
+                                len(date_val) >= 10
+                                and date_val[4] == "-"
                                 and date_val[7] == "-",
                                 # MM-DD-YYYY or DD-MM-YYYY
-                                len(date_val) >= 10 and date_val[2] == "-"
+                                len(date_val) >= 10
+                                and date_val[2] == "-"
                                 and date_val[5] == "-",
                                 # MM/DD/YYYY or DD/MM/YYYY
-                                len(date_val) >= 10 and date_val[2] == "/"
+                                len(date_val) >= 10
+                                and date_val[2] == "/"
                                 and date_val[5] == "/",
                             ]
                         )
@@ -175,7 +179,8 @@ def validate_data(df):
         if error_indices:
             anomalies_df = (
                 df.iloc[list(error_indices)].copy()
-                if not df.empty else pd.DataFrame()
+                if not df.empty
+                else pd.DataFrame()
             )
             # Only add anomaly_reason if there are actual errors
             if not anomalies_df.empty:

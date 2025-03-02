@@ -82,7 +82,8 @@ def convert_string_columns_to_lowercase(df: pl.DataFrame) -> pl.DataFrame:
     try:
         logger.info("Converting all string-type columns to lowercase...")
         string_features = [
-            col for col, dtype in zip(df.columns, df.dtypes)
+            col
+            for col, dtype in zip(df.columns, df.dtypes)
             if dtype == pl.Utf8
         ]
         if not string_features:
@@ -90,10 +91,7 @@ def convert_string_columns_to_lowercase(df: pl.DataFrame) -> pl.DataFrame:
             return df
 
         df = df.with_columns(
-            [
-                pl.col(feature).str.to_lowercase()
-                for feature in string_features
-            ]
+            [pl.col(feature).str.to_lowercase() for feature in string_features]
         )
         return df
     except Exception as e:
@@ -119,35 +117,48 @@ def standardize_date_format(
 
         df = df.with_columns(
             pl.when(
-                pl.col("Date").str.
-                contains(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$")
+                pl.col("Date").str.contains(
+                    r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$"
+                )
             )  # 2019-01-03 08:46:08
             .then(
                 pl.col("Date").str.strptime(
                     pl.Datetime, "%Y-%m-%d %H:%M:%S%.3f", strict=False
                 )
-            ).when(pl.col("Date").str.contains(r"^\d{4}-\d{2}-\d{2}$")
-                   )  # 2019-01-03
+            )
+            .when(
+                pl.col("Date").str.contains(r"^\d{4}-\d{2}-\d{2}$")
+            )  # 2019-01-03
             .then(
-                pl.col("Date"
-                       ).str.strptime(pl.Datetime, "%Y-%m-%d", strict=False)
-            ).when(pl.col("Date").str.contains(r"^\d{2}-\d{2}-\d{4}$")
-                   )  # 01-03-2019
+                pl.col("Date").str.strptime(
+                    pl.Datetime, "%Y-%m-%d", strict=False
+                )
+            )
+            .when(
+                pl.col("Date").str.contains(r"^\d{2}-\d{2}-\d{4}$")
+            )  # 01-03-2019
             .then(
-                pl.col("Date"
-                       ).str.strptime(pl.Datetime, "%m-%d-%Y", strict=False)
-            ).when(pl.col("Date").str.contains(r"^\d{2}/\d{2}/\d{4}$")
-                   )  # 03/01/2019
+                pl.col("Date").str.strptime(
+                    pl.Datetime, "%m-%d-%Y", strict=False
+                )
+            )
+            .when(
+                pl.col("Date").str.contains(r"^\d{2}/\d{2}/\d{4}$")
+            )  # 03/01/2019
             .then(
-                pl.col("Date"
-                       ).str.strptime(pl.Datetime, "%d/%m/%Y", strict=False)
-            ).otherwise(None).alias("Date")
+                pl.col("Date").str.strptime(
+                    pl.Datetime, "%d/%m/%Y", strict=False
+                )
+            )
+            .otherwise(None)
+            .alias("Date")
         )
 
         df = df.with_columns(
-            pl.when(pl.col(date_column).is_not_null()
-                    ).then(pl.col(date_column).cast(pl.Datetime)
-                           ).otherwise(None).alias(date_column)
+            pl.when(pl.col(date_column).is_not_null())
+            .then(pl.col(date_column).cast(pl.Datetime))
+            .otherwise(None)
+            .alias(date_column)
         )
 
         null_count = df[date_column].null_count()
@@ -215,10 +226,12 @@ def filling_missing_dates(
 
             df = df.with_columns(
                 [
-                    pl.col(date_column).fill_null(strategy="forward"
-                                                  ).alias("prev_valid"),
-                    pl.col(date_column).fill_null(strategy="backward"
-                                                  ).alias("next_valid"),
+                    pl.col(date_column)
+                    .fill_null(strategy="forward")
+                    .alias("prev_valid"),
+                    pl.col(date_column)
+                    .fill_null(strategy="backward")
+                    .alias("next_valid"),
                 ]
             )
             original_count = df.height
@@ -228,8 +241,8 @@ def filling_missing_dates(
                 pl.col(date_column).is_not_null()
                 | (
                     (
-                        pl.col("prev_valid").dt.truncate("1d") ==
-                        pl.col("next_valid").dt.truncate("1d")
+                        pl.col("prev_valid").dt.truncate("1d")
+                        == pl.col("next_valid").dt.truncate("1d")
                     )
                 )
             )
@@ -281,11 +294,10 @@ def compute_most_frequent_price(
     """
     try:
         return (
-            df.drop_nulls(
-                ["Unit Price"]
-            ).group_by(time_granularity + ["Product Name"]).agg(
-                pl.col("Unit Price"
-                       ).mode().first().alias("Most_Frequent_Cost")
+            df.drop_nulls(["Unit Price"])
+            .group_by(time_granularity + ["Product Name"])
+            .agg(
+                pl.col("Unit Price").mode().first().alias("Most_Frequent_Cost")
             )
         )
     except Exception as e:
@@ -315,25 +327,28 @@ def filling_missing_cost_price(df: pl.DataFrame) -> pl.DataFrame:
             how="left",
         )
         df = df.with_columns(
-            pl.when(pl.col("Unit Price").is_null()).then(
-                pl.col("Most_Frequent_Cost")
-            ).otherwise(pl.col("Unit Price")).alias("Unit Price")
+            pl.when(pl.col("Unit Price").is_null())
+            .then(pl.col("Most_Frequent_Cost"))
+            .otherwise(pl.col("Unit Price"))
+            .alias("Unit Price")
         ).drop("Most_Frequent_Cost")
 
         df = df.join(
             price_by_month, on=["Year", "Month", "Product Name"], how="left"
         )
         df = df.with_columns(
-            pl.when(pl.col("Unit Price").is_null()).then(
-                pl.col("Most_Frequent_Cost")
-            ).otherwise(pl.col("Unit Price")).alias("Unit Price")
+            pl.when(pl.col("Unit Price").is_null())
+            .then(pl.col("Most_Frequent_Cost"))
+            .otherwise(pl.col("Unit Price"))
+            .alias("Unit Price")
         ).drop("Most_Frequent_Cost")
 
         df = df.join(price_by_year, on=["Year", "Product Name"], how="left")
         df = df.with_columns(
-            pl.when(pl.col("Unit Price").is_null()).then(
-                pl.col("Most_Frequent_Cost")
-            ).otherwise(pl.col("Unit Price")).alias("Unit Price")
+            pl.when(pl.col("Unit Price").is_null())
+            .then(pl.col("Most_Frequent_Cost"))
+            .otherwise(pl.col("Unit Price"))
+            .alias("Unit Price")
         ).drop("Most_Frequent_Cost")
 
         # Fill remaining nulls with 0
@@ -370,9 +385,11 @@ def standardize_product_name(df: pl.DataFrame) -> pl.DataFrame:
     try:
         logger.info("Standardizing product name.")
         df = df.with_columns(
-            pl.col("Product Name").cast(
-                pl.Utf8
-            ).str.strip_chars().str.to_lowercase().alias("Product Name")
+            pl.col("Product Name")
+            .cast(pl.Utf8)
+            .str.strip_chars()
+            .str.to_lowercase()
+            .alias("Product Name")
         )
         return df
     except Exception as e:
@@ -463,8 +480,9 @@ def detect_anomalies(
 
         # 1. Price Anomalies
         price_anomalies = []
-        product_date_combinations = df.select(["Product Name",
-                                               "date_only"]).unique()
+        product_date_combinations = df.select(
+            ["Product Name", "date_only"]
+        ).unique()
 
         for row in product_date_combinations.iter_rows(named=True):
             product = row["Product Name"]
@@ -516,7 +534,8 @@ def detect_anomalies(
 
         anomalies["quantity_anomalies"] = (
             pl.concat(quantity_anomalies)
-            if quantity_anomalies else pl.DataFrame()
+            if quantity_anomalies
+            else pl.DataFrame()
         )
         logger.debug(
             f"Quantity anomalies detected: {len(quantity_anomalies)} sets."
@@ -565,8 +584,9 @@ def aggregate_daily_products(df: pl.DataFrame) -> pl.DataFrame:
     summing the Quantity and grouping by (Date, Product Name).
     """
     df = df.with_columns(pl.col("Date").dt.date().alias("Date"))
-    return df.group_by(["Date", "Product Name"]
-                       ).agg(pl.col("Quantity").sum().alias("Total Quantity"))
+    return df.group_by(["Date", "Product Name"]).agg(
+        pl.col("Quantity").sum().alias("Total Quantity")
+    )
 
 
 def remove_duplicate_records(df: pl.DataFrame) -> pl.DataFrame:
@@ -618,8 +638,9 @@ def extracting_time_series_and_lagged_features(
 
         df = df.with_columns(
             pl.col("Date").dt.weekday().alias("day_of_week"),
-            (pl.col("Date").dt.weekday()
-             > 5).cast(pl.Int8).alias("is_weekend"),
+            (pl.col("Date").dt.weekday() > 5)
+            .cast(pl.Int8)
+            .alias("is_weekend"),
             pl.col("Date").dt.day().alias("day_of_month"),
             pl.col("Date").dt.ordinal_day().alias("day_of_year"),
             pl.col("Date").dt.month().alias("month"),
@@ -635,13 +656,18 @@ def extracting_time_series_and_lagged_features(
         # Sort by (Product Name, Date) for coherent time series ordering
         df = df.sort(["Date"]).with_columns(
             [
-                pl.col("Total Quantity").shift(1).over("Product Name"
-                                                       ).alias("lag_1"),
-                pl.col("Total Quantity").shift(7).over("Product Name"
-                                                       ).alias("lag_7"),
-                pl.col("Total Quantity").rolling_mean(
-                    window_size=7
-                ).over("Product Name").alias("rolling_mean_7"),
+                pl.col("Total Quantity")
+                .shift(1)
+                .over("Product Name")
+                .alias("lag_1"),
+                pl.col("Total Quantity")
+                .shift(7)
+                .over("Product Name")
+                .alias("lag_7"),
+                pl.col("Total Quantity")
+                .rolling_mean(window_size=7)
+                .over("Product Name")
+                .alias("rolling_mean_7"),
             ]
         )
     except Exception as e:
@@ -715,7 +741,8 @@ def process_file(
         upload_to_gcs(df, destination_bucket_name, unique_dest_name)
         logger.info(
             f"Data cleaning completed! Cleaned data saved to GCS bucket: {destination_bucket_name}, "
-            f"blob: {unique_dest_name}")
+            f"blob: {unique_dest_name}"
+        )
 
         if delete_after_processing:
             logger.info(
