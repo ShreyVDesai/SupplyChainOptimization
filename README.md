@@ -29,7 +29,7 @@ The project consists of several key components:
 2. **Data Pipeline Layer**: Apache Airflow DAGs that orchestrate data movement and processing
 
    - Data ingestion, cleaning, validation, and transformation
-   - Schema validation and anomaly detection using Great Expectations
+   - Schema validation and anomaly detection using  Pandas
    - Processing logging
 
 3. **Storage Layer**: Various storage solutions for data
@@ -137,11 +137,11 @@ This design explicitly addresses potential bias concerns by:
 
 1. **Proper Documentation**: The README provides a comprehensive overview of the project, setup instructions and the project's design information. The code is commented and provides the logical emplanation of each script.
 2. **Modular Syntax and Code**: The code is written in a modular format, ensuring that each file is for a specific purpose in the pipeline. Some code is abstracted out into the utils.py file.
-3. **Pipeline Orchestration**: We are using AIrflow DAGs for pipeline orchestration. Code contains try-except blocks for error handling. The errors will be handled more gracefully upon frontend implementation.
+3. **Pipeline Orchestration**: We are using Airflow DAGs for pipeline orchestration. Code contains try-except blocks for error handling. The errors will be handled more gracefully upon frontend implementation.
 4. **Tracking and Logging**: We are using python and Airflow's logger for tracking and logging. Alerts are sent in form of emails for now which will be changed upon frontend implementation.
 5. **Data Version Control (DVC)**: We have implemented DVC for data versioning.
 6. **Pipeline Flow Optimization**: We are using Airflow's gantt charts to identify bottlenecks in the pipeline.
-7. **Schema and Statistics Generation**: We are using Great expectations to automatically generate data schema and statistics. This happens once for the processed data.
+7. **Schema and Statistics Generation**: We tried using panderas, Great Expectations and tfdv but we ran into issues with using these inside docker compose. Since we just need to run a check for the column headers and their datatypes we wrote a script that does that and generates statistics using pandas. This happens once for the processed data.
 8. **Anomalies Detection and Alert Generation**: We are using the IQR to identify records that fall outside 3 standard deviations and flagging them as anomalies. The preprocessing script handles issues such as missing values and outliers and validation scripts handles schema violations. Alerts are sent in form of emails.
 9. **Bias Detection and Mitigation**: We are not doing this as the nature of our data doesn't contain any personal data or otherwise that can introduce bias. Please refer to the bias justification point above.
 10. **Test Modules**: We have a testing coverage of 95%+.
