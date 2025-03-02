@@ -10,8 +10,8 @@ ENV PYTHONUNBUFFERED=1 \
 # Set the working directory
 WORKDIR /app
 
-# Copy requirements files first for better caching
-COPY requirements.txt ./requirements.txt
+# Copy requirements file first for better caching
+COPY requirements.txt /app/
 
 # Install Python packages
 RUN pip install --no-cache-dir -r /app/requirements.txt
