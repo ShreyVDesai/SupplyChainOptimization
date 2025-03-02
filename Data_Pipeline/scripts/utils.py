@@ -1,5 +1,6 @@
 import os
 import polars as pl
+import numpy as np
 import pandas as pd
 import json
 
@@ -32,32 +33,6 @@ def setup_gcp_credentials():
     else:
         logger.info(f"Using existing GCP credentials from: {gcp_key_path}")
 
-
-def load_data(file_path: str) -> pl.DataFrame:
-    """
-    Loads the dataset from the given file path.
-
-    Parameters:
-        file_path (str): Path to the input file.
-
-    Returns:
-        pl.DataFrame: Loaded DataFrame.
-    """
-    try:
-        if file_path.lower().endswith(".xlsx"):
-            df = pl.read_excel(file_path)
-
-        logger.info(
-            f"Data successfully loaded with {df.shape[0]} rows and {df.shape[1]} columns."
-        )
-        return df
-
-    except FileNotFoundError:
-        logger.error(f"File Not Found: {file_path}")
-
-    except Exception as e:
-        logger.error(f"Fail to load data due to: {e}")
-        raise e
 
 
 def load_bucket_data(bucket_name: str, file_name: str) -> pl.DataFrame:
