@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import traceback
 
 import docker
-from airflow.exceptions import AirflowSkipException
+from airflow.exceptions import AirflowSkipException, AirflowFailException
 from airflow.operators.python import PythonOperator
 from airflow.providers.google.cloud.hooks.gcs import GCSHook
 from google.cloud import storage
@@ -71,6 +71,13 @@ def list_new_files(**context):
 
     hook = GCSHook(gcp_conn_id=GCP_CONNECTION_ID)
     files = hook.list(bucket_name=gcs_bucket)
+
+    # If no files found, raise an exception to fail the task
+    if not files:
+        raise AirflowFailException(
+            "No files found in the bucket. Failing the task."
+        )
+
     context["ti"].xcom_push(key="file_list", value=files)
     print(f"Found {len(files)} files in bucket: {files}")
     return files
