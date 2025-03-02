@@ -35,6 +35,24 @@ PROCESSED_BUCKET_NAME = (
 METADATA_BUCKET_NAME = "metadata_stats"  # For statistics and metadata
 
 
+import platform
+import docker
+
+def get_docker_client():
+    """Return a Docker client that works across macOS, Linux, and Windows"""
+    system_os = platform.system().lower()
+
+    if system_os == "windows":
+        # Windows uses TCP connection
+        print("Detected Windows OS - Using TCP Docker connection")
+        return docker.DockerClient(base_url="tcp://host.docker.internal:2375")
+    else:
+        # macOS and Linux use UNIX socket
+        print("Detected macOS/Linux - Using default Docker socket")
+        return docker.from_env()
+    
+
+
 def print_gcs_info(**context):
     """Print information about the GCS event that triggered the DAG"""
     dag_run = context["dag_run"]
@@ -89,7 +107,8 @@ def run_pre_validation(**context):
     # client = docker.from_env()
     
     # Connect to Docker daemon over TCP instead of UNIX socket
-    client = docker.DockerClient(base_url="tcp://host.docker.internal:2375")
+    # client = docker.DockerClient(base_url="tcp://host.docker.internal:2375")
+    client = get_docker_client()
 
     try:
         # Get bucket name from xcom
@@ -187,7 +206,8 @@ def run_preprocessing_script(**context):
     # client = docker.from_env()
 
     # Connect to Docker daemon over TCP instead of UNIX socket
-    client = docker.DockerClient(base_url="tcp://host.docker.internal:2375")
+    # client = docker.DockerClient(base_url="tcp://host.docker.internal:2375")
+    client = get_docker_client()
 
     try:
         # Get bucket name from xcom

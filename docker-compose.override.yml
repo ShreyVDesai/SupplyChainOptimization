@@ -1,0 +1,8 @@
+services:
+  data-pipeline:
+    environment:
+      DOCKER_HOST: unix:///var/run/docker.sock  # macOS/Linux override
+
+  airflow-webserver:
+    environment:
+      DOCKER_HOST: unix:///var/run/docker.sock
