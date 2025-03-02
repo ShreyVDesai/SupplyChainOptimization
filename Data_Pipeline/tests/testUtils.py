@@ -10,6 +10,7 @@ from scripts.utils import (
     load_bucket_data,
     send_email,
     upload_to_gcs,
+    load_data,
     setup_gcp_credentials,
 )
 from google.api_core.exceptions import GoogleAPICallError
@@ -1022,3 +1023,61 @@ class TestUtils(unittest.TestCase):
             ),
             "Expected an error log containing 'Bucket error'.",
         )
+
+    
+    @patch('scripts.utils.logger')
+    @patch('scripts.utils.pl.read_excel')
+    def test_load_data_valid_xlsx(self, mock_read_excel, mock_logger):
+        # Setup
+        fake_df = pl.DataFrame({"col1": [1, 2, 3], "col2": ["a", "b", "c"]})
+        mock_read_excel.return_value = fake_df
+
+        # Call load_data with a valid .xlsx file path.
+        file_path = "dummy_file.xlsx"
+        result_df = load_data(file_path)
+
+        # Assert
+        mock_read_excel.assert_called_once_with(file_path)
+        assert_frame_equal(result_df, fake_df)
+        mock_logger.info.assert_called()
+        info_call = mock_logger.info.call_args[0][0]
+        self.assertIn(str(fake_df.shape[0]), info_call)
+        self.assertIn(str(fake_df.shape[1]), info_call)
+
+
+    @patch('scripts.utils.logger')
+    @patch('scripts.utils.pl.read_excel')
+    def test_load_data_file_not_found(self, mock_read_excel, mock_logger):
+        # Setup
+        mock_read_excel.side_effect = FileNotFoundError("File not found.")
+        file_path = "non_existent_file.xlsx"
+
+        # Test
+        result_df = load_data(file_path)
+
+        # Assert
+        self.assertIsNone(result_df)
+        mock_logger.error.assert_called_with(f"File Not Found: {file_path}")
+
+
+    @patch('scripts.utils.logger')
+    @patch('scripts.utils.pl.read_excel')
+    def test_load_data_generic_exception(self, mock_read_excel, mock_logger):
+        # Setup
+        mock_read_excel.side_effect = Exception("Generic error.")
+        file_path = "dummy_file.xlsx"
+        # Test
+        with self.assertRaises(Exception) as context:
+            load_data(file_path)
+        self.assertIn("Generic error.", str(context.exception))
+        # Assert
+        mock_logger.error.assert_called()
+
+
+    @patch('scripts.utils.logger')
+    def test_load_data_invalid_extension(self, mock_logger):
+        # Setup
+        file_path = "dummy_file.csv"
+        with self.assertRaises(Exception):
+            load_data(file_path)
+

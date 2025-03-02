@@ -9,6 +9,7 @@ except ImportError:  # For testing purposes
     from Data_Pipeline.scripts.utils import (
         send_email,
         load_bucket_data,
+        load_data,
         setup_gcp_credentials,
     )
 
