@@ -1,20 +1,38 @@
 import logging
-import os
-from datetime import datetime
+from airflow.utils.log.logging_mixin import LoggingMixin
 
-LOG_DIR = "SCO_LOG"
-CURRENT_TIME_STAMP = f"{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}"
-LOG_FILE_NAME = f"log_{CURRENT_TIME_STAMP}.log"
 
-os.makedirs(LOG_DIR, exist_ok=True)
+# Create a logger that inherits from Airflow's LoggingMixin
+class AirflowLogger:
+    """
+    Logger class that uses Airflow's logging system.
+    This replaces the previous SCO logging implementation.
+    """
 
-LOG_FILE_PATH = os.path.join(LOG_DIR, LOG_FILE_NAME)
+    def __init__(self, name="SupplyChainOptimization"):
+        # Create a logging mixin instance
+        self._logging_mixin = LoggingMixin()
+        # Store the logger name
+        self._logger_name = name
 
-logging.basicConfig(
-    filename=LOG_FILE_PATH,
-    filemode="w",
-    format="[%(asctime)s] %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO,
-)
+    def info(self, msg, *args, **kwargs):
+        self._logging_mixin.log.info(msg, *args, **kwargs)
 
-logger = logging.getLogger("SCO_Project")
+    def warning(self, msg, *args, **kwargs):
+        self._logging_mixin.log.warning(msg, *args, **kwargs)
+
+    def error(self, msg, *args, **kwargs):
+        self._logging_mixin.log.error(msg, *args, **kwargs)
+
+    def debug(self, msg, *args, **kwargs):
+        self._logging_mixin.log.debug(msg, *args, **kwargs)
+
+    def critical(self, msg, *args, **kwargs):
+        self._logging_mixin.log.critical(msg, *args, **kwargs)
+
+    def exception(self, msg, *args, **kwargs):
+        self._logging_mixin.log.exception(msg, *args, **kwargs)
+
+
+# Create a single instance of the logger to be imported by other modules
+logger = AirflowLogger()
