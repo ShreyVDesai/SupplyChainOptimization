@@ -19,3 +19,4 @@ mock>=5.0.0
 
 # For mocking GCP services in tests
 google-api-core>=2.8.2,<2.9.0 
+google-cloud-storage>=1.30.0,<2.0.0
