@@ -673,6 +673,7 @@ def extracting_time_series_and_lagged_features(
             )
         else:
             logger.warning("Total Quantity column not found, skipping lagged features")
+            raise KeyError
     except Exception as e:
         logger.error(
             f"Error calculating lagged features during feature engineering: {e}"

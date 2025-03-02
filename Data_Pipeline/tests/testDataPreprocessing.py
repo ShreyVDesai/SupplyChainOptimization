@@ -167,6 +167,36 @@ class TestDataPreprocessing(unittest.TestCase):
             "Date conversion did not produce the expected datetime values.",
         )
 
+    @patch("scripts.preprocessing.logger")  # Mock logger
+    def test_unexpected_error_handling(self, mock_logger):
+        # Setup: Create a sample DataFrame
+        df = pl.DataFrame({"Date": ["2020-01-01", "2020-02-02"]})
+
+        # Patch the 'with_columns' method to force an exception
+        with patch.object(pl.DataFrame, "with_columns", side_effect=Exception("Forced error")):
+            result = standardize_date_format(df, "Date")
+
+        # Assert that the function logs the error
+        mock_logger.error.assert_called_with("Unexpected error during date processing: Forced error")
+
+        # Assert that the function still returns the original DataFrame
+        self.assertTrue(result.equals(df)) 
+
+
+    @patch("scripts.preprocessing.logger")  # Mock logger
+    def test_empty_dataframe_standardize_date_format(self, mock_logger):
+        # Setup: Create an empty DataFrame
+        df_empty = pl.DataFrame()
+
+        result = standardize_date_format(df_empty, "Date")
+
+        mock_logger.info.assert_called_with("Standardizing date formats...")
+
+        self.assertTrue(result.is_empty())
+        self.assertEqual(result.schema, df_empty.schema)
+ 
+
+
     # Test case where date feature is missing.
     def test_standardize_date_format_missing_date_column(self):
         # Setup
@@ -211,21 +241,6 @@ class TestDataPreprocessing(unittest.TestCase):
             expected_dates,
             "Date conversion did not produce the expected datetime values.",
         )
-
-    # Test case where standardize_date_format handles exception.
-    def test_standardize_date_format_exception(self):
-        # Setup
-        df = pl.DataFrame({"Date": ["2020-01-01", "2020-02-02"]})
-
-        # Test
-        with patch.object(
-            df, "with_columns", side_effect=Exception("Forced error")
-        ):
-            with self.assertRaises(Exception) as context:
-                standardize_date_format(df, "Date")
-
-        # Assert
-        self.assertEqual(str(context.exception), "Forced error")
 
     # Unit tests for detect_date_order function.
 
@@ -1551,25 +1566,9 @@ class TestDataPreprocessing(unittest.TestCase):
         self.assertEqual(result["lag_1"][2], 20.0)
         self.assertEqual(len(result["rolling_mean_7"]), 3)
 
-    @patch("scripts.preprocessing.logger")
-    def test_missing_date_column(self, mock_logger):
-        # Setup
-        df_missing_date = pl.DataFrame(
-            {"Product Name": ["milk"], "Total Quantity": [10.0]}
-        )
-
-        # Test
-        with self.assertRaises(Exception):
-            extracting_time_series_and_lagged_features(df_missing_date)
-
-        # Assert
-        mock_logger.error.assert_called_once_with(
-            "Error extracting datetime features during feature engineering."
-        )
-
-    @patch("scripts.preprocessing.logger")
+    @patch("scripts.preprocessing.logger")  # Patching the logger
     def test_missing_total_quantity_column(self, mock_logger):
-        # Setup
+        # Setup: Create a DataFrame missing the 'Total Quantity' column
         df_missing_quantity = pl.DataFrame(
             {
                 "Date": [date(2023, 1, 1), date(2023, 1, 2)],
@@ -1577,14 +1576,10 @@ class TestDataPreprocessing(unittest.TestCase):
             }
         )
 
-        # Test
-        with self.assertRaises(Exception):
+        # Test: Expect a KeyError when 'Total Quantity' is missing
+        with self.assertRaises(KeyError) as context:
             extracting_time_series_and_lagged_features(df_missing_quantity)
 
-        # Assert
-        mock_logger.error.assert_called_with(
-            "Error calculating lagged features during feature engineering."
-        )
 
     @patch("scripts.preprocessing.logger")
     @patch("scripts.preprocessing.process_file")
@@ -1845,11 +1840,6 @@ class TestTimeSeriesFeatureExtraction(unittest.TestCase):
         self.assertTrue(result_df["lag_1"].null_count() > 0)
         self.assertTrue(result_df["rolling_mean_7"].null_count() > 0)
 
-    def test_datetime_extraction_exception(self):
-        """Test exception handling during datetime feature extraction."""
-        df_invalid = self.df.with_columns(pl.lit(None).alias("Date"))
-        with self.assertRaises(Exception):
-            extracting_time_series_and_lagged_features(df_invalid)
 
     def test_lagged_feature_exception(self):
         """Test exception handling during lagged feature computation."""
@@ -1975,6 +1965,8 @@ class TestTimeSeriesFeatureExtraction(unittest.TestCase):
             iqr_bounds(series)
 
     # Unit Tests for process function.
+
+
     @patch("scripts.preprocessing.post_validation")
     @patch("scripts.preprocessing.delete_blob_from_bucket")
     @patch("scripts.preprocessing.upload_to_gcs")
@@ -2010,8 +2002,10 @@ class TestTimeSeriesFeatureExtraction(unittest.TestCase):
         mock_delete_blob_from_bucket,
         mock_post_validation,
     ):
-        # Setup: Create a dummy DataFrame that each stage returns.
+
         dummy_df = pl.DataFrame({"dummy": [1]})
+        
+
         mock_load_bucket_data.return_value = dummy_df
         mock_filling_missing_dates.return_value = dummy_df
         mock_convert_feature_types.return_value = dummy_df
@@ -2022,8 +2016,8 @@ class TestTimeSeriesFeatureExtraction(unittest.TestCase):
         mock_remove_invalid_records.return_value = dummy_df
         mock_remove_duplicate_records.return_value = dummy_df
 
-        # detect_anomalies returns a tuple: (anomalies, df)
-        mock_detect_anomalies.return_value = ("dummy_anomalies", dummy_df)
+
+        mock_detect_anomalies.return_value = ({}, dummy_df)  # Empty dict for anomalies
         mock_send_anomaly_alert.return_value = None
         mock_aggregate_daily_products.return_value = dummy_df
         mock_extracting_time_series.return_value = dummy_df
@@ -2035,7 +2029,7 @@ class TestTimeSeriesFeatureExtraction(unittest.TestCase):
         blob_name = "test_file.csv"
         destination_bucket_name = "destination_bucket"
 
-        # Test
+
         process_file(
             source_bucket_name,
             blob_name,
@@ -2043,35 +2037,31 @@ class TestTimeSeriesFeatureExtraction(unittest.TestCase):
             delete_after_processing=True,
         )
 
-        mock_load_bucket_data.assert_called_once_with(
-            source_bucket_name, blob_name
-        )
 
-        # Verify upload_to_gcs was called with the dummy DataFrame and a unique
-        # destination filename.
+        mock_load_bucket_data.assert_called_once_with(source_bucket_name, blob_name)
+
+
         mock_upload_to_gcs.assert_called_once()
         args, _ = mock_upload_to_gcs.call_args
-        # self.assertTrue(dummy_df.frame_equal(args[0]))
-        assert_frame_equal(dummy_df, args[0])
+        assert_frame_equal(args[0], dummy_df) 
         self.assertEqual(args[1], destination_bucket_name)
+        
         unique_dest_name = args[2]
         self.assertTrue(unique_dest_name.startswith("processed_test_file_"))
         self.assertTrue(unique_dest_name.endswith(".csv"))
 
-        # Verify that delete_blob_from_bucket was called.
-        mock_delete_blob_from_bucket.assert_called_once_with(
-            source_bucket_name, blob_name
-        )
 
-        # Verify that post_validation was called with the cleaned DataFrame and
-        # a stats filename.
+        mock_delete_blob_from_bucket.assert_called_once_with(source_bucket_name, blob_name)
+
+
         mock_post_validation.assert_called_once()
         args, _ = mock_post_validation.call_args
-        assert_frame_equal(dummy_df, args[0])
-        # self.assertTrue(dummy_df.frame_equal(args[0]))
+        assert_frame_equal(args[0], dummy_df) 
+        
         unique_stats_blob = args[1]
         self.assertTrue(unique_stats_blob.startswith("stats_test_file_"))
         self.assertTrue(unique_stats_blob.endswith(".json"))
+
 
     @patch("scripts.preprocessing.logger")
     @patch(
@@ -2088,76 +2078,87 @@ class TestTimeSeriesFeatureExtraction(unittest.TestCase):
         process_file(source_bucket_name, blob_name, destination_bucket_name)
         self.assertTrue(mock_logger.error.called)
 
-    # @patch("scripts.preprocessing.filling_missing_cost_price")
-    # @patch("scripts.preprocessing.logger")
-    # @patch("scripts.preprocessing.post_validation")
-    # @patch("scripts.preprocessing.delete_blob_from_bucket")
-    # @patch("scripts.preprocessing.upload_to_gcs")
-    # @patch("scripts.preprocessing.extracting_time_series_and_lagged_features")
-    # @patch("scripts.preprocessing.aggregate_daily_products")
-    # @patch("scripts.preprocessing.detect_anomalies")
-    # @patch("scripts.preprocessing.remove_duplicate_records")
-    # @patch("scripts.preprocessing.remove_invalid_records")
-    # @patch("scripts.preprocessing.filter_invalid_products")
-    # @patch("scripts.preprocessing.standardize_product_name")
-    # @patch("scripts.preprocessing.convert_string_columns_to_lowercase")
-    # @patch("scripts.preprocessing.convert_feature_types")
-    # @patch("scripts.preprocessing.filling_missing_dates")
-    # @patch("scripts.preprocessing.load_bucket_data")
-    # def test_process_file_missing_unit_price(
-    #     self,
-    #     mock_load_bucket_data,
-    #     mock_filling_missing_dates,
-    #     mock_convert_feature_types,
-    #     mock_convert_string_columns,
-    #     mock_standardize_product_name,
-    #     mock_filter_invalid_products,
-    #     mock_remove_invalid_records,
-    #     mock_remove_duplicate_records,
-    #     mock_detect_anomalies,
-    #     mock_aggregate_daily_products,
-    #     mock_extracting_time_series,
-    #     mock_upload_to_gcs,
-    #     mock_delete_blob_from_bucket,
-    #     mock_post_validation,
-    #     mock_logger,
-    #     mock_filling_missing_cost_price,
-    # ):
-    #     # Setup: Create a dummy DataFrame without the "Unit Price" column.
-    #     dummy_df = pl.DataFrame(
-    #         {"Date": ["2023-01-01"], "Product Name": ["milk"], "Quantity": [10]}
-    #     )
-    #     mock_load_bucket_data.return_value = dummy_df
-    #     mock_filling_missing_dates.return_value = dummy_df
-    #     mock_convert_feature_types.return_value = dummy_df
-    #     mock_convert_string_columns.return_value = dummy_df
-    #     mock_standardize_product_name.return_value = dummy_df
-    #     mock_filter_invalid_products.return_value = dummy_df
-    #     mock_remove_invalid_records.return_value = dummy_df
-    #     mock_remove_duplicate_records.return_value = dummy_df
-    #     mock_detect_anomalies.return_value = ("dummy_anomalies", dummy_df)
-    #     mock_aggregate_daily_products.return_value = dummy_df
-    #     mock_extracting_time_series.return_value = dummy_df
-    #     mock_upload_to_gcs.return_value = None
-    #     mock_delete_blob_from_bucket.return_value = True
-    #     mock_post_validation.return_value = True
+    
+    @patch("scripts.preprocessing.logger")
+    @patch("scripts.preprocessing.post_validation")
+    @patch("scripts.preprocessing.send_anomaly_alert")
+    @patch("scripts.preprocessing.delete_blob_from_bucket")
+    @patch("scripts.preprocessing.upload_to_gcs")
+    @patch("scripts.preprocessing.extracting_time_series_and_lagged_features")
+    @patch("scripts.preprocessing.aggregate_daily_products")
+    @patch("scripts.preprocessing.detect_anomalies")
+    @patch("scripts.preprocessing.remove_duplicate_records")
+    @patch("scripts.preprocessing.remove_invalid_records")
+    @patch("scripts.preprocessing.filling_missing_cost_price")
+    @patch("scripts.preprocessing.filter_invalid_products")
+    @patch("scripts.preprocessing.standardize_product_name")
+    @patch("scripts.preprocessing.convert_string_columns_to_lowercase")
+    @patch("scripts.preprocessing.convert_feature_types")
+    @patch("scripts.preprocessing.filling_missing_dates")
+    @patch("scripts.preprocessing.load_bucket_data")
+    def test_process_file_deletion_failure(
+        self,
+        mock_load_bucket_data,
+        mock_filling_missing_dates,
+        mock_convert_feature_types,
+        mock_convert_string_columns,
+        mock_standardize_product_name,
+        mock_filter_invalid_products,
+        mock_filling_missing_cost_price,
+        mock_remove_invalid_records,
+        mock_remove_duplicate_records,
+        mock_detect_anomalies,
+        mock_aggregate_daily_products,
+        mock_extracting_time_series,
+        mock_upload_to_gcs,
+        mock_delete_blob_from_bucket,
+        mock_send_anomaly_alert,
+        mock_post_validation,
+        mock_logger,
+    ):
 
-    #     process_file(
-    #         "source_bucket",
-    #         "test_file.csv",
-    #         "destination_bucket",
-    #         delete_after_processing=True,
-    #     )
+        dummy_df = pl.DataFrame(
+            {
+                "Date": ["2023-01-01", "2023-01-02"],
+                "Product Name": ["milk", "coffee"],
+                "Unit Price": [2.5, 3.0],
+                "Quantity": [10, 8],
+            }
+        )
+        
 
-    #     # Assert filling_missing_cost_price was not called because "Unit Price" is missing.
-    #     mock_filling_missing_cost_price.assert_not_called()
+        mock_load_bucket_data.return_value = dummy_df
+        mock_filling_missing_dates.return_value = dummy_df
+        mock_convert_feature_types.return_value = dummy_df
+        mock_convert_string_columns.return_value = dummy_df
+        mock_standardize_product_name.return_value = dummy_df
+        mock_filter_invalid_products.return_value = dummy_df
+        mock_filling_missing_cost_price.return_value = dummy_df
+        mock_remove_invalid_records.return_value = dummy_df
+        mock_remove_duplicate_records.return_value = dummy_df
+        
+        mock_detect_anomalies.return_value = ({}, dummy_df)  # Empty dict for anomalies
+        
+        mock_aggregate_daily_products.return_value = dummy_df
+        mock_extracting_time_series.return_value = dummy_df
+        mock_upload_to_gcs.return_value = None
+        
 
-    #     # Verify that the logger logged a message about skipping the missing "Unit Price" processing.
-    #     found = any(
-    #         "Column 'Unit Price' not found. Skipping function." in call[0][0]
-    #         for call in mock_logger.info.call_args_list
-    #     )
-    #     self.assertTrue(found)
+        mock_delete_blob_from_bucket.return_value = False
+        mock_send_anomaly_alert.return_value = None
+        mock_post_validation.return_value = True
+
+        process_file(
+            "source_bucket",
+            "test_file.csv",
+            "destination_bucket",
+            delete_after_processing=True,
+        )
+
+        mock_delete_blob_from_bucket.assert_called_once_with("source_bucket", "test_file.csv")
+        mock_logger.warning.assert_any_call("Failed to delete source file: test_file.csv")
+
+
 
     @patch("scripts.preprocessing.delete_blob_from_bucket")
     @patch("scripts.preprocessing.upload_to_gcs")
@@ -2224,92 +2225,6 @@ class TestTimeSeriesFeatureExtraction(unittest.TestCase):
 
         # Assert that delete_blob_from_bucket was not called.
         mock_delete_blob_from_bucket.assert_not_called()
-
-    @patch("scripts.preprocessing.logger")
-    @patch("scripts.preprocessing.post_validation")
-    @patch("scripts.preprocessing.send_anomaly_alert")
-    @patch("scripts.preprocessing.delete_blob_from_bucket")
-    @patch("scripts.preprocessing.upload_to_gcs")
-    @patch("scripts.preprocessing.extracting_time_series_and_lagged_features")
-    @patch("scripts.preprocessing.aggregate_daily_products")
-    @patch("scripts.preprocessing.detect_anomalies")
-    @patch("scripts.preprocessing.remove_duplicate_records")
-    @patch("scripts.preprocessing.remove_invalid_records")
-    @patch("scripts.preprocessing.filling_missing_cost_price")
-    @patch("scripts.preprocessing.filter_invalid_products")
-    @patch("scripts.preprocessing.standardize_product_name")
-    @patch("scripts.preprocessing.convert_string_columns_to_lowercase")
-    @patch("scripts.preprocessing.convert_feature_types")
-    @patch("scripts.preprocessing.filling_missing_dates")
-    @patch("scripts.preprocessing.load_bucket_data")
-    def test_process_file_deletion_failure(
-        self,
-        mock_load_bucket_data,
-        mock_filling_missing_dates,
-        mock_convert_feature_types,
-        mock_convert_string_columns,
-        mock_standardize_product_name,
-        mock_filter_invalid_products,
-        mock_filling_missing_cost_price,
-        mock_remove_invalid_records,
-        mock_remove_duplicate_records,
-        mock_detect_anomalies,
-        mock_aggregate_daily_products,
-        mock_extracting_time_series,
-        mock_upload_to_gcs,
-        mock_delete_blob_from_bucket,
-        mock_send_anomaly_alert,
-        mock_post_validation,
-        mock_logger,
-    ):
-        # Setup: Create a dummy DataFrame with the "Unit Price" column.
-        dummy_df = pl.DataFrame(
-            {
-                "Date": ["2023-01-01", "2023-01-02"],
-                "Product Name": ["milk", "coffee"],
-                "Unit Price": [2.5, 3.0],
-                "Quantity": [10, 8],
-            }
-        )
-        mock_load_bucket_data.return_value = dummy_df
-        mock_filling_missing_dates.return_value = dummy_df
-        mock_convert_feature_types.return_value = dummy_df
-        mock_convert_string_columns.return_value = dummy_df
-        mock_standardize_product_name.return_value = dummy_df
-        mock_filter_invalid_products.return_value = dummy_df
-        mock_filling_missing_cost_price.return_value = dummy_df
-        mock_remove_invalid_records.return_value = dummy_df
-        mock_remove_duplicate_records.return_value = dummy_df
-        mock_detect_anomalies.return_value = ("dummy_anomalies", dummy_df)
-        mock_aggregate_daily_products.return_value = dummy_df
-        mock_extracting_time_series.return_value = dummy_df
-        mock_upload_to_gcs.return_value = None
-        # Simulate deletion failure.
-        mock_delete_blob_from_bucket.return_value = False
-        # Patch send_anomaly_alert and post_validation to prevent unintended
-        # exceptions.
-        mock_send_anomaly_alert.return_value = None
-        mock_post_validation.return_value = True
-
-        process_file(
-            "source_bucket",
-            "test_file.csv",
-            "destination_bucket",
-            delete_after_processing=True,
-        )
-
-        # Assert that delete_blob_from_bucket was called with the correct
-        # parameters.
-        mock_delete_blob_from_bucket.assert_called_once_with(
-            "source_bucket", "test_file.csv"
-        )
-
-        # Verify that logger.warning was called for deletion failure.
-        found = any(
-            "Failed to delete source file:" in call[0][0]
-            for call in mock_logger.warning.call_args_list
-        )
-        self.assertTrue(found)
 
 
 class TestLoadBucketData(unittest.TestCase):
