@@ -3,30 +3,21 @@ import pandas as pd
 
 try:
     from logger import logger
-    from utils import send_email, upload_to_gcs
+    from utils import (
+        upload_to_gcs,
+        collect_validation_errors,
+        send_anomaly_alert,
+    )
 except ImportError:  # For testing purposes
     from Data_Pipeline.scripts.logger import logger
-    from Data_Pipeline.scripts.utils import send_email, upload_to_gcs
+    from Data_Pipeline.scripts.utils import (
+        upload_to_gcs,
+        collect_validation_errors,
+        send_anomaly_alert,
+    )
 
 # Post-validation expected columns
 POST_VALIDATION_COLUMNS = ["Product Name", "Total Quantity", "Date"]
-
-
-def collect_validation_errors(df, missing_columns, error_indices, error_reasons):
-    """
-    Collect validation errors and update error indices and reasons.
-
-    Parameters:
-      df: The DataFrame being validated.
-      missing_columns: List of columns that are missing.
-      error_indices: A set to store indices of rows with errors.
-      error_reasons: A dictionary to store error reasons for each row.
-    """
-    if missing_columns:
-        # If columns are missing, mark all rows as having errors
-        for idx in range(len(df)):
-            error_indices.add(idx)
-            error_reasons[idx] = [f"Missing columns: {', '.join(missing_columns)}"]
 
 
 def check_column_types(df, error_indices, error_reasons):
@@ -197,7 +188,7 @@ def validate_data(df):
 
             logger.warning(f"Anomalies detected! {error_message}")
             send_anomaly_alert(
-                anomalies_df,
+                df=anomalies_df,
                 subject="Data Validation Anomalies",
                 message=f"Data Validation Anomalies Found! {error_message} Please find attached CSV file with anomaly details.",
             )
@@ -268,23 +259,6 @@ def generate_numeric_stats(
         raise
 
     return grouped_stats
-
-
-def send_anomaly_alert(df, subject, message):
-    """
-    Send an anomaly alert using email.
-
-    Parameters:
-      user_id (str/int): Identifier of the user.
-      message (str): Alert message.
-    """
-    try:
-        recipient_email = "patelmit640@gmail.com"
-        send_email(recipient_email, subject=subject, body=message, attachment=df)
-        logger.info(f"Data Validation Anomaly alert sent to user: {message}")
-    except Exception as e:
-        logger.error(f"Error sending anomaly alert: {e}")
-        raise
 
 
 def post_validation(df: pl.DataFrame, file_name: str) -> bool:

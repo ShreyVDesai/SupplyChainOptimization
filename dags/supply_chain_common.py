@@ -86,7 +86,7 @@ def run_pre_validation(**context):
 
         # Execute the pre_validation.py script with bucket parameter
         exit_code, output = container.exec_run(
-            cmd=f"python pre_validation.py --cloud --bucket={gcs_bucket}",
+            cmd=f"python pre_validation.py --bucket={gcs_bucket}",
             workdir="/app/scripts",
         )
 

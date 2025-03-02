@@ -3,14 +3,21 @@ import argparse
 
 try:
     from logger import logger
-    from utils import send_email, load_bucket_data, load_data, setup_gcp_credentials
+    from utils import (
+        send_email,
+        load_bucket_data,
+        list_bucket_blobs,
+        delete_blob_from_bucket,
+        collect_validation_errors,
+    )
 except ImportError:  # For testing purposes
     from Data_Pipeline.scripts.logger import logger
     from Data_Pipeline.scripts.utils import (
         send_email,
         load_bucket_data,
-        load_data,
-        setup_gcp_credentials,
+        list_bucket_blobs,
+        delete_blob_from_bucket,
+        collect_validation_errors,
     )
 
 from google.cloud import storage
@@ -28,23 +35,6 @@ PRE_VALIDATION_COLUMNS = [
     "Store Location",
     "Product Name",
 ]
-
-
-def collect_validation_errors(df, missing_columns, error_indices, error_reasons):
-    """
-    Collect validation errors and update error indices and reasons.
-
-    Parameters:
-      df: The DataFrame being validated.
-      missing_columns: List of columns that are missing.
-      error_indices: A set to store indices of rows with errors.
-      error_reasons: A dictionary to store error reasons for each row.
-    """
-    if missing_columns:
-        # If columns are missing, mark all rows as having errors
-        for idx in range(len(df)):
-            error_indices.add(idx)
-            error_reasons[idx] = [f"Missing columns: {', '.join(missing_columns)}"]
 
 
 def validate_data(df):
@@ -82,40 +72,6 @@ def validate_data(df):
             return False
     except Exception as e:
         logger.error(f"Error in data validation: {e}")
-        return False
-
-
-def list_bucket_blobs(bucket_name: str) -> list:
-    """
-    Lists all blobs in a Google Cloud Storage bucket.
-    """
-    setup_gcp_credentials()
-    try:
-        storage_client = storage.Client()
-        bucket = storage_client.get_bucket(bucket_name)
-        blobs = bucket.list_blobs()
-        blob_names = [blob.name for blob in blobs]
-        logger.info(f"Found {len(blob_names)} files in bucket '{bucket_name}'")
-        return blob_names
-    except Exception as e:
-        logger.error(f"Error listing blobs in bucket '{bucket_name}': {e}")
-        raise
-
-
-def delete_blob_from_bucket(bucket_name: str, blob_name: str) -> bool:
-    """
-    Deletes a blob from a Google Cloud Storage bucket. Returns True if successful.
-    """
-    setup_gcp_credentials()
-    try:
-        storage_client = storage.Client()
-        bucket = storage_client.get_bucket(bucket_name)
-        blob = bucket.blob(blob_name)
-        blob.delete()
-        logger.info(f"Blob {blob_name} deleted from bucket {bucket_name}")
-        return True
-    except Exception as e:
-        logger.error(f"Error deleting blob {blob_name} from bucket {bucket_name}: {e}")
         return False
 
 
@@ -181,14 +137,11 @@ def validate_file(
         return False
 
 
-def main(
-    cloud: bool = False, bucket_name: str = "full-raw-data", delete_invalid: bool = True
-):
+def main(bucket_name: str = "full-raw-data", delete_invalid: bool = True):
     """
     Main function to run the validation workflow on all files in a bucket.
 
     Parameters:
-        cloud (bool): Whether to use cloud storage or local files.
         bucket_name (str): Name of the GCS bucket to validate files from.
         delete_invalid (bool): Whether to delete files that fail validation.
 
@@ -196,54 +149,42 @@ def main(
         int: 0 = all files valid, 1 = some files invalid but some valid, 2 = all files invalid or no files
     """
     try:
-        if cloud:
-            # Process all files in the bucket
-            blob_names = list_bucket_blobs(bucket_name)
-            if not blob_names:
-                logger.warning(f"No files found in bucket '{bucket_name}'")
-                print("No files found in bucket")
-                return 2  # No files to process
+        # Process all files in the bucket
+        blob_names = list_bucket_blobs(bucket_name)
+        if not blob_names:
+            logger.warning(f"No files found in bucket '{bucket_name}'")
+            print("No files found in bucket")
+            return 2  # No files to process
 
-            initial_file_count = len(blob_names)
-            valid_files = []
-            invalid_files = []
+        initial_file_count = len(blob_names)
+        valid_files = []
+        invalid_files = []
 
-            for blob_name in blob_names:
-                logger.info(f"Validating file: {blob_name}")
-                file_valid = validate_file(bucket_name, blob_name, delete_invalid)
-                if file_valid:
-                    valid_files.append(blob_name)
-                else:
-                    invalid_files.append(blob_name)
-
-            # Check validation results
-            if len(valid_files) == initial_file_count:
-                logger.info("All files in the bucket passed validation.")
-                print(f"All files valid: {len(valid_files)} files")
-                return 0  # All files valid
-            elif len(valid_files) > 0:
-                logger.info(
-                    f"{len(valid_files)}/{initial_file_count} files passed validation."
-                )
-                print(
-                    f"Partial validation: {len(valid_files)}/{initial_file_count} files valid, {len(invalid_files)} files invalid"
-                )
-                return 1  # Some files valid, some invalid
+        for blob_name in blob_names:
+            logger.info(f"Validating file: {blob_name}")
+            file_valid = validate_file(bucket_name, blob_name, delete_invalid)
+            if file_valid:
+                valid_files.append(blob_name)
             else:
-                logger.error("All files failed validation.")
-                print("All files invalid")
-                return 2  # All files invalid
+                invalid_files.append(blob_name)
+
+        # Check validation results
+        if len(valid_files) == initial_file_count:
+            logger.info("All files in the bucket passed validation.")
+            print(f"All files valid: {len(valid_files)} files")
+            return 0  # All files valid
+        elif len(valid_files) > 0:
+            logger.info(
+                f"{len(valid_files)}/{initial_file_count} files passed validation."
+            )
+            print(
+                f"Partial validation: {len(valid_files)}/{initial_file_count} files valid, {len(invalid_files)} files invalid"
+            )
+            return 1  # Some files valid, some invalid
         else:
-            # Local file validation (original behavior)
-            file_name = "messy_transactions_20190103_20241231.xlsx"
-            df = load_data(file_name)
-
-            if not validate_data(df):
-                logger.error("Validation failed. Exiting process.")
-                return 2
-
-            logger.info("Workflow completed successfully.")
-            return 0
+            logger.error("All files failed validation.")
+            print("All files invalid")
+            return 2  # All files invalid
 
     except Exception as e:
         logger.error(f"Workflow failed: {e}")
@@ -254,9 +195,6 @@ if __name__ == "__main__":
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="Run pre-validation on data")
     parser.add_argument(
-        "--cloud", action="store_true", help="Load data from GCP bucket"
-    )
-    parser.add_argument(
         "--bucket", type=str, default="full-raw-data", help="GCP bucket name"
     )
     parser.add_argument(
@@ -265,9 +203,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Call main function with arguments
-    status_code = main(
-        cloud=args.cloud, bucket_name=args.bucket, delete_invalid=not args.keep_invalid
-    )
+    status_code = main(bucket_name=args.bucket, delete_invalid=not args.keep_invalid)
 
     # Exit with appropriate code
     if status_code == 0:

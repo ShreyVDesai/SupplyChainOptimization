@@ -5,15 +5,22 @@ import polars as pl
 
 try:
     from logger import logger
-    from utils import send_email, load_bucket_data, upload_to_gcs, setup_gcp_credentials
+    from utils import (
+        load_bucket_data,
+        upload_to_gcs,
+        list_bucket_blobs,
+        delete_blob_from_bucket,
+        send_anomaly_alert,
+    )
     from post_validation import post_validation
 except ImportError:  # For testing purposes
     from Data_Pipeline.scripts.logger import logger
     from Data_Pipeline.scripts.utils import (
-        send_email,
         load_bucket_data,
         upload_to_gcs,
-        setup_gcp_credentials,
+        list_bucket_blobs,
+        delete_blob_from_bucket,
+        send_anomaly_alert,
     )
     from Data_Pipeline.scripts.post_validation import post_validation
 
@@ -539,44 +546,6 @@ def remove_duplicate_records(df: pl.DataFrame) -> pl.DataFrame:
         raise
 
 
-def send_anomaly_alert(
-    anomalies: Dict[str, pl.DataFrame],
-    recipient: str = "patelmit640@gmail.com",
-    subject: str = "Anomaly Alert",
-) -> None:
-    """
-    Builds an alert email containing details of any anomalies discovered.
-    Sends an email if anomalies exist; otherwise, logs that no anomalies were found.
-    """
-    body_message = (
-        "Hi,\n\n"
-        "Anomalies have been detected in the dataset. "
-        "Please see the attached CSV file for details.\n\n"
-        "Thank you!"
-    )
-    anomaly_list = []
-    for anomaly_type, anomaly_df in anomalies.items():
-        if not anomaly_df.is_empty():
-            df_pd = anomaly_df.to_pandas()
-            df_pd["anomaly_type"] = anomaly_type
-            anomaly_list.append(df_pd)
-
-    if anomaly_list:
-        combined_df = pd.concat(anomaly_list, ignore_index=True)
-        try:
-            send_email(
-                emailid=recipient,
-                body=body_message,
-                subject=subject,
-                attachment=combined_df,
-            )
-            logger.info("Anomaly alert email sent.")
-        except Exception as e:
-            logger.error(f"Error sending an alert email: {e}")
-    else:
-        logger.info("No anomalies detected; no alert email sent.")
-
-
 def extracting_time_series_and_lagged_features(df: pl.DataFrame) -> pl.DataFrame:
     """
     For each row, computes additional time-series features:
@@ -634,40 +603,6 @@ def extracting_time_series_and_lagged_features(df: pl.DataFrame) -> pl.DataFrame
     return df
 
 
-def list_bucket_blobs(bucket_name: str) -> list:
-    """
-    Lists all blobs in a Google Cloud Storage bucket.
-    """
-    setup_gcp_credentials()
-    try:
-        storage_client = storage.Client()
-        bucket = storage_client.get_bucket(bucket_name)
-        blobs = bucket.list_blobs()
-        blob_names = [blob.name for blob in blobs]
-        logger.info(f"Found {len(blob_names)} files in bucket '{bucket_name}'")
-        return blob_names
-    except Exception as e:
-        logger.error(f"Error listing blobs in bucket '{bucket_name}': {e}")
-        raise
-
-
-def delete_blob_from_bucket(bucket_name: str, blob_name: str) -> bool:
-    """
-    Deletes a blob from a Google Cloud Storage bucket. Returns True if successful.
-    """
-    setup_gcp_credentials()
-    try:
-        storage_client = storage.Client()
-        bucket = storage_client.get_bucket(bucket_name)
-        blob = bucket.blob(blob_name)
-        blob.delete()
-        logger.info(f"Blob {blob_name} deleted from bucket {bucket_name}")
-        return True
-    except Exception as e:
-        logger.error(f"Error deleting blob {blob_name} from bucket {bucket_name}: {e}")
-        return False
-
-
 def process_file(
     source_bucket_name: str,
     blob_name: str,
@@ -713,7 +648,7 @@ def process_file(
         anomalies, df = detect_anomalies(df)
 
         logger.info("Sending an Email for Alert...")
-        send_anomaly_alert(anomalies)
+        send_anomaly_alert(anomalies=anomalies)
 
         logger.info("Aggregating dataset to daily level...")
         df = aggregate_daily_products(df)
