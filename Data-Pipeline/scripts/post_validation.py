@@ -211,9 +211,7 @@ def validate_data(df):
         raise
 
 
-def generate_numeric_stats(
-    df, filename, include_columns=["Total Quantity", "Unit Price"]
-):
+def generate_numeric_stats(df: pl.DataFrame, filename: str, include_columns: list =["Total Quantity", "Unit Price"]):
     """
     Generate summary statistics for all numeric columns in the DataFrame.
 
@@ -301,3 +299,6 @@ def post_validation(df: pl.DataFrame, file_name: str) -> bool:
     except Exception as e:
         logger.error(f"Workflow failed: {e}")
         raise
+
+# if __name__ == "__main__":
+#     main()
