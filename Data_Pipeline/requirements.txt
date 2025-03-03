@@ -12,6 +12,9 @@ polars-lts-cpu==1.22.0
 google-cloud-storage>=1.30.0,<2.0.0
 google-api-core>=2.8.2,<2.9.0
 
+# Version control
+dvc[gs]>=3.36.1
+
 # Utilities
 python-dotenv==1.0.1
 pyarrow>=10.0.0  # Required for Polars/Pandas data operations

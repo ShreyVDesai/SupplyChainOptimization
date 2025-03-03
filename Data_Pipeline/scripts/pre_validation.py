@@ -49,6 +49,17 @@ def validate_data(df):
         if isinstance(df, pl.DataFrame):
             df = df.to_pandas()
 
+        # Check if DataFrame is empty
+        if len(df) == 0:
+            error_message = "DataFrame is empty, no rows found"
+            send_email(
+                "talksick530@gmail.com",
+                subject="Data Validation Failed",
+                body=f"Data validation failed with the following issues:\n\n{error_message}",
+            )
+            logger.error(f"Data validation failed:\n{error_message}")
+            return False
+
         # Check if all required columns are present
         missing_columns = [
             col for col in PRE_VALIDATION_COLUMNS if col not in df.columns
@@ -61,13 +72,11 @@ def validate_data(df):
             # If columns are missing, collect the errors
             error_indices = set()
             error_reasons = {}
-            collect_validation_errors(
-                df, missing_columns, error_indices, error_reasons
-            )
+            collect_validation_errors(df, missing_columns, error_indices, error_reasons)
 
             error_message = f"Missing columns: {', '.join(missing_columns)}"
             send_email(
-                "patelmit640@gmail.com",
+                "talksick530@gmail.com",
                 subject="Data Validation Failed",
                 body=f"Data validation failed with the following issues:\n\n{error_message}",
             )
@@ -111,17 +120,11 @@ def validate_file(
                 logger.info(
                     f"Deleting invalid file: {blob_name} from bucket {bucket_name}"
                 )
-                delete_success = delete_blob_from_bucket(
-                    bucket_name, blob_name
-                )
+                delete_success = delete_blob_from_bucket(bucket_name, blob_name)
                 if delete_success:
-                    logger.info(
-                        f"Successfully deleted invalid file: {blob_name}"
-                    )
+                    logger.info(f"Successfully deleted invalid file: {blob_name}")
                 else:
-                    logger.warning(
-                        f"Failed to delete invalid file: {blob_name}"
-                    )
+                    logger.warning(f"Failed to delete invalid file: {blob_name}")
 
             return False
 
@@ -215,9 +218,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Call main function with arguments
-    status_code = main(
-        bucket_name=args.bucket, delete_invalid=not args.keep_invalid
-    )
+    status_code = main(bucket_name=args.bucket, delete_invalid=not args.keep_invalid)
 
     # Exit with appropriate code
     if status_code == 0:

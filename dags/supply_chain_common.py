@@ -5,11 +5,13 @@ This module contains shared functions and parameters used by the preprocessing D
 """
 
 from datetime import datetime, timedelta
+import traceback
 
 import docker
 from airflow.exceptions import AirflowSkipException
 from airflow.operators.python import PythonOperator
 from airflow.providers.google.cloud.hooks.gcs import GCSHook
+from google.cloud import storage
 
 # Define default arguments
 DEFAULT_ARGS = {
@@ -26,6 +28,7 @@ DEFAULT_ARGS = {
 GCP_BUCKET_NAME = "full-raw-data"
 GCP_CONNECTION_ID = "google_cloud_default"
 PROCESSED_BUCKET_NAME = "fully-processed-data"
+DVC_STORAGE_BUCKET = "supply-chain-dvc-storage"
 
 
 def print_gcs_info(**context):
@@ -76,9 +79,7 @@ def run_pre_validation(**context):
     try:
         # Get bucket name from xcom
         gcs_bucket = (
-            context["ti"].xcom_pull(
-                task_ids="print_gcs_info", key="gcs_bucket"
-            )
+            context["ti"].xcom_pull(task_ids="print_gcs_info", key="gcs_bucket")
             or GCP_BUCKET_NAME
         )
 
@@ -110,35 +111,25 @@ def run_pre_validation(**context):
             print("Pre-validation completed successfully for all files")
             context["ti"].xcom_push(key="validation_status", value="full")
         elif exit_code == 1:
-            print(
-                "Some files failed validation, but continuing with valid ones"
-            )
+            print("Some files failed validation, but continuing with valid ones")
             context["ti"].xcom_push(key="validation_status", value="partial")
         elif exit_code == 2:
             # If there are still files in the bucket, there must be valid files
             # This handles the case where pre_validation.py miscategorized some
             # files
             if remaining_files:
-                print(
-                    "Partial validation - continuing with remaining files in bucket"
-                )
-                context["ti"].xcom_push(
-                    key="validation_status", value="partial"
-                )
+                print("Partial validation - continuing with remaining files in bucket")
+                context["ti"].xcom_push(key="validation_status", value="partial")
             else:
                 print("No valid files to process after pre-validation")
-                raise AirflowSkipException(
-                    "No valid files after pre-validation"
-                )
+                raise AirflowSkipException("No valid files after pre-validation")
         else:
             # Unknown exit code, check remaining files to decide
             if remaining_files:
                 print(
                     f"Unknown validation status (code {exit_code}), but files remain. Continuing."
                 )
-                context["ti"].xcom_push(
-                    key="validation_status", value="unknown"
-                )
+                context["ti"].xcom_push(key="validation_status", value="unknown")
             else:
                 print(
                     f"Unknown validation status (code {exit_code}) and no files remain."
@@ -150,9 +141,7 @@ def run_pre_validation(**context):
         return output_str
 
     except docker.errors.NotFound:
-        error_msg = (
-            "data-pipeline-container not found. Make sure it's running."
-        )
+        error_msg = "data-pipeline-container not found. Make sure it's running."
         print(error_msg)
         raise Exception(error_msg)
     except AirflowSkipException:
@@ -170,9 +159,7 @@ def run_preprocessing_script(**context):
     try:
         # Get bucket name from xcom
         gcs_bucket = (
-            context["ti"].xcom_pull(
-                task_ids="print_gcs_info", key="gcs_bucket"
-            )
+            context["ti"].xcom_pull(task_ids="print_gcs_info", key="gcs_bucket")
             or GCP_BUCKET_NAME
         )
 
@@ -190,22 +177,89 @@ def run_preprocessing_script(**context):
 
         if exit_code != 0:
             print(f"Script failed with exit code: {exit_code}")
-            raise Exception(
-                f"preprocessing.py failed with exit code {exit_code}"
-            )
+            raise Exception(f"preprocessing.py failed with exit code {exit_code}")
 
         print("Preprocessing completed successfully")
         return output_str
 
     except docker.errors.NotFound:
-        error_msg = (
-            "data-pipeline-container not found. Make sure it's running."
-        )
+        error_msg = "data-pipeline-container not found. Make sure it's running."
         print(error_msg)
         raise Exception(error_msg)
     except Exception as e:
         print(f"Error running preprocessing script: {str(e)}")
         raise
+
+
+def run_dvc_versioning(**context):
+    """Run DVC versioning to track processed data in GCS"""
+    client = docker.from_env()
+
+    try:
+        container = client.containers.get("data-pipeline-container")
+        print(f"Container found: {container.name}")
+
+        # Set up arguments for the DVC script
+        data_dir = "/data/dvc_workspace"
+        source_bucket = PROCESSED_BUCKET_NAME
+        remote_url = f"gs://{DVC_STORAGE_BUCKET}"
+
+        # Get current timestamp for commit message
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        message = f"Data version from {timestamp}"
+
+        # First check if the source bucket has the files
+        print(f"Checking source bucket: {source_bucket}")
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(source_bucket)
+        blobs = list(bucket.list_blobs())
+        if not blobs:
+            print(f"Warning: No files found in source bucket {source_bucket}")
+        else:
+            print(f"Found {len(blobs)} files in source bucket")
+            for blob in blobs:
+                print(f"  - {blob.name}")
+
+        # Execute the DVC script with full pipeline and verbose logging
+        cmd = (
+            f"python dvc_manager.py --action=full --data-dir={data_dir} "
+            f"--source-bucket={source_bucket} --remote-url={remote_url} "
+            f'--message="{message}" --verbose'
+        )
+        print(f"Executing command: {cmd}")
+
+        exit_code, output = container.exec_run(
+            cmd=cmd,
+            workdir="/app/scripts",
+        )
+
+        output_str = output.decode("utf-8")
+        print(f"DVC command output:")
+        print("=" * 50)
+        print(output_str)
+        print("=" * 50)
+
+        if exit_code != 0:
+            print(f"DVC failed with exit code: {exit_code}")
+            # Don't fail the whole pipeline if versioning fails
+            print("Continuing pipeline despite DVC failure")
+            context["ti"].xcom_push(key="dvc_status", value="failed")
+        else:
+            print("DVC versioning completed successfully")
+            context["ti"].xcom_push(key="dvc_status", value="success")
+
+        return output_str
+
+    except docker.errors.NotFound:
+        error_msg = "data-pipeline-container not found. Make sure it's running."
+        print(error_msg)
+        raise Exception(error_msg)
+    except Exception as e:
+        print(f"Error running DVC versioning: {str(e)}")
+        print(f"Error details: {traceback.format_exc()}")
+        # Don't fail the whole pipeline if versioning fails
+        context["ti"].xcom_push(key="dvc_status", value="failed")
+        return f"DVC versioning failed: {str(e)}"
 
 
 def create_preprocessing_tasks(dag):
@@ -239,12 +293,20 @@ def create_preprocessing_tasks(dag):
         dag=dag,
     )
 
+    # Run DVC versioning for the processed data
+    run_dvc_task = PythonOperator(
+        task_id="run_dvc_versioning",
+        python_callable=run_dvc_versioning,
+        dag=dag,
+    )
+
     # Define the task dependencies
     (
         print_gcs_info_task
         >> get_file_list_task
         >> run_pre_validation_task
         >> run_preprocessing_task
+        >> run_dvc_task
     )
 
     return {
@@ -252,4 +314,5 @@ def create_preprocessing_tasks(dag):
         "get_file_list": get_file_list_task,
         "run_pre_validation": run_pre_validation_task,
         "run_preprocessing": run_preprocessing_task,
+        "run_dvc_versioning": run_dvc_task,
     }

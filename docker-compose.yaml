@@ -47,11 +47,13 @@ services:
     volumes:
       - ./Data_Pipeline/scripts:/app/scripts
       - ./data:/data
+      - ./data/dvc_workspace:/data/dvc_workspace
       - ./secret:/app/secret
       - ./:/workspace/
     environment:
       GOOGLE_APPLICATION_CREDENTIALS: /app/secret/gcp-key.json
       PYTHONPATH: /workspace
+      DVC_GCP_CREDENTIALS_PATH: /app/secret/gcp-key.json
     working_dir: /app/scripts
     command: ["tail", "-f", "/dev/null"]
     restart: always

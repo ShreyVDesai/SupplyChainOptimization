@@ -31,9 +31,7 @@ def check_column_types(df, error_indices, error_reasons):
     """
     # Check Product Name (should be string type)
     if "Product Name" in df.columns:
-        invalid_product_mask = ~df["Product Name"].apply(
-            lambda x: isinstance(x, str)
-        )
+        invalid_product_mask = ~df["Product Name"].apply(lambda x: isinstance(x, str))
         for idx in df[invalid_product_mask].index:
             error_indices.add(idx)
             reason = "Product Name must be a string"
@@ -48,9 +46,7 @@ def check_column_types(df, error_indices, error_reasons):
         try:
             # Convert to numeric if possible, errors='coerce' will set invalid
             # values to NaN
-            quantity_series = pd.to_numeric(
-                df["Total Quantity"], errors="coerce"
-            )
+            quantity_series = pd.to_numeric(df["Total Quantity"], errors="coerce")
 
             # Check for NaN values (conversion failures)
             nan_mask = quantity_series.isna()
@@ -161,15 +157,14 @@ def validate_data(df):
         # Check if DataFrame is empty
         if len(df) == 0:
             error_message = "DataFrame is empty, no rows found"
-            for idx in range(len(df)):
-                error_indices.add(idx)
-                error_reasons[idx] = [error_message]
+            validation_results["has_errors"] = True
+            validation_results["error_count"] += 1
+            validation_results["results"].append({"error": error_message})
+            # No need for loop since there are no rows to iterate through
 
         # If columns are missing, collect the errors
         if missing_columns:
-            collect_validation_errors(
-                df, missing_columns, error_indices, error_reasons
-            )
+            collect_validation_errors(df, missing_columns, error_indices, error_reasons)
         else:
             # Only perform type checking if all required columns are present
             check_column_types(df, error_indices, error_reasons)
@@ -178,9 +173,7 @@ def validate_data(df):
         anomalies_df = pd.DataFrame()
         if error_indices:
             anomalies_df = (
-                df.iloc[list(error_indices)].copy()
-                if not df.empty
-                else pd.DataFrame()
+                df.iloc[list(error_indices)].copy() if not df.empty else pd.DataFrame()
             )
             # Only add anomaly_reason if there are actual errors
             if not anomalies_df.empty:
@@ -192,9 +185,8 @@ def validate_data(df):
         if not anomalies_df.empty or missing_columns:
             error_message = ""
             if missing_columns:
-                error_message += (
-                    f"Missing columns: {', '.join(missing_columns)}. "
-                )
+                error_message += f"Missing columns: {', '.join(missing_columns)}. "
+                validation_results["missing_columns"] = missing_columns
             if not anomalies_df.empty:
                 error_message += f"{len(anomalies_df)} rows failed validation."
 
@@ -207,7 +199,9 @@ def validate_data(df):
         else:
             logger.info("No anomalies detected. No email sent.")
 
-        validation_results["has_errors"] = len(error_indices) > 0
+        validation_results["has_errors"] = (
+            len(error_indices) > 0 or len(missing_columns) > 0
+        )
         validation_results["missing_columns"] = missing_columns
         validation_results["error_count"] = len(error_indices)
 
@@ -283,13 +277,13 @@ def post_validation(df: pl.DataFrame, file_name: str) -> bool:
     """
     try:
         # Validate data and generate schema/stats metadata
-        validate_data(df)
+        validation_results = validate_data(df)
 
         generate_numeric_stats(df, file_name)
 
         logger.info("Workflow completed successfully.")
 
-        return True
+        return not validation_results["has_errors"]
     except Exception as e:
         logger.error(f"Workflow failed: {e}")
         raise
