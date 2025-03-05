@@ -1,0 +1,6 @@
+name: Data-Pipeline
+
+on:
+  push:
+    branches:
+      - git-actions
