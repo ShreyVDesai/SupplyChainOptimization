@@ -1,8 +1,19 @@
+# Define anchor for common docker configuration
+x-docker-config: &docker-config
+  volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+  environment:
+    DOCKER_HOST: ${DOCKER_HOST:-unix:///var/run/docker.sock}
+
 services:
   data-pipeline:
-    environment:
-      DOCKER_HOST: unix:///var/run/docker.sock  # macOS/Linux override
+    <<: *docker-config
 
   airflow-webserver:
-    environment:
-      DOCKER_HOST: unix:///var/run/docker.sock
+    <<: *docker-config
+
+  airflow-worker:
+    <<: *docker-config
+
+  airflow-scheduler:
+    <<: *docker-config

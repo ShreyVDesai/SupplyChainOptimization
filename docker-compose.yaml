@@ -16,7 +16,6 @@ x-airflow-common:
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
     AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'true'
     AIRFLOW__CELERY__BROKER_CONNECTION_RETRY_ON_STARTUP: 'true'
-    # _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-apache-airflow-providers-google>=8.0.0,<9.0.0 google-cloud-storage>=1.30.0,<2.0.0 docker>=6.1.0 apache-airflow-providers-docker>=3.7.0}
     GOOGLE_APPLICATION_CREDENTIALS: /opt/airflow/gcp-key.json
     DOCKER_HOST: "tcp://host.docker.internal:2375"
 
