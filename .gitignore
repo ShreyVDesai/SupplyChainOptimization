@@ -15,7 +15,6 @@ __pycache__/
 .vscode
 /Data_Pipeline/logs/
 SCO_LOG/
-*.dvc
 /data
 /transaction
 /logs
