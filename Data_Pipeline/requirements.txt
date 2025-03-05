@@ -19,6 +19,7 @@ openpyxl==3.1.5  # For Excel file handling
 
 # Excel support
 XlsxWriter==3.2.2  # Required for writing to Excel files
+fastexcel>=0.13.0  # For faster Excel file reading
 
 # Email functionality
 sendgrid>=6.0.0  # For email alerts
