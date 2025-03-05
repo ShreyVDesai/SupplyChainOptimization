@@ -13,3 +13,4 @@ temp_env/
 
 ML_Models/experiments/experiments/mlruns/
 *.pkl
+SCO_LOG
