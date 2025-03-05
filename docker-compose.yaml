@@ -48,7 +48,8 @@ services:
       - ./secret:/app/secret
     environment:
       GOOGLE_APPLICATION_CREDENTIALS: /app/secret/gcp-key.json
-      DOCKER_HOST: "tcp://host.docker.internal:2375"
+      # DOCKER_HOST: "tcp://host.docker.internal:2375"
+      DOCKER_HOST: ${DOCKER_HOST}
     working_dir: /app/scripts
     command: ["tail", "-f", "/dev/null"]
     restart: always
@@ -101,6 +102,7 @@ services:
       AIRFLOW__WEBSERVER__WORKER_TIMEOUT: 300
       AIRFLOW__WEBSERVER__WORKERS: 2
       AIRFLOW__WEBSERVER__INSTANCE_NAME: airflow-webserver
+      DOCKER_HOST: ${DOCKER_HOST}
     depends_on:
       airflow-init:
         condition: service_completed_successfully
