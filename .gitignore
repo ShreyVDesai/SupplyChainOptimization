@@ -11,5 +11,5 @@ __pycache__/
 /logs
 temp_env/
 
-/ML_Models/experiments/experiments/mlruns/
+ML_Models/experiments/experiments/mlruns/
 *.pkl
