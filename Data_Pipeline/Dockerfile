@@ -11,6 +11,7 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 # Copy requirements file first for better caching
+COPY Data_Pipeline/requirements.txt ./requirements.txt
 COPY requirements.txt /app/
 
 # Install Python packages
