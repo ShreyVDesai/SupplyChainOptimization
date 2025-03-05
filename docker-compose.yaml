@@ -26,9 +26,9 @@ x-airflow-common:
     - ./Data_Pipeline/scripts:/app/scripts
     - ./secret/gcp-key.json:/opt/airflow/gcp-key.json
     - /var/run/docker.sock:/var/run/docker.sock
-  user: "${AIRFLOW_UID:-50000}:999"
+  user: "${AIRFLOW_UID:-50000}:${DOCKER_GID:-80}"
   group_add:
-    - "999"
+    - "${DOCKER_GID:-80}"
   depends_on: &airflow-common-depends-on
     redis:
       condition: service_healthy
