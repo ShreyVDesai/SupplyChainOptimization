@@ -4,17 +4,8 @@ secret/*
 # Ignore environment files
 # .env
 
-/temp_env/
-/transactions_20190103_20241231.xlsx
-/messy_transactions_20190103_20241231.xlsx
-/cleaned_data.csv
-/data_processing.ipynb
 __pycache__/
 .coverage
 .vscode
-/Data_Pipeline/logs/
 /data
-/transaction
 /logs
-/dataValidation.py
-/processed_messy_transactions_20190103_20241231_20250301_053630.csv
