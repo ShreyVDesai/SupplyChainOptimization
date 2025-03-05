@@ -13,7 +13,6 @@ __pycache__/
 .coverage
 .vscode
 /Data_Pipeline/logs/
-SCO_LOG/
 /data
 /transaction
 /logs
