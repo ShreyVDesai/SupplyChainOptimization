@@ -12,7 +12,6 @@ WORKDIR /app
 
 # Copy requirements files first for better caching
 COPY Data_Pipeline/requirements.txt ./requirements.txt
-COPY Data_Pipeline/requirements-test.txt ./requirements-test.txt
 
 # Install Python packages
 RUN pip install --no-cache-dir -r /app/requirements.txt
