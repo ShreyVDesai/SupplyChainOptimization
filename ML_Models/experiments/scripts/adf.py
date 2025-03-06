@@ -9,7 +9,8 @@ mlflow.set_experiment("SARIMA_Preprocessing")
 def load_data(csv_path):
     """Load time series data from a CSV file and aggregate by date to ensure unique index."""
     df = pd.read_csv(csv_path, parse_dates=["Date"], index_col="Date")
-
+    product = 'beef'
+    df = df[df['Product Name'] == product]
     # Group by Date and sum 'Total Quantity' to remove duplicates
     df = df.groupby(df.index)["Total Quantity"].sum().to_frame()
 
