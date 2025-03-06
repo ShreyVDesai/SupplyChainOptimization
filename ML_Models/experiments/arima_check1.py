@@ -25,9 +25,8 @@ data = df["Total Quantity"]
 # Train-test split
 train, test = data.iloc[:-30], data.iloc[-30:]
 
-#---------------------------------------------
 # Improvement 1: Auto-tune (p, d, q) with auto_arima
-#---------------------------------------------
+
 model = auto_arima(
     train,
     seasonal=False,  # Disable seasonal components
@@ -40,10 +39,9 @@ print(model.summary())
 # Get optimal parameters from auto_arima
 p, d, q = model.order
 
-#---------------------------------------------
+
 # Improvement 2: Manual Seasonal Differencing (e.g., weekly seasonality)
-#---------------------------------------------
-# Apply differencing at seasonal lag (e.g., 7 days)
+# Apply differencing at seasonal lag (checking for 30days)
 seasonal_lag = 7
 train_diff = train.diff(seasonal_lag).dropna()
 
@@ -54,23 +52,23 @@ def check_stationarity(series):
     print(f"p-value: {result[1]}")
 check_stationarity(train_diff)
 
-#---------------------------------------------
+
 # Improvement 3: Fit ARIMA with tuned parameters
-#---------------------------------------------
+
 model = ARIMA(train, order=(p, d, q))
 model_fit = model.fit()
 
-#---------------------------------------------
+
 # Improvement 4: Validate residuals
-#---------------------------------------------
+
 # Residual diagnostics (should be white noise)
 residuals = model_fit.resid
 model_fit.plot_diagnostics(figsize=(10, 8))
 plt.show()
 
-#---------------------------------------------
+
 # Forecast and evaluate
-#---------------------------------------------
+
 forecast = model_fit.forecast(steps=30)
 mae = mean_absolute_error(test, forecast)
 rmse = np.sqrt(mean_squared_error(test, forecast))
