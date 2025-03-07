@@ -18,6 +18,7 @@ x-airflow-common:
     AIRFLOW__CELERY__BROKER_CONNECTION_RETRY_ON_STARTUP: 'true'
     # _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-apache-airflow-providers-google>=8.0.0,<9.0.0 google-cloud-storage>=1.30.0,<2.0.0 docker>=6.1.0 apache-airflow-providers-docker>=3.7.0}
     GOOGLE_APPLICATION_CREDENTIALS: /opt/airflow/gcp-key.json
+    PYTHONUNBUFFERED: 1
 
   volumes: &airflow-common-volumes
     - ./dags:/opt/airflow/dags
@@ -134,12 +135,26 @@ services:
     entrypoint: /bin/bash
     command: >
       -c "
-      until pg_isready -h postgres -p 5432 -U airflow; do sleep 5; done &&
-      airflow db upgrade &&
-      wait-for-it postgres:5432 -- airflow db migrate &&
-      airflow users create --username ${AIRFLOW_ADMIN_USERNAME:-admin} --password ${AIRFLOW_ADMIN_PASSWORD:-admin} --firstname ${AIRFLOW_ADMIN_FIRSTNAME:-Anonymous} --lastname ${AIRFLOW_ADMIN_LASTNAME:-Admin} --role Admin --email ${AIRFLOW_ADMIN_EMAIL:-admin@example.com} &&
-      airflow connections delete google_cloud_default || true &&
-      airflow connections add 'google_cloud_default' --conn-type 'google_cloud_platform' --conn-extra '{\"extra__google_cloud_platform__key_path\": \"/opt/airflow/gcp-key.json\"}'
+      set -e;
+      echo 'Starting Airflow initialization...';
+      echo 'Waiting for PostgreSQL...';
+      until pg_isready -h postgres -p 5432 -U airflow; do sleep 5; echo 'Still waiting for PostgreSQL...'; done;
+      echo 'PostgreSQL is ready!';
+      echo 'Checking GCP key file...';
+      if [ ! -s /opt/airflow/gcp-key.json ]; then echo 'ERROR: GCP key file is empty or missing!'; exit 1; fi;
+      echo 'GCP key file exists and has content.';
+      echo 'Running Airflow DB upgrade...';
+      airflow db upgrade;
+      echo 'Waiting for PostgreSQL again before migration...';
+      wait-for-it postgres:5432 -t 60 -- echo 'PostgreSQL is ready for migration';
+      echo 'Running Airflow DB migrate...';
+      airflow db migrate;
+      echo 'Creating Airflow admin user...';
+      airflow users create --username ${AIRFLOW_ADMIN_USERNAME:-admin} --password ${AIRFLOW_ADMIN_PASSWORD:-admin} --firstname ${AIRFLOW_ADMIN_FIRSTNAME:-Anonymous} --lastname ${AIRFLOW_ADMIN_LASTNAME:-Admin} --role Admin --email ${AIRFLOW_ADMIN_EMAIL:-admin@example.com};
+      echo 'Setting up Google Cloud connection...';
+      airflow connections delete google_cloud_default || true;
+      airflow connections add 'google_cloud_default' --conn-type 'google_cloud_platform' --conn-extra '{\"extra__google_cloud_platform__key_path\": \"/opt/airflow/gcp-key.json\"}';
+      echo 'Airflow initialization completed successfully!';
       "
     environment:
       <<: *airflow-common-env
@@ -154,7 +169,6 @@ services:
       postgres:
         condition: service_healthy
       <<: *airflow-common-depends-on
-
 
   flower:
     <<: *airflow-common
