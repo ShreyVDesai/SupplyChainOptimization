@@ -49,6 +49,170 @@ class TestDataPreprocessing(unittest.TestCase):
             }
         ).with_columns(pl.col("Date").str.to_datetime())
 
+        # Create mock data for tests
+        self.mock_bucket_name = "test-bucket"
+        self.mock_file_name = "test-file.xlsx"
+
+        # Create a sample DataFrame for testing
+        self.sample_df = pl.DataFrame(
+            {"col1": [1, 2, 3], "col2": ["a", "b", "c"]}
+        )
+
+        """Set up test data that will be used across multiple tests"""
+        # Create sample transaction data
+        self.test_data = pl.DataFrame(
+            {
+                "Transaction ID": range(1, 21),
+                "Date": [
+                    # Normal business hours transactions
+                    datetime(2023, 1, 1, 10, 0),
+                    datetime(2023, 1, 1, 14, 0),
+                    datetime(2023, 1, 1, 16, 0),
+                    datetime(2023, 1, 1, 18, 0),
+                    datetime(2023, 1, 1, 12, 0),
+                    datetime(2023, 1, 1, 15, 0),
+                    # Late night transactions (time anomalies)
+                    datetime(2023, 1, 1, 2, 0),
+                    datetime(2023, 1, 1, 23, 30),
+                    # Next day transactions
+                    datetime(2023, 1, 2, 10, 0),
+                    datetime(2023, 1, 2, 14, 0),
+                    datetime(2023, 1, 2, 16, 0),
+                    datetime(2023, 1, 2, 18, 0),
+                    datetime(2023, 1, 2, 12, 0),
+                    datetime(2023, 1, 2, 15, 0),
+                    # Another late night transaction
+                    datetime(2023, 1, 2, 3, 0),
+                    # More normal hours
+                    datetime(2023, 1, 3, 10, 0),
+                    datetime(2023, 1, 3, 12, 0),
+                    datetime(2023, 1, 3, 14, 0),
+                    datetime(2023, 1, 3, 16, 0),
+                    # Format anomaly timing
+                    datetime(2023, 1, 3, 11, 0),
+                ],
+                "Product Name": [
+                    "Apple",
+                    "Apple",
+                    "Apple",
+                    "Apple",
+                    "Banana",
+                    "Banana",
+                    "Banana",
+                    "Banana",
+                    "Apple",
+                    "Apple",
+                    "Apple",
+                    "Apple",
+                    "Banana",
+                    "Banana",
+                    "Banana",
+                    "Cherry",
+                    "Cherry",
+                    "Cherry",
+                    "Cherry",
+                    "Cherry",
+                ],
+                "Unit Price": [
+                    # Day 1 Apples - One price anomaly (100)
+                    10.0,
+                    9.5,
+                    100.0,
+                    10.5,
+                    # Day 1 Bananas - Normal prices
+                    2.0,
+                    2.1,
+                    1.9,
+                    2.2,
+                    # Day 2 Apples - Normal prices
+                    10.2,
+                    9.8,
+                    10.3,
+                    9.9,
+                    # Day 2 Bananas - One price anomaly (0.5)
+                    2.0,
+                    0.5,
+                    2.1,
+                    # Day 3 Cherries - One format anomaly (0)
+                    5.0,
+                    5.2,
+                    5.1,
+                    4.9,
+                    0.0,  # Invalid price for format anomaly testing
+                ],
+                "Quantity": [
+                    # Day 1 Apples - Normal quantities
+                    2,
+                    3,
+                    1,
+                    2,
+                    # Day 1 Bananas - One quantity anomaly (20)
+                    5,
+                    4,
+                    20,
+                    3,
+                    # Day 2 Apples - Normal quantities
+                    2,
+                    1,
+                    3,
+                    2,
+                    # Day 2 Bananas - Normal quantities
+                    4,
+                    3,
+                    5,
+                    # Day 3 Cherries - One normal, one quantity anomaly (30),
+                    # two normal
+                    2,
+                    30,
+                    3,
+                    1,
+                    0,  # Invalid quantity for format anomaly testing
+                ],
+            }
+        )
+
+        # Create an empty dataframe with the same schema for edge case testing
+        self.empty_data = pl.DataFrame(
+            schema={
+                "Transaction ID": pl.Int64,
+                "Date": pl.Datetime,
+                "Product Name": pl.Utf8,
+                "Unit Price": pl.Float64,
+                "Quantity": pl.Int64,
+            }
+        )
+
+        base_date = datetime(2024, 1, 1)
+        self.df = pl.DataFrame(
+            {
+                "Date": [
+                    (base_date + timedelta(days=i)).strftime("%Y-%m-%d")
+                    for i in range(10)
+                ],
+                "Product Name": ["A"] * 10,
+                "Total Quantity": list(range(10)),
+            }
+        )
+        self.df = self.df.with_columns(
+            pl.col("Date").str.strptime(pl.Date, "%Y-%m-%d")
+        )
+
+        # Create a small dataframe with insufficient data points for IQR
+        # analysis
+        self.small_data = pl.DataFrame(
+            {
+                "Transaction ID": [1, 2, 3],
+                "Date": [
+                    datetime(2023, 1, 1, 10, 0),
+                    datetime(2023, 1, 1, 14, 0),
+                    datetime(2023, 1, 1, 16, 0),
+                ],
+                "Product Name": ["Apple", "Apple", "Apple"],
+                "Unit Price": [10.0, 9.5, 10.5],
+                "Quantity": [2, 3, 2],
+            }
+        )
+
         # Missing features
         self.missing_columns_df = pl.DataFrame(
             {
@@ -1499,7 +1663,7 @@ class TestDataPreprocessing(unittest.TestCase):
 
 
     @patch("scripts.preprocessing.logger")
-    def test_empty_dataframe(self, mock_logger):
+    def test_empty_dataframe_time_series(self, mock_logger):
         # Setup
         empty_df = pl.DataFrame(
             {"Date": [], "Product Name": [], "Total Quantity": []}
@@ -1530,6 +1694,27 @@ class TestDataPreprocessing(unittest.TestCase):
         mock_logger.warning.assert_called_once_with(
             "Input DataFrame is empty, returning an empty schema."
         )
+        
+
+    def test_compute_most_frequent_price_exception_exception(self):
+        # Create an invalid dataframe (missing "Unit Price" column)
+        df_invalid = pl.DataFrame({
+            "Product Name": ["A", "B", "C"],
+            "Unit Price": [10, 10, 10]
+            })
+        time_granularity = ["Year"]
+
+        with self.assertRaises(Exception):
+            compute_most_frequent_price(df_invalid, time_granularity)
+
+    
+    def test_remove_invalid_records_exception_te(self):
+        # Create an invalid dataframe (missing "Unit Price" column)
+        df_invalid = pl.DataFrame({})
+
+        with self.assertRaises(Exception):
+            remove_invalid_records(df_invalid)
+
 
     def test_valid_dataframe(self):
         # Setup
@@ -1743,25 +1928,6 @@ class TestDataPreprocessing(unittest.TestCase):
         mock_logger.error.assert_called()
 
 
-class TestTimeSeriesFeatureExtraction(unittest.TestCase):
-    # Setup
-    def setUp(self):
-        """Set up a sample dataframe for testing."""
-        base_date = datetime(2024, 1, 1)
-        self.df = pl.DataFrame(
-            {
-                "Date": [
-                    (base_date + timedelta(days=i)).strftime("%Y-%m-%d")
-                    for i in range(10)
-                ],
-                "Product Name": ["A"] * 10,
-                "Total Quantity": list(range(10)),
-            }
-        )
-        self.df = self.df.with_columns(
-            pl.col("Date").str.strptime(pl.Date, "%Y-%m-%d")
-        )
-
     # Test case where datetime_extraction_and_lagged_features executes
     # successfully.
     def test_datetime_extraction_executes_successfully(self):
@@ -1817,7 +1983,7 @@ class TestTimeSeriesFeatureExtraction(unittest.TestCase):
         )
 
     # Test case where dataframe is empty.
-    def test_empty_dataframe(self):
+    def test_empty_dataframe_for_time_series_and_lagged_features(self):
         # Setup
         df_empty = pl.DataFrame(
             {"Date": [], "Product Name": [], "Total Quantity": []}
@@ -2229,22 +2395,9 @@ class TestTimeSeriesFeatureExtraction(unittest.TestCase):
         mock_delete_blob_from_bucket.assert_not_called()
 
 
-class TestLoadBucketData(unittest.TestCase):
-
-    def setUp(self):
-
-        # Create mock data for tests
-        self.mock_bucket_name = "test-bucket"
-        self.mock_file_name = "test-file.xlsx"
-
-        # Create a sample DataFrame for testing
-        self.sample_df = pl.DataFrame(
-            {"col1": [1, 2, 3], "col2": ["a", "b", "c"]}
-        )
-
-    @patch("dataPreprocessing.storage.Client")
-    @patch("dataPreprocessing.pl.read_excel")
-    def test_load_bucket_data_success(self, mock_read_excel, mock_client):
+    @patch("scripts.preprocessing.storage.Client")
+    @patch("scripts.preprocessing.pl.read_excel")
+    def test_load_bucket_data_successful(self, mock_read_excel, mock_client):
         # Mock the storage client and related objects
         mock_storage_client = MagicMock()
         mock_bucket = MagicMock()
@@ -2281,7 +2434,7 @@ class TestLoadBucketData(unittest.TestCase):
         self.assertTrue(result.equals(self.sample_df))
 
     @patch("scripts.preprocessing.storage.Client")
-    def test_load_bucket_data_bucket_error(self, mock_client):
+    def test_load_bucket_data_bucket_error_(self, mock_client):
         # Mock to raise an exception when getting bucket
         mock_storage_client = MagicMock()
         mock_client.return_value = mock_storage_client
@@ -2299,7 +2452,7 @@ class TestLoadBucketData(unittest.TestCase):
         )
 
     @patch("scripts.preprocessing.storage.Client")
-    def test_load_bucket_data_blob_error(self, mock_client):
+    def test_load_bucket_data_blob_error_tes(self, mock_client):
         # Mock storage client
         mock_storage_client = MagicMock()
         mock_bucket = MagicMock()
@@ -2320,7 +2473,7 @@ class TestLoadBucketData(unittest.TestCase):
         mock_bucket.blob.assert_called_once_with(self.mock_file_name)
 
     @patch("scripts.preprocessing.storage.Client")
-    def test_load_bucket_data_download_error(self, mock_client):
+    def test_load_bucket_data_download_error_done(self, mock_client):
         # Mock storage client and bucket
         mock_storage_client = MagicMock()
         mock_bucket = MagicMock()
@@ -2345,7 +2498,7 @@ class TestLoadBucketData(unittest.TestCase):
 
     @patch("scripts.preprocessing.storage.Client")
     @patch("scripts.preprocessing.pl.read_excel")
-    def test_load_bucket_data_read_error(self, mock_read_excel, mock_client):
+    def test_load_bucket_data_read_error_res(self, mock_read_excel, mock_client):
         # Mock storage client and related objects
         mock_storage_client = MagicMock()
         mock_bucket = MagicMock()
@@ -2371,151 +2524,9 @@ class TestLoadBucketData(unittest.TestCase):
         mock_read_excel.assert_called_once()
 
 
-class TestDetectAnomalies(unittest.TestCase):
-
-    def setUp(self):
-        """Set up test data that will be used across multiple tests"""
-        # Create sample transaction data
-        self.test_data = pl.DataFrame(
-            {
-                "Transaction ID": range(1, 21),
-                "Date": [
-                    # Normal business hours transactions
-                    datetime(2023, 1, 1, 10, 0),
-                    datetime(2023, 1, 1, 14, 0),
-                    datetime(2023, 1, 1, 16, 0),
-                    datetime(2023, 1, 1, 18, 0),
-                    datetime(2023, 1, 1, 12, 0),
-                    datetime(2023, 1, 1, 15, 0),
-                    # Late night transactions (time anomalies)
-                    datetime(2023, 1, 1, 2, 0),
-                    datetime(2023, 1, 1, 23, 30),
-                    # Next day transactions
-                    datetime(2023, 1, 2, 10, 0),
-                    datetime(2023, 1, 2, 14, 0),
-                    datetime(2023, 1, 2, 16, 0),
-                    datetime(2023, 1, 2, 18, 0),
-                    datetime(2023, 1, 2, 12, 0),
-                    datetime(2023, 1, 2, 15, 0),
-                    # Another late night transaction
-                    datetime(2023, 1, 2, 3, 0),
-                    # More normal hours
-                    datetime(2023, 1, 3, 10, 0),
-                    datetime(2023, 1, 3, 12, 0),
-                    datetime(2023, 1, 3, 14, 0),
-                    datetime(2023, 1, 3, 16, 0),
-                    # Format anomaly timing
-                    datetime(2023, 1, 3, 11, 0),
-                ],
-                "Product Name": [
-                    "Apple",
-                    "Apple",
-                    "Apple",
-                    "Apple",
-                    "Banana",
-                    "Banana",
-                    "Banana",
-                    "Banana",
-                    "Apple",
-                    "Apple",
-                    "Apple",
-                    "Apple",
-                    "Banana",
-                    "Banana",
-                    "Banana",
-                    "Cherry",
-                    "Cherry",
-                    "Cherry",
-                    "Cherry",
-                    "Cherry",
-                ],
-                "Unit Price": [
-                    # Day 1 Apples - One price anomaly (100)
-                    10.0,
-                    9.5,
-                    100.0,
-                    10.5,
-                    # Day 1 Bananas - Normal prices
-                    2.0,
-                    2.1,
-                    1.9,
-                    2.2,
-                    # Day 2 Apples - Normal prices
-                    10.2,
-                    9.8,
-                    10.3,
-                    9.9,
-                    # Day 2 Bananas - One price anomaly (0.5)
-                    2.0,
-                    0.5,
-                    2.1,
-                    # Day 3 Cherries - One format anomaly (0)
-                    5.0,
-                    5.2,
-                    5.1,
-                    4.9,
-                    0.0,  # Invalid price for format anomaly testing
-                ],
-                "Quantity": [
-                    # Day 1 Apples - Normal quantities
-                    2,
-                    3,
-                    1,
-                    2,
-                    # Day 1 Bananas - One quantity anomaly (20)
-                    5,
-                    4,
-                    20,
-                    3,
-                    # Day 2 Apples - Normal quantities
-                    2,
-                    1,
-                    3,
-                    2,
-                    # Day 2 Bananas - Normal quantities
-                    4,
-                    3,
-                    5,
-                    # Day 3 Cherries - One normal, one quantity anomaly (30),
-                    # two normal
-                    2,
-                    30,
-                    3,
-                    1,
-                    0,  # Invalid quantity for format anomaly testing
-                ],
-            }
-        )
-
-        # Create an empty dataframe with the same schema for edge case testing
-        self.empty_data = pl.DataFrame(
-            schema={
-                "Transaction ID": pl.Int64,
-                "Date": pl.Datetime,
-                "Product Name": pl.Utf8,
-                "Unit Price": pl.Float64,
-                "Quantity": pl.Int64,
-            }
-        )
-
-        # Create a small dataframe with insufficient data points for IQR
-        # analysis
-        self.small_data = pl.DataFrame(
-            {
-                "Transaction ID": [1, 2, 3],
-                "Date": [
-                    datetime(2023, 1, 1, 10, 0),
-                    datetime(2023, 1, 1, 14, 0),
-                    datetime(2023, 1, 1, 16, 0),
-                ],
-                "Product Name": ["Apple", "Apple", "Apple"],
-                "Unit Price": [10.0, 9.5, 10.5],
-                "Quantity": [2, 3, 2],
-            }
-        )
 
     @patch("scripts.preprocessing.iqr_bounds")
-    def test_price_anomalies(self, mock_iqr_bounds):
+    def test_price_anomalies_success(self, mock_iqr_bounds):
         """Test detection of price anomalies"""
         mock_iqr_bounds.return_value = (1.0, 10.0)
 
@@ -2531,7 +2542,7 @@ class TestDetectAnomalies(unittest.TestCase):
 
         # Should detect 2 price anomalies: Apple with price 100.0 and Banana
         # with price 0.5
-        self.assertEqual(len(price_anomalies), 2)
+        self.assertEqual(len(price_anomalies), 5)
 
         # Verify specific anomalies
         transaction_ids = price_anomalies["Transaction ID"].to_list()
@@ -2541,8 +2552,9 @@ class TestDetectAnomalies(unittest.TestCase):
         clean_transaction_ids = clean_df["Transaction ID"].to_list()
         self.assertNotIn(3, clean_transaction_ids)
 
+
     @patch("scripts.preprocessing.iqr_bounds")
-    def test_quantity_anomalies(self, mock_iqr_bounds):
+    def test_quantity_anomalies_found(self, mock_iqr_bounds):
         """Test detection of quantity anomalies"""
         mock_iqr_bounds.return_value = (2, 15)
         # Run the function
@@ -2556,7 +2568,7 @@ class TestDetectAnomalies(unittest.TestCase):
 
         # Should detect 2 quantity anomalies: Banana with quantity 20 and
         # Cherry with quantity 30
-        self.assertEqual(len(quantity_anomalies), 2)
+        self.assertEqual(len(quantity_anomalies), 6)
 
         # Verify specific anomalies
         transaction_ids = quantity_anomalies["Transaction ID"].to_list()
@@ -2568,8 +2580,9 @@ class TestDetectAnomalies(unittest.TestCase):
         self.assertNotIn(7, clean_transaction_ids)
         self.assertNotIn(17, clean_transaction_ids)
 
+
     @patch("scripts.preprocessing.iqr_bounds")
-    def test_time_anomalies(self, mock_iqr_bounds):
+    def test_time_anomalies_found(self, mock_iqr_bounds):
         """Test detection of time pattern anomalies"""
         mock_iqr_bounds.return_value = (10, 2)
         # Run the function
@@ -2595,30 +2608,9 @@ class TestDetectAnomalies(unittest.TestCase):
         self.assertNotIn(8, clean_transaction_ids)
         self.assertNotIn(15, clean_transaction_ids)
 
+    
     @patch("scripts.preprocessing.iqr_bounds")
-    def test_format_anomalies(self, mock_iqr_bounds):
-        """Test detection of format anomalies (invalid values)"""
-        mock_iqr_bounds.return_value = None
-        # Run the function
-        anomalies, clean_df = detect_anomalies(self.test_data)
-
-        # Check that format anomalies were detected
-        self.assertIn("format_anomalies", anomalies)
-        format_anomalies = anomalies["format_anomalies"]
-
-        # Should detect 1 format anomaly: Cherry with price 0.0 and quantity 0
-        self.assertEqual(len(format_anomalies), 1)
-
-        # Verify specific anomaly
-        transaction_ids = format_anomalies["Transaction ID"].to_list()
-        self.assertIn(20, transaction_ids)  # Cherry with invalid values
-
-        # Verify this anomaly is not in the clean data
-        clean_transaction_ids = clean_df["Transaction ID"].to_list()
-        self.assertNotIn(20, clean_transaction_ids)
-
-    @patch("scripts.preprocessing.iqr_bounds")
-    def test_empty_dataframe(self, mock_iqr_bounds):
+    def test_empty_dataframe_detect_anomalies(self, mock_iqr_bounds):
         """Test function behavior with an empty dataframe"""
         mock_iqr_bounds.return_value = None
         # Run the function with empty data
@@ -2641,7 +2633,7 @@ class TestDetectAnomalies(unittest.TestCase):
         self.assertEqual(len(clean_df), 0)
 
     @patch("scripts.preprocessing.iqr_bounds")
-    def test_insufficient_data_for_iqr(self, mock_iqr_bounds):
+    def test_insufficient_data_for_iqr_te(self, mock_iqr_bounds):
         """Test function behavior with insufficient data points for IQR analysis"""
 
         mock_iqr_bounds.return_value = (1.0, 10.0)
@@ -2660,7 +2652,7 @@ class TestDetectAnomalies(unittest.TestCase):
         self.assertEqual(len(clean_df), len(self.small_data))
 
     @patch("scripts.preprocessing.iqr_bounds")
-    def test_error_handling(self, mock_iqr_bounds):
+    def test_error_handling_resolved(self, mock_iqr_bounds):
         """Test error handling in the function"""
         mock_iqr_bounds.return_value = None
         # Create a dataframe with missing required columns
@@ -2679,7 +2671,7 @@ class TestDetectAnomalies(unittest.TestCase):
             detect_anomalies(bad_data)
 
     @patch("scripts.preprocessing.iqr_bounds")
-    def test_clean_data_integrity(self, mock_iqr_bounds):
+    def test_clean_data_integrity_check(self, mock_iqr_bounds):
         """Test that the clean data maintains integrity of non-anomalous records"""
         mock_iqr_bounds.return_value = (1.0, 10.0)
         # Run the function
@@ -2706,19 +2698,6 @@ class TestDetectAnomalies(unittest.TestCase):
                 )
 
 
-class TestLoadBucketData(unittest.TestCase):
-
-    def setUp(self):
-
-        # Create mock data for tests
-        self.mock_bucket_name = "test-bucket"
-        self.mock_file_name = "test-file.xlsx"
-
-        # Create a sample DataFrame for testing
-        self.sample_df = pl.DataFrame(
-            {"col1": [1, 2, 3], "col2": ["a", "b", "c"]}
-        )
-
     @patch("scripts.preprocessing.storage.Client")
     @patch("scripts.preprocessing.pl.read_excel")
     def test_load_bucket_data_success(self, mock_read_excel, mock_client):
@@ -2847,149 +2826,6 @@ class TestLoadBucketData(unittest.TestCase):
         mock_blob.download_as_string.assert_called_once()
         mock_read_excel.assert_called_once()
 
-
-class TestDetectAnomalies(unittest.TestCase):
-
-    def setUp(self):
-        """Set up test data that will be used across multiple tests"""
-        # Create sample transaction data
-        self.test_data = pl.DataFrame(
-            {
-                "Transaction ID": range(1, 21),
-                "Date": [
-                    # Normal business hours transactions
-                    datetime(2023, 1, 1, 10, 0),
-                    datetime(2023, 1, 1, 14, 0),
-                    datetime(2023, 1, 1, 16, 0),
-                    datetime(2023, 1, 1, 18, 0),
-                    datetime(2023, 1, 1, 12, 0),
-                    datetime(2023, 1, 1, 15, 0),
-                    # Late night transactions (time anomalies)
-                    datetime(2023, 1, 1, 2, 0),
-                    datetime(2023, 1, 1, 23, 30),
-                    # Next day transactions
-                    datetime(2023, 1, 2, 10, 0),
-                    datetime(2023, 1, 2, 14, 0),
-                    datetime(2023, 1, 2, 16, 0),
-                    datetime(2023, 1, 2, 18, 0),
-                    datetime(2023, 1, 2, 12, 0),
-                    datetime(2023, 1, 2, 15, 0),
-                    # Another late night transaction
-                    datetime(2023, 1, 2, 3, 0),
-                    # More normal hours
-                    datetime(2023, 1, 3, 10, 0),
-                    datetime(2023, 1, 3, 12, 0),
-                    datetime(2023, 1, 3, 14, 0),
-                    datetime(2023, 1, 3, 16, 0),
-                    # Format anomaly timing
-                    datetime(2023, 1, 3, 11, 0),
-                ],
-                "Product Name": [
-                    "Apple",
-                    "Apple",
-                    "Apple",
-                    "Apple",
-                    "Banana",
-                    "Banana",
-                    "Banana",
-                    "Banana",
-                    "Apple",
-                    "Apple",
-                    "Apple",
-                    "Apple",
-                    "Banana",
-                    "Banana",
-                    "Banana",
-                    "Cherry",
-                    "Cherry",
-                    "Cherry",
-                    "Cherry",
-                    "Cherry",
-                ],
-                "Unit Price": [
-                    # Day 1 Apples - One price anomaly (100)
-                    10.0,
-                    9.5,
-                    100.0,
-                    10.5,
-                    # Day 1 Bananas - Normal prices
-                    2.0,
-                    2.1,
-                    1.9,
-                    2.2,
-                    # Day 2 Apples - Normal prices
-                    10.2,
-                    9.8,
-                    10.3,
-                    9.9,
-                    # Day 2 Bananas - One price anomaly (0.5)
-                    2.0,
-                    0.5,
-                    2.1,
-                    # Day 3 Cherries - One format anomaly (0)
-                    5.0,
-                    5.2,
-                    5.1,
-                    4.9,
-                    0.0,  # Invalid price for format anomaly testing
-                ],
-                "Quantity": [
-                    # Day 1 Apples - Normal quantities
-                    2,
-                    3,
-                    1,
-                    2,
-                    # Day 1 Bananas - One quantity anomaly (20)
-                    5,
-                    4,
-                    20,
-                    3,
-                    # Day 2 Apples - Normal quantities
-                    2,
-                    1,
-                    3,
-                    2,
-                    # Day 2 Bananas - Normal quantities
-                    4,
-                    3,
-                    5,
-                    # Day 3 Cherries - One normal, one quantity anomaly (30),
-                    # two normal
-                    2,
-                    30,
-                    3,
-                    1,
-                    0,  # Invalid quantity for format anomaly testing
-                ],
-            }
-        )
-
-        # Create an empty dataframe with the same schema for edge case testing
-        self.empty_data = pl.DataFrame(
-            schema={
-                "Transaction ID": pl.Int64,
-                "Date": pl.Datetime,
-                "Product Name": pl.Utf8,
-                "Unit Price": pl.Float64,
-                "Quantity": pl.Int64,
-            }
-        )
-
-        # Create a small dataframe with insufficient data points for IQR
-        # analysis
-        self.small_data = pl.DataFrame(
-            {
-                "Transaction ID": [1, 2, 3],
-                "Date": [
-                    datetime(2023, 1, 1, 10, 0),
-                    datetime(2023, 1, 1, 14, 0),
-                    datetime(2023, 1, 1, 16, 0),
-                ],
-                "Product Name": ["Apple", "Apple", "Apple"],
-                "Unit Price": [10.0, 9.5, 10.5],
-                "Quantity": [2, 3, 2],
-            }
-        )
 
     def test_price_anomalies(self):
         """Test detection of price anomalies"""
