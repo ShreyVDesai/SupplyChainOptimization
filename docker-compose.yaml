@@ -134,6 +134,8 @@ services:
     entrypoint: /bin/bash
     command: >
       -c "
+      until pg_isready -h postgres -p 5432 -U airflow; do sleep 5; done &&
+      airflow db upgrade &&
       wait-for-it postgres:5432 -- airflow db migrate &&
       airflow users create --username ${AIRFLOW_ADMIN_USERNAME:-admin} --password ${AIRFLOW_ADMIN_PASSWORD:-admin} --firstname ${AIRFLOW_ADMIN_FIRSTNAME:-Anonymous} --lastname ${AIRFLOW_ADMIN_LASTNAME:-Admin} --role Admin --email ${AIRFLOW_ADMIN_EMAIL:-admin@example.com} &&
       airflow connections delete google_cloud_default || true &&
