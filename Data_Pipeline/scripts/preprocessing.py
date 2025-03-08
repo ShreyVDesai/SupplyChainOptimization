@@ -820,16 +820,18 @@ def process_file(
         logger.info("Performing Feature Engineering on Aggregated Data...")
         df = extracting_time_series_and_lagged_features(df)
 
-        # Generate a unique name for the output file
+        # Generate a consistent name for the output file (without timestamp)
+        # This ensures we overwrite the existing file instead of creating a new one
         base_name = os.path.splitext(os.path.basename(blob_name))[0]
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        unique_dest_name = f"processed_{base_name}_{timestamp}.csv"
+        dest_name = f"processed_{base_name}.csv"
 
-        logger.info(f"Uploading cleaned data to GCS → {unique_dest_name}")
-        upload_to_gcs(df, destination_bucket_name, unique_dest_name)
+        logger.info(
+            f"Uploading cleaned data to GCS → {dest_name} (will overwrite if exists)"
+        )
+        upload_to_gcs(df, destination_bucket_name, dest_name)
         logger.info(
             f"Data cleaning completed! Cleaned data saved to GCS bucket: {destination_bucket_name}, "
-            f"blob: {unique_dest_name}"
+            f"blob: {dest_name}"
         )
 
         if delete_after_processing:
@@ -845,8 +847,9 @@ def process_file(
                 logger.warning(f"Failed to delete source file: {blob_name}")
 
         logger.info("Performing Post Validation...")
-        unique_dest_blob_name = f"stats_{base_name}_{timestamp}.json"
-        validation_passed = post_validation(df, unique_dest_blob_name)
+        # Also use a consistent name for statistics files
+        stats_blob_name = f"stats_{base_name}.json"
+        validation_passed = post_validation(df, stats_blob_name)
 
         if validation_passed:
             logger.info("Post-validation passed successfully.")
