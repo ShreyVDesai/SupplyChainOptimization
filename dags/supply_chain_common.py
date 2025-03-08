@@ -25,6 +25,7 @@ DEFAULT_ARGS = {
 GCP_BUCKET_NAME = "full-raw-data"
 GCP_CONNECTION_ID = "google_cloud_default"
 PROCESSED_BUCKET_NAME = "fully-processed-data"
+DVC_REMOTE_NAME = "fully-processed-data-dvc"
 
 
 def print_gcs_info(**context):
@@ -207,6 +208,55 @@ def run_preprocessing_script(**context):
         raise
 
 
+def run_dvc_versioning(**context):
+    """Run the DVC versioning script to track processed data"""
+    client = docker.from_env()
+
+    try:
+        # Get bucket name from xcom - no longer needed since we removed source_bucket parameter
+        # Only kept for logging purposes
+        gcs_bucket = (
+            context["ti"].xcom_pull(
+                task_ids="print_gcs_info", key="gcs_bucket"
+            )
+            or GCP_BUCKET_NAME
+        )
+
+        print(f"Source bucket (for reference only): {gcs_bucket}")
+
+        container = client.containers.get("data-pipeline-container")
+        print(f"Container found: {container.name}")
+
+        # Execute the dvc_versioning.py script with bucket parameters
+        # Removed source_bucket parameter as it's not used by the script
+        exit_code, output = container.exec_run(
+            cmd=f"python dvc_versioning.py --destination_bucket={PROCESSED_BUCKET_NAME} --dvc_remote={DVC_REMOTE_NAME}",
+            workdir="/app/scripts",
+        )
+
+        output_str = output.decode("utf-8")
+        print(f"DVC versioning output: {output_str}")
+
+        if exit_code != 0:
+            print(f"DVC versioning failed with exit code: {exit_code}")
+            raise Exception(
+                f"dvc_versioning.py failed with exit code {exit_code}"
+            )
+
+        print("DVC versioning completed successfully")
+        return output_str
+
+    except docker.errors.NotFound:
+        error_msg = (
+            "data-pipeline-container not found. Make sure it's running."
+        )
+        print(error_msg)
+        raise Exception(error_msg)
+    except Exception as e:
+        print(f"Error running DVC versioning script: {str(e)}")
+        raise
+
+
 def create_preprocessing_tasks(dag):
     """Create all preprocessing tasks for a given DAG"""
 
@@ -238,12 +288,20 @@ def create_preprocessing_tasks(dag):
         dag=dag,
     )
 
+    # Run DVC versioning to track processed data
+    run_dvc_versioning_task = PythonOperator(
+        task_id="run_dvc_versioning",
+        python_callable=run_dvc_versioning,
+        dag=dag,
+    )
+
     # Define the task dependencies
     (
         print_gcs_info_task
         >> get_file_list_task
         >> run_pre_validation_task
         >> run_preprocessing_task
+        >> run_dvc_versioning_task
     )
 
     return {
@@ -251,4 +309,5 @@ def create_preprocessing_tasks(dag):
         "get_file_list": get_file_list_task,
         "run_pre_validation": run_pre_validation_task,
         "run_preprocessing": run_preprocessing_task,
+        "run_dvc_versioning": run_dvc_versioning_task,
     }
