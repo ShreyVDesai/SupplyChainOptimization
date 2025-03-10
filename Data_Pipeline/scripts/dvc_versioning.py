@@ -8,7 +8,6 @@ It creates a proper DVC remote for versioning while maintaining a stateless appr
 
 import argparse
 import json
-import logging
 import os
 import shutil
 import subprocess
@@ -21,12 +20,16 @@ from typing import Dict, List, Optional, Tuple, Any
 from google.cloud import storage
 from google.api_core.exceptions import NotFound
 
-# Configure logging
-logging.basicConfig(
-    format="[%(asctime)s] {%(pathname)s:%(lineno)d} %(levelname)s - %(message)s",
-    level=logging.INFO,
-)
-logger = logging.getLogger(__name__)
+# Import common utilities
+try:
+    from logger import logger
+    from utils import setup_gcp_credentials
+except ImportError:  # For testing purposes
+    from Data_Pipeline.scripts.logger import logger
+    from Data_Pipeline.scripts.utils import setup_gcp_credentials
+
+# For filename quoting in shell commands
+from shlex import quote as shell_quote
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -140,11 +143,6 @@ def ensure_bucket_exists(bucket_name: str, gcp_key_path: str = None) -> bool:
     """
     logger.info(f"Checking if bucket {bucket_name} exists")
 
-    # Use GCP credentials if provided
-    if gcp_key_path and os.path.exists(gcp_key_path):
-        logger.info(f"Using existing GCP credentials from: {gcp_key_path}")
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = gcp_key_path
-
     try:
         storage_client = storage.Client()
         bucket = storage_client.bucket(bucket_name)
@@ -174,11 +172,6 @@ def clear_bucket(bucket_name: str, gcp_key_path: str = None) -> bool:
         True if successful, False otherwise
     """
     logger.info(f"Clearing bucket {bucket_name}")
-
-    # Use GCP credentials if provided
-    if gcp_key_path and os.path.exists(gcp_key_path):
-        logger.info(f"Using existing GCP credentials from: {gcp_key_path}")
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = gcp_key_path
 
     try:
         storage_client = storage.Client()
@@ -211,11 +204,6 @@ def list_bucket_files(bucket_name: str, gcp_key_path: str = None) -> List[str]:
     Returns:
         List of file paths in the bucket
     """
-    # Use GCP credentials if provided
-    if gcp_key_path and os.path.exists(gcp_key_path):
-        logger.info(f"Using existing GCP credentials from: {gcp_key_path}")
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = gcp_key_path
-
     try:
         storage_client = storage.Client()
         blobs = storage_client.list_blobs(bucket_name)
@@ -245,10 +233,6 @@ def list_dvc_remote_contents(
     Returns:
         List of files in the DVC remote bucket
     """
-    if gcp_key_path and os.path.exists(gcp_key_path):
-        logger.info(f"Using existing GCP credentials from: {gcp_key_path}")
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = gcp_key_path
-
     try:
         storage_client = storage.Client()
         blobs = storage_client.list_blobs(dvc_remote)
@@ -284,11 +268,6 @@ def save_version_metadata(
     Returns:
         True if successful, False otherwise
     """
-    # Use GCP credentials if provided
-    if gcp_key_path and os.path.exists(gcp_key_path):
-        logger.info(f"Using existing GCP credentials from: {gcp_key_path}")
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = gcp_key_path
-
     try:
         storage_client = storage.Client()
         bucket = storage_client.bucket(dvc_remote)
@@ -430,32 +409,30 @@ def track_bucket_data(
     temp_dir = tempfile.mkdtemp()
     logger.info(f"Created temporary directory: {temp_dir}")
 
-    # Set GCP credentials
-    if gcp_key_path and os.path.exists(gcp_key_path):
-        logger.info(f"Using existing GCP credentials from: {gcp_key_path}")
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = gcp_key_path
+    # Set GCP credentials using the utility function
+    setup_gcp_credentials()
 
     try:
         # Ensure buckets exist
         logger.info("Ensuring buckets exist")
         for bucket in [cache_bucket, dvc_remote]:
-            if not ensure_bucket_exists(bucket, gcp_key_path):
+            if not ensure_bucket_exists(bucket):
                 logger.error(f"Failed to ensure bucket {bucket} exists")
                 return False
 
         # Clear the remote bucket if requested
         if clear_remote:
             logger.info(f"Clearing remote bucket {dvc_remote}")
-            if not clear_bucket(dvc_remote, gcp_key_path):
+            if not clear_bucket(dvc_remote):
                 logger.error(f"Failed to clear bucket {dvc_remote}")
                 return False
 
         # List files in the cache bucket
-        bucket_files = list_bucket_files(cache_bucket, gcp_key_path)
+        bucket_files = list_bucket_files(cache_bucket)
         if not bucket_files:
             logger.warning(f"No files found in bucket {cache_bucket}")
             # Still create version metadata with empty files list
-            save_version_metadata(dvc_remote, cache_bucket, [], gcp_key_path)
+            save_version_metadata(dvc_remote, cache_bucket, [])
             return True
 
         # Set up DVC with remote
@@ -476,10 +453,6 @@ def track_bucket_data(
         for file_path in bucket_files:
             logger.info(f"Processing file: {file_path}")
 
-            # Create a safe local name (use basename to avoid directory issues)
-            safe_name = os.path.basename(file_path)
-            local_path = os.path.join(temp_dir, safe_name)
-
             try:
                 # Get file metadata
                 storage_client = storage.Client()
@@ -487,24 +460,26 @@ def track_bucket_data(
                 blob = bucket.blob(file_path)
                 blob.reload()
 
+                # Create a safe filename without spaces or special characters
+                original_name = os.path.basename(file_path)
+                safe_name = original_name.replace(" ", "_")
+                local_path = os.path.join(temp_dir, safe_name)
+
+                logger.info(
+                    f"Using safe filename: {safe_name} for original: {original_name}"
+                )
+
                 # Download the file locally first
                 gs_url = f"gs://{cache_bucket}/{file_path}"
                 logger.info(f"Downloading {gs_url} to {local_path}")
 
                 # Use direct GCS download
-                success, output = run_command(
-                    f"python -c \"from google.cloud import storage; storage.Client().bucket('{cache_bucket}').blob('{file_path}').download_to_filename('{local_path}')\"",
-                    cwd=temp_dir,
-                )
-
-                if not success:
-                    logger.error(f"Failed to download {file_path}: {output}")
-                    continue
+                blob.download_to_filename(local_path)
 
                 # Add and push the file with DVC
                 logger.info(f"Adding {safe_name} to DVC")
                 success, output = run_command(
-                    f"dvc add {safe_name}", cwd=temp_dir
+                    f"dvc add {shell_quote(safe_name)}", cwd=temp_dir
                 )
 
                 if not success:
@@ -514,7 +489,7 @@ def track_bucket_data(
                 # Push immediately
                 logger.info(f"Pushing {safe_name} to DVC remote")
                 success, output = run_command(
-                    f"dvc push -v {safe_name}.dvc", cwd=temp_dir
+                    f"dvc push -v {shell_quote(safe_name)}.dvc", cwd=temp_dir
                 )
 
                 if success:
@@ -543,12 +518,10 @@ def track_bucket_data(
         # Check what was pushed to the remote
         time.sleep(2)  # Brief delay to allow GCS to update
         logger.info("Checking DVC remote contents after push")
-        list_dvc_remote_contents(dvc_remote, gcp_key_path)
+        list_dvc_remote_contents(dvc_remote)
 
         # Save our own version metadata
-        save_version_metadata(
-            dvc_remote, cache_bucket, file_info, gcp_key_path
-        )
+        save_version_metadata(dvc_remote, cache_bucket, file_info)
 
         logger.info(
             f"Successfully versioned {successful_imports} out of {len(bucket_files)} files"
@@ -639,7 +612,7 @@ def main() -> None:
 
     # Enable verbose logging if debug mode is enabled
     if args.debug:
-        logging.getLogger().setLevel(logging.DEBUG)
+        logger.setLevel("DEBUG")
         logger.info("Verbose logging enabled")
 
     # Track data in the GCP bucket
