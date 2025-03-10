@@ -67,7 +67,13 @@ def convert_feature_types(df: pl.DataFrame) -> pl.DataFrame:
     try:
         for col, dtype in expected_dtypes.items():
             if col in df.columns:
-                df = df.with_columns(pl.col(col).cast(dtype))
+                # For Quantity, first convert to float and round to integer
+                if col == "Quantity":
+                    df = df.with_columns(
+                        pl.col(col).cast(pl.Float64).round(0).cast(pl.Int64)
+                    )
+                else:
+                    df = df.with_columns(pl.col(col).cast(dtype))
         logger.info("Feature types converted successfully.")
         return df
     except Exception as e:
