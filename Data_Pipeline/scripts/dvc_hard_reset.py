@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-DVC Versioning Script for GCP Buckets
+DVC Hard Reset and Rebuild Script
 
-This script properly versions files in a GCP bucket using DVC.
-It creates a proper DVC remote for versioning while maintaining a stateless approach.
+This script completely resets the DVC remote storage and rebuilds it from scratch,
+addressing potential configuration issues that might prevent proper pushing to GCS.
 """
 
 import argparse
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 def parse_arguments() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Version files in a GCP bucket using DVC"
+        description="Hard reset and rebuild DVC versioning for GCP bucket"
     )
     parser.add_argument(
         "--cache_bucket",
@@ -47,7 +47,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--clear_remote",
         action="store_true",
-        help="Clear the remote DVC bucket before starting",
+        help="Clear the remote DVC bucket",
     )
     parser.add_argument(
         "--debug",
@@ -382,7 +382,7 @@ def setup_and_verify_dvc_remote(
         if success:
             logger.info(output)
 
-    # Test the remote connection with a simple file
+    # Test the remote connection
     logger.info("Testing DVC remote connection")
     success, output = run_command(
         "touch test_file.txt && dvc add test_file.txt && dvc push -v",
@@ -396,7 +396,7 @@ def setup_and_verify_dvc_remote(
     return success
 
 
-def track_bucket_data(
+def track_and_push_bucket_data(
     cache_bucket: str,
     dvc_remote: str,
     debug_mode: bool = False,
@@ -405,7 +405,7 @@ def track_bucket_data(
     clear_remote: bool = False,
 ) -> bool:
     """
-    Track files in a GCP bucket using DVC.
+    Track files in a GCP bucket using DVC with hard reset approach.
 
     Args:
         cache_bucket: Name of the bucket containing files to track
@@ -450,6 +450,10 @@ def track_bucket_data(
                 logger.error(f"Failed to clear bucket {dvc_remote}")
                 return False
 
+        # List existing files in the remote bucket
+        logger.info(f"Checking existing files in remote bucket {dvc_remote}")
+        remote_files = list_dvc_remote_contents(dvc_remote, gcp_key_path)
+
         # List files in the cache bucket
         bucket_files = list_bucket_files(cache_bucket, gcp_key_path)
         if not bucket_files:
@@ -491,7 +495,7 @@ def track_bucket_data(
                 gs_url = f"gs://{cache_bucket}/{file_path}"
                 logger.info(f"Downloading {gs_url} to {local_path}")
 
-                # Use direct GCS download
+                # Use gcloud storage instead of direct download
                 success, output = run_command(
                     f"python -c \"from google.cloud import storage; storage.Client().bucket('{cache_bucket}').blob('{file_path}').download_to_filename('{local_path}')\"",
                     cwd=temp_dir,
@@ -514,7 +518,8 @@ def track_bucket_data(
                 # Push immediately
                 logger.info(f"Pushing {safe_name} to DVC remote")
                 success, output = run_command(
-                    f"dvc push -v {safe_name}.dvc", cwd=temp_dir
+                    f"DVC_LOGLEVEL=DEBUG dvc push -v {safe_name}.dvc",
+                    cwd=temp_dir,
                 )
 
                 if success:
@@ -557,7 +562,7 @@ def track_bucket_data(
         return successful_imports > 0 or len(bucket_files) == 0
 
     except Exception as e:
-        logger.error(f"Error in track_bucket_data: {e}")
+        logger.error(f"Error in track_and_push_bucket_data: {e}")
         return False
     finally:
         if not keep_temp:
@@ -567,70 +572,6 @@ def track_bucket_data(
             logger.info(
                 f"Keeping temporary directory for debugging: {temp_dir}"
             )
-
-
-def debug_dvc_setup(temp_dir: str):
-    """
-    Print debugging information about the DVC setup.
-
-    Args:
-        temp_dir: Path to the temporary DVC directory
-    """
-    logger.info("==== DVC DEBUGGING INFORMATION ====")
-
-    # Check DVC config files
-    run_command(
-        "find .dvc -name '*.config' -o -name 'config*'",
-        cwd=temp_dir,
-        check=False,
-    )
-    logger.info("DVC config files:")
-
-    # Display DVC config
-    success, output = run_command("cat .dvc/config", cwd=temp_dir, check=False)
-    logger.info("DVC config:")
-    if success and output:
-        logger.info(output)
-
-    # Display local config if it exists
-    success, output = run_command(
-        "cat .dvc/config.local", cwd=temp_dir, check=False
-    )
-    logger.info("DVC local config:")
-    if success and output:
-        logger.info(output)
-
-    # List all DVC files
-    success, output = run_command(
-        "find . -name '*.dvc'", cwd=temp_dir, check=False
-    )
-    logger.info("DVC files created:")
-    if success and output:
-        logger.info(output)
-
-    # Show cache directory
-    success, output = run_command(
-        "find .dvc/cache -type f | head -10", cwd=temp_dir, check=False
-    )
-    logger.info("DVC cache directory:")
-    if success and output:
-        logger.info(output)
-
-    # Show DVC status
-    success, output = run_command("dvc status", cwd=temp_dir, check=False)
-    logger.info("DVC status:")
-    if success and output:
-        logger.info(output)
-
-    # Show remote status
-    success, output = run_command(
-        "dvc status -r myremote", cwd=temp_dir, check=False
-    )
-    logger.info("DVC remote status:")
-    if success and output:
-        logger.info(output)
-
-    logger.info("====================================")
 
 
 def main() -> None:
@@ -643,7 +584,7 @@ def main() -> None:
         logger.info("Verbose logging enabled")
 
     # Track data in the GCP bucket
-    success = track_bucket_data(
+    success = track_and_push_bucket_data(
         args.cache_bucket,
         args.dvc_remote,
         args.debug,
@@ -653,10 +594,10 @@ def main() -> None:
     )
 
     if success:
-        logger.info("DVC versioning completed successfully")
+        logger.info("DVC hard reset and rebuild completed successfully")
         sys.exit(0)
     else:
-        logger.error("DVC versioning failed")
+        logger.error("DVC hard reset and rebuild failed")
         sys.exit(1)
 
 
