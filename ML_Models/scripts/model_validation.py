@@ -1,6 +1,11 @@
 import os
 import pickle
+
 import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 import math
 import numpy as np
 import pandas as pd
@@ -9,16 +14,17 @@ import mysql.connector
 from sklearn.metrics import mean_squared_error
 from scipy.stats import ks_2samp
 
-logging.basicConfig(level=logging.INFO)
+
 
 # -----------------------
 # 1. HELPER FUNCTIONS
 # -----------------------
 
-try:
-    from logger import logger
-except ImportError:  # For testing purposes
-    from Data_Pipeline.scripts.logger import logger
+# try:
+#     from logger import logger
+# except ImportError:  # For testing purposes
+#     # from ML_Models.scripts.logger import logger
+#     raise
 
 import io
 import smtplib
@@ -155,6 +161,7 @@ def get_latest_data_from_mysql(host, user, password, database, query):
         database=database
     )
     df = pd.read_sql(query, conn)
+    print(df.head())
     conn.close()
     return df
 
@@ -230,7 +237,7 @@ def check_concept_drift(ref_errors, new_errors, alpha=0.05):
         return False
     return ks_test_drift(ref_errors, new_errors, alpha)
 
-def get_latest_data_from_cloud_sql_tcp(host, port, user, password, database, query):
+def get_latest_data_from_cloud_sql(host, user, password, database, query, port ='3306'):
     """
     Connects to a Google Cloud SQL instance using TCP (public IP or Cloud SQL Proxy)
     and returns query results as a DataFrame.
@@ -246,14 +253,15 @@ def get_latest_data_from_cloud_sql_tcp(host, port, user, password, database, que
     Returns:
         pd.DataFrame: Query results.
     """
+    
     conn = mysql.connector.connect(
-        host=host,
-        port=port,
-        user=user,
-        password=password,
-        database=database
-    )
+    host=host,  # if using a public IP or Cloud SQL Proxy
+    user=user,
+    password=password,
+    database=database
+)
     df = pd.read_sql(query, conn)
+    print(df.head())
     conn.close()
     return df
 
@@ -285,7 +293,8 @@ def main():
         ORDER BY date;
     """
     new_df = get_latest_data_from_cloud_sql(
-    instance_connection_string=instance_conn_str,
+    # instance_connection_string=instance_conn_str,
+    host = os.getenv("MYSQL_HOST"),
     user=os.getenv("MYSQL_USER"),
     password=os.getenv("MYSQL_PASSWORD"),
     database=os.getenv("MYSQL_DATABASE"),
@@ -293,7 +302,7 @@ def main():
 )
     
     # 3. [Optional] Fetch reference data from MySQL (e.g., for drift detection)
-       For example, reference might be the training dataset or a stable historical window.
+    #    For example, reference might be the training dataset or a stable historical window.
     query_ref_data = """
         SELECT 
             date, product_name, total_quantity
@@ -302,7 +311,8 @@ def main():
         ORDER BY date;
     """
     ref_df = get_latest_data_from_cloud_sql(
-    instance_connection_string=instance_conn_str,
+    # instance_connection_string=instance_conn_str,
+    host = os.getenv("MYSQL_HOST"),
     user=os.getenv("MYSQL_USER"),
     password=os.getenv("MYSQL_PASSWORD"),
     database=os.getenv("MYSQL_DATABASE"),
