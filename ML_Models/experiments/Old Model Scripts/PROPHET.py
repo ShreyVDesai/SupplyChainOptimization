@@ -12,16 +12,16 @@ import numpy as np
 from prophet import Prophet
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
-data_file = 'ML.csv'
+data_file = "ML.csv"
 df = pd.read_csv(data_file)
 
 date_column = df.columns[0]
-df[date_column] = pd.to_datetime(df[date_column], errors='coerce')
+df[date_column] = pd.to_datetime(df[date_column], errors="coerce")
 
-product_column = 'Product Name'
+product_column = "Product Name"
 products = df[product_column].unique().tolist()
 
-target_columns = [col for col in df.columns if 'Quantity' in col]
+target_columns = [col for col in df.columns if "Quantity" in col]
 if target_columns:
     target_column = target_columns[0]
 else:
@@ -44,12 +44,22 @@ for product in products:
     for col in product_df.columns:
         if col != date_column and col != product_column:
             if pd.api.types.is_numeric_dtype(product_df[col]):
-                if col in ['lag_1', 'lag_7', 'rolling_mean_7']:
-                    product_df[col] = product_df[col].fillna(method='ffill').fillna(method='bfill')
+                if col in ["lag_1", "lag_7", "rolling_mean_7"]:
+                    product_df[col] = (
+                        product_df[col]
+                        .fillna(method="ffill")
+                        .fillna(method="bfill")
+                    )
                 else:
-                    product_df[col] = product_df[col].fillna(product_df[col].median())
+                    product_df[col] = product_df[col].fillna(
+                        product_df[col].median()
+                    )
             else:
-                mode_value = product_df[col].mode()[0] if not product_df[col].mode().empty else "Unknown"
+                mode_value = (
+                    product_df[col].mode()[0]
+                    if not product_df[col].mode().empty
+                    else "Unknown"
+                )
                 product_df[col] = product_df[col].fillna(mode_value)
 
     if len(product_df) < 14:
@@ -57,24 +67,41 @@ for product in products:
         continue
 
     prophet_data = product_df[[date_column, target_column]].rename(
-        columns={date_column: 'ds', target_column: 'y'}
+        columns={date_column: "ds", target_column: "y"}
     )
 
-    regressors = ['day_of_week', 'is_weekend', 'day_of_month', 'day_of_year',
-                  'month', 'week_of_year', 'lag_1', 'lag_7', 'rolling_mean_7']
+    regressors = [
+        "day_of_week",
+        "is_weekend",
+        "day_of_month",
+        "day_of_year",
+        "month",
+        "week_of_year",
+        "lag_1",
+        "lag_7",
+        "rolling_mean_7",
+    ]
 
     for regressor in regressors:
         if regressor in product_df.columns:
             prophet_data[regressor] = product_df[regressor]
 
     if prophet_data.isnull().values.any():
-        print(f"Warning: Still found NaN values in {product}. Filling with column means.")
+        print(
+            f"Warning: Still found NaN values in {product}. Filling with column means."
+        )
         for col in prophet_data.columns:
             if prophet_data[col].isnull().any():
                 if pd.api.types.is_numeric_dtype(prophet_data[col]):
-                    prophet_data[col] = prophet_data[col].fillna(prophet_data[col].mean())
+                    prophet_data[col] = prophet_data[col].fillna(
+                        prophet_data[col].mean()
+                    )
                 else:
-                    prophet_data[col] = prophet_data[col].fillna(method='ffill').fillna(method='bfill')
+                    prophet_data[col] = (
+                        prophet_data[col]
+                        .fillna(method="ffill")
+                        .fillna(method="bfill")
+                    )
 
     train_size = int(len(prophet_data) * train_test_split)
     train_data = prophet_data.iloc[:train_size]
@@ -83,7 +110,11 @@ for product in products:
     model = Prophet()
 
     for regressor in regressors:
-        if regressor in prophet_data.columns and regressor != 'ds' and regressor != 'y':
+        if (
+            regressor in prophet_data.columns
+            and regressor != "ds"
+            and regressor != "y"
+        ):
             model.add_regressor(regressor)
 
     try:
@@ -95,52 +126,48 @@ for product in products:
     try:
         forecast = model.predict(test_data)
 
-        mae = mean_absolute_error(test_data['y'], forecast['yhat'])
-        rmse = np.sqrt(mean_squared_error(test_data['y'], forecast['yhat']))
-        r2 = r2_score(test_data['y'], forecast['yhat'])
+        mae = mean_absolute_error(test_data["y"], forecast["yhat"])
+        rmse = np.sqrt(mean_squared_error(test_data["y"], forecast["yhat"]))
+        r2 = r2_score(test_data["y"], forecast["yhat"])
 
         models[product] = model
-        metrics[product] = {'MAE': mae, 'RMSE': rmse, 'R2': r2}
+        metrics[product] = {"MAE": mae, "RMSE": rmse, "R2": r2}
     except Exception as e:
         print(f"Error predicting for {product}: {e}")
         continue
 
-    last_date = prophet_data['ds'].max()
-    future_dates = pd.date_range(start=last_date + pd.Timedelta(days=1), periods=forecast_horizon)
-    future = pd.DataFrame({'ds': future_dates})
+    last_date = prophet_data["ds"].max()
+    future_dates = pd.date_range(
+        start=last_date + pd.Timedelta(days=1), periods=forecast_horizon
+    )
+    future = pd.DataFrame({"ds": future_dates})
 
-    future['day_of_week'] = future['ds'].dt.dayofweek
-    future['is_weekend'] = future['ds'].dt.dayofweek >= 5
-    future['day_of_month'] = future['ds'].dt.day
-    future['day_of_year'] = future['ds'].dt.dayofyear
-    future['month'] = future['ds'].dt.month
-    future['week_of_year'] = future['ds'].dt.isocalendar().week
+    future["day_of_week"] = future["ds"].dt.dayofweek
+    future["is_weekend"] = future["ds"].dt.dayofweek >= 5
+    future["day_of_month"] = future["ds"].dt.day
+    future["day_of_year"] = future["ds"].dt.dayofyear
+    future["month"] = future["ds"].dt.month
+    future["week_of_year"] = future["ds"].dt.isocalendar().week
 
-    if 'lag_1' in prophet_data.columns:
-        last_value = prophet_data['y'].iloc[-1]
-        future['lag_1'] = np.append(
-            [last_value],
-            [np.nan] * (len(future) - 1)
-        )
+    if "lag_1" in prophet_data.columns:
+        last_value = prophet_data["y"].iloc[-1]
+        future["lag_1"] = np.append([last_value], [np.nan] * (len(future) - 1))
         for i in range(1, len(future)):
-            future.loc[i, 'lag_1'] = future.loc[i-1, 'lag_1']
+            future.loc[i, "lag_1"] = future.loc[i - 1, "lag_1"]
 
-    if 'lag_7' in prophet_data.columns:
-        last_values = prophet_data['y'].iloc[-7:].tolist()
+    if "lag_7" in prophet_data.columns:
+        last_values = prophet_data["y"].iloc[-7:].tolist()
         if len(last_values) < 7:
-            mean_value = prophet_data['y'].mean()
+            mean_value = prophet_data["y"].mean()
             last_values = [mean_value] * (7 - len(last_values)) + last_values
 
-        future['lag_7'] = np.append(
-            last_values,
-            [np.nan] * (len(future) - 7)
-        )
+        future["lag_7"] = np.append(last_values, [np.nan] * (len(future) - 7))
         for i in range(7, len(future)):
-            future.loc[i, 'lag_7'] = future.loc[i-7, 'lag_1']
+            future.loc[i, "lag_7"] = future.loc[i - 7, "lag_1"]
 
-    if 'rolling_mean_7' in prophet_data.columns:
-        rolling_mean = prophet_data['y'].iloc[-7:].mean()
-        future['rolling_mean_7'] = rolling_mean
+    if "rolling_mean_7" in prophet_data.columns:
+        rolling_mean = prophet_data["y"].iloc[-7:].mean()
+        future["rolling_mean_7"] = rolling_mean
 
     try:
         future_forecast = model.predict(future)
@@ -150,7 +177,7 @@ for product in products:
         continue
 
 if metrics:
-    metrics_df = pd.DataFrame.from_dict(metrics, orient='index')
+    metrics_df = pd.DataFrame.from_dict(metrics, orient="index")
     print("\nModel Performance Metrics:")
     print(metrics_df)
     print(f"Average MAE: {metrics_df['MAE'].mean():.2f}")
@@ -161,18 +188,21 @@ consolidated_forecast = pd.DataFrame()
 for product in products:
     if product in forecasts:
         product_forecast = forecasts[product]
-        temp_df = pd.DataFrame({
-            'Date': product_forecast['ds'],
-            'Product Name': product,
-            'Forecasted_Quantity': product_forecast['yhat'],
-            'Lower_Bound': product_forecast['yhat_lower'],
-            'Upper_Bound': product_forecast['yhat_upper']
-        })
+        temp_df = pd.DataFrame(
+            {
+                "Date": product_forecast["ds"],
+                "Product Name": product,
+                "Forecasted_Quantity": product_forecast["yhat"],
+                "Lower_Bound": product_forecast["yhat_lower"],
+                "Upper_Bound": product_forecast["yhat_upper"],
+            }
+        )
         consolidated_forecast = pd.concat([consolidated_forecast, temp_df])
 
-output_file = 'Forecast.csv'
+output_file = "Forecast.csv"
 if not consolidated_forecast.empty:
-    consolidated_forecast = consolidated_forecast.sort_values(['Date', 'Product Name'])
+    consolidated_forecast = consolidated_forecast.sort_values(
+        ["Date", "Product Name"]
+    )
     consolidated_forecast.to_csv(output_file, index=False)
     print(f"Forecast saved to '{output_file}'")
-
