@@ -1,10 +1,12 @@
-
 import pandas as pd
 import mlflow
 from statsmodels.tsa.stattools import adfuller
 
-mlflow.set_tracking_uri("file:///C:/Users/shrey/Projects/SupplyChainOptimization/ML_Models/experiments/mlruns")
+mlflow.set_tracking_uri(
+    "file:///C:/Users/shrey/Projects/SupplyChainOptimization/ML_Models/experiments/mlruns"
+)
 mlflow.set_experiment("SARIMA_Preprocessing")
+
 
 def load_data(csv_path, product, years):
     """Load time series data from a CSV file and aggregate by date to ensure unique index."""
@@ -13,30 +15,32 @@ def load_data(csv_path, product, years):
     cutoff_date = latest_date - pd.DateOffset(years=years)  # Compute cutoff
 
     df = df[df.index >= cutoff_date]  # Keep only recent data
-    
-    df = df[df['Product Name'] == product]
+
+    df = df[df["Product Name"] == product]
     # Group by Date and sum 'Total Quantity' to remove duplicates
     df = df.groupby(df.index)["Total Quantity"].sum().to_frame()
 
     # Ensure frequency is set (daily 'D' assumed here)
-    df = df.asfreq('D', fill_value=0)  # Fill missing dates with 0
+    df = df.asfreq("D", fill_value=0)  # Fill missing dates with 0
 
     return df
+
 
 def adf_test(series):
     """Performs Augmented Dickey-Fuller test and returns results."""
     result = adfuller(series.dropna())  # Drop NaNs before testing
     return result[0], result[1]  # ADF Statistic, p-value
 
-def preprocess_data(csv_path,years):
+
+def preprocess_data(csv_path, years):
     """
     Loads data from CSV, filters the target variable, performs ADF test, logs results, and returns the processed DataFrame.
     """
     mlflow.set_experiment("SARIMA_Preprocessing")
 
-    with mlflow.start_run(nested = True):
+    with mlflow.start_run(nested=True):
         # Load Data
-        df = load_data(csv_path, 'beef', years)
+        df = load_data(csv_path, "beef", years)
 
         # Perform ADF Test
         adf_stat, p_value = adf_test(df["Total Quantity"])
@@ -55,4 +59,3 @@ def preprocess_data(csv_path,years):
     mlflow.end_run()
 
     return df  # Return processed DataFrame for SARIMA
-
