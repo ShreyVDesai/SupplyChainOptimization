@@ -1,0 +1,53 @@
+name: Deploy Cloud Run Function
+
+on:
+  push:
+    branches:
+      - test_cloud_run
+
+jobs:
+  deploy:
+    name: Deploy to Cloud Run
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: primordial-veld-450618-n4
+          service_account_key: ${{ secrets.GCS_TO_SQL_CLOUD_RUN }}
+          export_default_credentials: true
+
+      - name: Upload Cloud Run Source Code to GCS
+        run: |
+          gsutil cp GCP_Scripts\\GCS_to_SQL\\gcs_to_sql.zip gs://utility_cloud_run_functions/
+
+      - name: Deploy Cloud Run Service
+        run: |
+          gcloud run deploy gcs-to-sql \
+            --source gs://utility_cloud_run_functions/gcs_to_sql.zip \
+            --region us-central1 \
+            --allow-unauthenticated \
+            --memory 512Mi \
+            --timeout 120s \
+            --entry-point main
+
+      - name: Grant IAM Permissions
+        run: |
+          gcloud projects add-iam-policy-binding primordial-veld-450618-n4 \
+            --member "serviceAccount:cloud-storage-trigger@primordial-veld-450618-n4.iam.gserviceaccount.com" \
+            --role "roles/eventarc.eventReceiver"
+
+      - name: Create Eventarc Trigger
+        run: |
+          gcloud eventarc triggers create gcs-to-sql-trigger \
+            --location us-central1 \
+            --destination-run-service gcs-to-sql \
+            --destination-run-region us-central1 \
+            --event-filters type=google.cloud.storage.object.v1.finalized \
+            --event-filters bucket=fully-processed-data \
+            --service-account cloud-storage-trigger@primordial-veld-450618-n4.iam.gserviceaccount.com
+
