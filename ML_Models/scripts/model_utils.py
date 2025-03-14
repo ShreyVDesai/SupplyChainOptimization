@@ -42,7 +42,7 @@ def extracting_time_series_and_lagged_features(df: pd.DataFrame) -> pd.DataFrame
         # Only proceed with time series features if we have Total Quantity
         if "Total Quantity" in df.columns:
             # Sort by (Product Name, Date) for coherent time series ordering
-            df = df.sort_values(["Product Name", "Date"])
+            # df = df.sort_values(["Product Name", "Date"])
 
             df["lag_1"] = df.groupby("Product Name")["Total Quantity"].shift(1)
             df["lag_7"] = df.groupby("Product Name")["Total Quantity"].shift(7)
