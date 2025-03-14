@@ -634,7 +634,7 @@ def aggregate_daily_products(df: pl.DataFrame) -> pl.DataFrame:
     df = df.with_columns(pl.col("Date").dt.date().alias("Date"))
     return df.group_by(["Date", "Product Name"]).agg(
         pl.col("Quantity").sum().alias("Total Quantity")
-    )
+    ).sort(["Date", "Product Name"])
 
 
 def remove_duplicate_records(df: pl.DataFrame) -> pl.DataFrame:
@@ -741,10 +741,6 @@ def process_file(
         logger.info("Aggregating dataset to daily level...")
         df = aggregate_daily_products(df)
 
-        # Sort data
-        if "Total Quantity" in df.columns:
-            # Sort by (Product Name, Date) for coherent time series ordering
-            df = df.sort_values(["Product Name", "Date"])
 
         # Generate a consistent name for the output file (without timestamp)
         # This ensures we overwrite the existing file instead of creating a new one

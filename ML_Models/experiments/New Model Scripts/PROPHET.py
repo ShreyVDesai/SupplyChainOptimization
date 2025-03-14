@@ -27,17 +27,6 @@ import sys
 def load_and_preprocess_data(file_path):
     df = pd.read_csv(file_path)
 
-    # Handle missing values
-    numeric_cols = df.select_dtypes(include=[np.number]).columns
-    for col in numeric_cols:
-        if df[col].isnull().sum() > 0:
-            df[col] = df[col].fillna(df[col].median())
-
-    categorical_cols = df.select_dtypes(include=["object"]).columns
-    for col in categorical_cols:
-        if col != "Date" and df[col].isnull().sum() > 0:
-            df[col] = df[col].fillna(df[col].mode()[0])
-
     # Handle Date column
     try:
         df["Date"] = pd.to_datetime(df["Date"], format="mixed", dayfirst=False)
@@ -69,8 +58,6 @@ def train_prophet_model(product_data):
     prophet_df = product_data.rename(
         columns={"Date": "ds", "Total Quantity": "y"}
     )
-
-
 
     regressors = [
         "day_of_week",
