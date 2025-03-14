@@ -14,11 +14,137 @@ logging.basicConfig(level=logging.INFO)
 # -----------------------
 # 1. HELPER FUNCTIONS
 # -----------------------
-def load_model(pickle_path: str):
-    """Loads a pickle file and returns the model object."""
-    with open(pickle_path, 'rb') as f:
-        model = pickle.load(f)
-    return model
+
+try:
+    from logger import logger
+except ImportError:  # For testing purposes
+    from Data_Pipeline.scripts.logger import logger
+
+import io
+import smtplib
+from email.message import EmailMessage
+
+from dotenv import load_dotenv
+from google.cloud import storage
+
+load_dotenv()
+
+
+# Set up GCP credentials path
+def setup_gcp_credentials():
+    """
+    Sets up the GCP credentials by setting the GOOGLE_APPLICATION_CREDENTIALS environment variable
+    to point to the correct location of the GCP key file.
+    """
+    # The GCP key is always in the mounted secret directory
+    # gcp_key_path = "/app/secret/gcp-key.json" use when dockerizing
+    gcp_key_path = "../../secret/gcp-key.json"
+
+    if os.environ.get("GOOGLE_APPLICATION_CREDENTIALS") != gcp_key_path:
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = gcp_key_path
+        logger.info(f"Set GCP credentials path to: {gcp_key_path}")
+    else:
+        logger.info(f"Using existing GCP credentials from: {gcp_key_path}")
+
+
+def load_model(bucket_name: str, file_name: str):
+    """
+    Loads a pickle file (typically a model) from a GCP bucket and returns the loaded object.
+
+    Args:
+        bucket_name (str): The name of the Google Cloud Storage bucket.
+        file_name (str): The name of the pickle file in the bucket.
+
+    Returns:
+        The Python object loaded from the pickle file.
+
+    Raises:
+        Exception: If an error occurs during the download or unpickling process.
+    """
+    setup_gcp_credentials()
+
+    try:
+        bucket = storage.Client().get_bucket(bucket_name)
+        blob = bucket.blob(file_name)
+        blob_content = blob.download_as_string()
+
+        file_extension = file_name.split('.')[-1].lower()
+        if file_extension not in ['pkl', 'pickle']:
+            logger.error(f"Unsupported file type for pickle: {file_extension}")
+            raise ValueError(f"Unsupported file type: {file_extension}")
+
+        model = pickle.load(io.BytesIO(blob_content))
+        logger.info(f"'{file_name}' from bucket '{bucket_name}' successfully loaded as pickle.")
+        return model
+
+    except Exception as e:
+        logger.error(
+            f"Error occurred while loading pickle file from bucket '{bucket_name}', file '{file_name}': {e}"
+        )
+        raise
+
+
+
+def send_email(
+    emailid,
+    body,
+    subject="Automated Email",
+    smtp_server="smtp.gmail.com",
+    smtp_port=587,
+    sender="talksick530@gmail.com",
+    username="talksick530@gmail.com",
+    password="celm dfaq qllh ymjv",
+    attachment=None,
+):
+    """
+    Sends an email to the given email address with a message body.
+    If an attachment (pandas DataFrame) is provided, it will be converted to CSV and attached.
+
+    Parameters:
+      emailid (str): Recipient email address.
+      body (str): Email text content.
+      subject (str): Subject of the email.
+      smtp_server (str): SMTP server address.
+      smtp_port (int): SMTP server port.
+      sender (str): Sender's email address.
+      username (str): Username for SMTP login.
+      password (str): Password for SMTP login.
+      attachment (pd.DataFrame, optional): If provided, attached as a CSV file.
+    """
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = sender
+    msg["To"] = emailid
+    msg.set_content(body)
+
+    # If an attachment is provided and it's a DataFrame, attach it as a CSV
+    # file.
+    if attachment is not None and isinstance(attachment, pd.DataFrame):
+        csv_buffer = io.StringIO()
+        attachment.to_csv(csv_buffer, index=False)
+        # Encode the CSV content to bytes to avoid calling set_text_content.
+        csv_bytes = csv_buffer.getvalue().encode("utf-8")
+        msg.add_attachment(
+            csv_bytes, maintype="text", subtype="csv", filename="anomalies.csv"
+        )
+
+    try:
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            server.starttls()
+            if username and password:
+                server.login(username, password)
+            server.send_message(msg)
+        logger.info(f"Email sent successfully to: {emailid}")
+    except Exception as e:
+        logger.error(f"Failed to send email: {e}")
+        raise
+
+# def load_model(pickle_path: str):
+#  
+#     """Loads a pickle file and returns the model object. Works in local dev"""
+#     with open(pickle_path, 'rb') as f:
+#         model = pickle.load(f)
+#     return model
 
 def get_latest_data_from_mysql(host, user, password, database, query):
     """Connects to MySQL, runs a query, returns a DataFrame of the results."""
