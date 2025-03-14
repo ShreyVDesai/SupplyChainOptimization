@@ -7,7 +7,7 @@ preprocessing, and post-validation.
 
 # Import from the same directory for local/unit test usage
 from .logger import logger
-from .post_validation import post_validation
+from .post_validation import main as post_validation_main
 from .pre_validation import main as pre_validation_main
 from .preprocessing import main as preprocessing_main
 from .utils import (
@@ -26,5 +26,5 @@ __all__ = [
     "upload_to_gcs",
     "pre_validation_main",
     "preprocessing_main",
-    "post_validation",
+    "post_validation_main",
 ]

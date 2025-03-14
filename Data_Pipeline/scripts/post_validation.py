@@ -279,7 +279,7 @@ def generate_numeric_stats(
     return grouped_stats
 
 
-def post_validation(df: pl.DataFrame, file_name: str) -> bool:
+def main(df: pl.DataFrame, file_name: str) -> bool:
     """
     Main function to run the entire workflow.
     This includes fetching the file from GCP, loading data, validating data,

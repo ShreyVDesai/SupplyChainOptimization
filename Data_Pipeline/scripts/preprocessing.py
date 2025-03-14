@@ -6,7 +6,7 @@ import polars as pl
 
 try:
     from logger import logger
-    from post_validation import post_validation
+    from post_validation import main
     from utils import (
         delete_blob_from_bucket,
         list_bucket_blobs,
@@ -23,7 +23,7 @@ except ImportError:  # For testing purposes
         delete_blob_from_bucket,
         send_anomaly_alert,
     )
-    from Data_Pipeline.scripts.post_validation import post_validation
+    from Data_Pipeline.scripts.post_validation import main
 
 import argparse
 import os
@@ -780,7 +780,7 @@ def process_file(
         logger.info("Performing Post Validation...")
         # Also use a consistent name for statistics files
         stats_blob_name = f"stats_{base_name}.json"
-        validation_passed = post_validation(df, stats_blob_name)
+        validation_passed = main(df, stats_blob_name)
 
         if validation_passed:
             logger.info("Post-validation passed successfully.")
