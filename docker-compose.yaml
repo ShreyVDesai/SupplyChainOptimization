@@ -18,18 +18,19 @@ x-airflow-common:
     AIRFLOW__CELERY__BROKER_CONNECTION_RETRY_ON_STARTUP: 'true'
     # _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-apache-airflow-providers-google>=8.0.0,<9.0.0 google-cloud-storage>=1.30.0,<2.0.0 docker>=6.1.0 apache-airflow-providers-docker>=3.7.0}
     GOOGLE_APPLICATION_CREDENTIALS: /opt/airflow/gcp-key.json
-    PYTHONUNBUFFERED: 1
 
   volumes: &airflow-common-volumes
-    - ./dags:/opt/airflow/dags
-    - ./logs:/opt/airflow/logs
-    - ./plugins:/opt/airflow/plugins
-    - ./Data_Pipeline/scripts:/app/scripts
-    - ./secret/gcp-key.json:/opt/airflow/gcp-key.json
+    - /opt/airflow/dags:/opt/airflow/dags
+    - /opt/airflow/logs:/opt/airflow/logs
+    - /opt/airflow/plugins:/opt/airflow/plugins
+    - /opt/airflow/Data_Pipeline/scripts:/app/scripts
+    # - ./secret/gcp-key.json:/opt/airflow/gcp-key.json
+    # - /opt/airflow/gcp-key.json:/opt/airflow/gcp-key.json
+    - /opt/airflow/gcp-key.json:/opt/airflow/gcp-key.json:ro
     - /var/run/docker.sock:/var/run/docker.sock
-  user: "${AIRFLOW_UID:-50000}:${DOCKER_GID:-80}"
+  user: "${AIRFLOW_UID:-50000}:${DOCKER_GID:-0}"
   group_add:
-    - "${DOCKER_GID:-80}"
+    - "${DOCKER_GID:-0}"
   depends_on: &airflow-common-depends-on
     redis:
       condition: service_healthy
@@ -38,14 +39,15 @@ x-airflow-common:
 
 services:
   data-pipeline:
-    build:
-      context: ./Data_Pipeline
-      dockerfile: Dockerfile
-    platform: linux/amd64
+    # build:
+    #   context: ./Data_Pipeline
+    #   dockerfile: Dockerfile
+    image: us-central1-docker.pkg.dev/primordial-veld-450618-n4/airflow-docker-image/data-pipeline:latest
+    # platform: linux/arm64
     container_name: data-pipeline-container
     volumes:
       - ./Data_Pipeline/scripts:/app/scripts
-      - ./secret:/app/secret
+      - /opt/airflow/gcp-key.json:/app/secret/gcp-key.json:ro
     environment:
       GOOGLE_APPLICATION_CREDENTIALS: /app/secret/gcp-key.json
     working_dir: /app/scripts
@@ -56,7 +58,7 @@ services:
 
   postgres:
     image: postgres:15
-    platform: linux/amd64
+    # platform: linux/arm64
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -71,7 +73,7 @@ services:
 
   redis:
     image: redis:latest
-    platform: linux/amd64
+    # platform: linux/arm64
     ports:
       - 6379:6379
     healthcheck:
@@ -135,26 +137,10 @@ services:
     entrypoint: /bin/bash
     command: >
       -c "
-      set -e;
-      echo 'Starting Airflow initialization...';
-      echo 'Waiting for PostgreSQL...';
-      until pg_isready -h postgres -p 5432 -U airflow; do sleep 5; echo 'Still waiting for PostgreSQL...'; done;
-      echo 'PostgreSQL is ready!';
-      echo 'Checking GCP key file...';
-      if [ ! -s /opt/airflow/gcp-key.json ]; then echo 'ERROR: GCP key file is empty or missing!'; exit 1; fi;
-      echo 'GCP key file exists and has content.';
-      echo 'Running Airflow DB upgrade...';
-      airflow db upgrade;
-      echo 'Waiting for PostgreSQL again before migration...';
-      wait-for-it postgres:5432 -t 60 -- echo 'PostgreSQL is ready for migration';
-      echo 'Running Airflow DB migrate...';
-      airflow db migrate;
-      echo 'Creating Airflow admin user...';
-      airflow users create --username ${AIRFLOW_ADMIN_USERNAME:-admin} --password ${AIRFLOW_ADMIN_PASSWORD:-admin} --firstname ${AIRFLOW_ADMIN_FIRSTNAME:-Anonymous} --lastname ${AIRFLOW_ADMIN_LASTNAME:-Admin} --role Admin --email ${AIRFLOW_ADMIN_EMAIL:-admin@example.com};
-      echo 'Setting up Google Cloud connection...';
-      airflow connections delete google_cloud_default || true;
-      airflow connections add 'google_cloud_default' --conn-type 'google_cloud_platform' --conn-extra '{\"extra__google_cloud_platform__key_path\": \"/opt/airflow/gcp-key.json\"}';
-      echo 'Airflow initialization completed successfully!';
+      airflow db migrate &&
+      airflow users create --username ${AIRFLOW_ADMIN_USERNAME:-admin} --password ${AIRFLOW_ADMIN_PASSWORD:-admin} --firstname ${AIRFLOW_ADMIN_FIRSTNAME:-Anonymous} --lastname ${AIRFLOW_ADMIN_LASTNAME:-Admin} --role Admin --email ${AIRFLOW_ADMIN_EMAIL:-admin@example.com} &&
+      airflow connections delete google_cloud_default || true &&
+      airflow connections add 'google_cloud_default' --conn-type 'google_cloud_platform' --conn-extra '{\"extra__google_cloud_platform__key_path\": \"/opt/airflow/gcp-key.json\"}'
       "
     environment:
       <<: *airflow-common-env
@@ -166,8 +152,6 @@ services:
       _AIRFLOW_WWW_USER_LASTNAME: ${AIRFLOW_ADMIN_LASTNAME:-Admin}
       _AIRFLOW_WWW_USER_EMAIL: ${AIRFLOW_ADMIN_EMAIL:-admin@example.com}
     depends_on:
-      postgres:
-        condition: service_healthy
       <<: *airflow-common-depends-on
 
   flower:
