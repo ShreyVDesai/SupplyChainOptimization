@@ -275,25 +275,32 @@ def main():
     alpha_drift = float(os.getenv("ALPHA_DRIFT", 0.05))          # significance level for K-S tests
 
     # # 2. Fetch new data from MySQL (past 7 days)
+    
     query_new_data = """
+        SELECT 
+            date, product_name, total_quantity
+        FROM Sales 
+        WHERE date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+          AND date < DATE_SUB(CURDATE(), INTERVAL 14 DAY)
+        ORDER BY date;
+    """
+    new_df = get_latest_data_from_cloud_sql(
+    instance_connection_string=instance_conn_str,
+    user=os.getenv("MYSQL_USER"),
+    password=os.getenv("MYSQL_PASSWORD"),
+    database=os.getenv("MYSQL_DATABASE"),
+    query=query_new_data
+)
+    
+    # 3. [Optional] Fetch reference data from MySQL (e.g., for drift detection)
+       For example, reference might be the training dataset or a stable historical window.
+    query_ref_data = """
         SELECT 
             date, product_name, total_quantity
         FROM Sales 
         WHERE date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
         ORDER BY date;
     """
-    # new_df = get_latest_data_from_mysql(host, user, password, database, query_new_data)
-    
-    # 3. [Optional] Fetch reference data from MySQL (e.g., for drift detection)
-    #    For example, reference might be the training dataset or a stable historical window.
-    # query_ref_data = """
-    #     SELECT 
-    #         date, feature1, feature2, actual_value
-    #     FROM your_table 
-    #     WHERE date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
-    #       AND date < CURDATE()
-    #     ORDER BY date;
-    # """
     ref_df = get_latest_data_from_cloud_sql(
     instance_connection_string=instance_conn_str,
     user=os.getenv("MYSQL_USER"),
@@ -304,11 +311,12 @@ def main():
 
     # 4. Load current model
     logging.info(f"Loading model from {model_pickle_path}...")
-    current_model = load_model(,'model.pkl')
+    current_model = load_model('trained-model-1','model.pkl')
 
     # 5. Preprocess new data (minimal example)
-    new_features = new_df[["feature1", "feature2"]]  # adapt as needed
-    y_true_new = new_df["actual_value"]
+    # new_features = new_df[['date', 'product_name']]  # adapt as needed
+    new_features = new_df[['date']]
+    y_true_new = new_df["total_quantity"]
     
     # 6. Generate predictions on new data
     y_pred_new = current_model.predict(new_features)
@@ -333,7 +341,7 @@ def main():
     #    Compare columns in reference data vs new data
     data_drift_detected, drifted_cols = check_data_drift(
         ref_df, new_df, 
-        numeric_cols=["feature1", "feature2", "actual_value"],  # or None to auto-detect
+        numeric_cols=None,  # or None to auto-detect
         alpha=alpha_drift
     )
 
@@ -344,8 +352,8 @@ def main():
     #     Compare residual distributions of ref vs new
     if not ref_df.empty:
         # Predict on reference data to get errors
-        ref_features = ref_df[["feature1", "feature2"]]
-        y_true_ref = ref_df["actual_value"]
+        ref_features = ref_df[["date", "product_name"]]
+        y_true_ref = ref_df["total_quantity"]
         y_pred_ref = current_model.predict(ref_features)
 
         ref_errors = y_true_ref - y_pred_ref
@@ -361,28 +369,28 @@ def main():
     #     If metric thresholds are breached or drift is detected, trigger retraining
     if degraded or data_drift_detected or (not ref_df.empty and concept_drift):
         logging.warning("Triggering retraining due to performance or drift issues...")
-        trigger_retraining()  # implement your own function or logic
+        # trigger_retraining()  # implement your own function or logic
     else:
         logging.info("Model performance and data distribution are within expected ranges.")
 
 
-def trigger_retraining():
-    """
-    You can implement any mechanism here to trigger your training pipeline:
-      - Call a Cloud Function endpoint.
-      - Publish a Pub/Sub message that triggers the training job.
-      - Use the Vertex AI Python SDK to start a training pipeline or custom job.
-    """
-    logging.info("Retraining triggered... ")
-    def trigger_retraining_vertex_pipeline():
-        aiplatform.init(project="your_project_id", location="us-central1")
-    # If you have a pipeline already deployed:
-    pipeline_job = aiplatform.PipelineJob(
-        display_name="retraining-pipeline",
-        template_path="gs://path-to-your-pipeline-spec.json",
-        parameter_values={}
-    )
-    pipeline_job.run()
+# def trigger_retraining():
+#     """
+#     You can implement any mechanism here to trigger your training pipeline:
+#       - Call a Cloud Function endpoint.
+#       - Publish a Pub/Sub message that triggers the training job.
+#       - Use the Vertex AI Python SDK to start a training pipeline or custom job.
+#     """
+#     logging.info("Retraining triggered... ")
+#     def trigger_retraining_vertex_pipeline():
+#         aiplatform.init(project="your_project_id", location="us-central1")
+#     # If you have a pipeline already deployed:
+#     pipeline_job = aiplatform.PipelineJob(
+#         display_name="retraining-pipeline",
+#         template_path="gs://path-to-your-pipeline-spec.json",
+#         parameter_values={}
+#     )
+#     pipeline_job.run()
 
 if __name__ == "__main__":
     main()
