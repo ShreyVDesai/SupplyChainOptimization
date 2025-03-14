@@ -741,6 +741,11 @@ def process_file(
         logger.info("Aggregating dataset to daily level...")
         df = aggregate_daily_products(df)
 
+        # Sort data
+        if "Total Quantity" in df.columns:
+            # Sort by (Product Name, Date) for coherent time series ordering
+            df = df.sort_values(["Product Name", "Date"])
+
         # Generate a consistent name for the output file (without timestamp)
         # This ensures we overwrite the existing file instead of creating a new one
         base_name = os.path.splitext(os.path.basename(blob_name))[0]

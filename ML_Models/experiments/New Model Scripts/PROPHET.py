@@ -11,6 +11,8 @@ Original file is located at
 # PROPHET: 7-Day Demand Forecast per Product with RMSE & MAPE, and overall Average RMSE & MAPE
 
 import numpy as np
+import pandas as pd
+from ML_Models.scripts.model_utils import extracting_time_series_and_lagged_features
 from prophet import Prophet
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import train_test_split
@@ -67,6 +69,8 @@ def train_prophet_model(product_data):
     prophet_df = product_data.rename(
         columns={"Date": "ds", "Total Quantity": "y"}
     )
+
+
 
     regressors = [
         "day_of_week",
@@ -165,6 +169,9 @@ def main():
         suppress_logs()
 
         df = load_and_preprocess_data("ML.csv")
+
+        # Creating lagged features.
+        df = extracting_time_series_and_lagged_features(df)
 
         products = df["Product Name"].unique()
 
