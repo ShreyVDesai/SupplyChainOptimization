@@ -7,9 +7,6 @@ import sys
 import unittest
 from unittest.mock import patch, MagicMock, mock_open
 
-# Add the parent directory to the path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 # Import the module to test
 from scripts.dvc_versioning import (
     run_command,
