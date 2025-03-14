@@ -230,11 +230,39 @@ def check_concept_drift(ref_errors, new_errors, alpha=0.05):
         return False
     return ks_test_drift(ref_errors, new_errors, alpha)
 
+def get_latest_data_from_cloud_sql_tcp(host, port, user, password, database, query):
+    """
+    Connects to a Google Cloud SQL instance using TCP (public IP or Cloud SQL Proxy)
+    and returns query results as a DataFrame.
+    
+    Args:
+        host (str): The Cloud SQL instance IP address or localhost (if using Cloud SQL Proxy).
+        port (int): The port number (typically 3306 for MySQL).
+        user (str): Database username.
+        password (str): Database password.
+        database (str): Database name.
+        query (str): SQL query to execute.
+        
+    Returns:
+        pd.DataFrame: Query results.
+    """
+    conn = mysql.connector.connect(
+        host=host,
+        port=port,
+        user=user,
+        password=password,
+        database=database
+    )
+    df = pd.read_sql(query, conn)
+    conn.close()
+    return df
+
 # -----------------------
 # 3. MAIN SCRIPT
 # -----------------------
 def main():
     # 1. Load configuration from environment variables or config file
+    instance_conn_str = "primordial-veld-450618-n4:us-central1:mlops-sql"
     host = os.getenv("MYSQL_HOST")
     user = os.getenv("MYSQL_USER")
     password = os.getenv("MYSQL_PASSWORD")
@@ -246,31 +274,37 @@ def main():
     mape_threshold = float(os.getenv("MAPE_THRESHOLD", 50.0))     # in percentage
     alpha_drift = float(os.getenv("ALPHA_DRIFT", 0.05))          # significance level for K-S tests
 
-    # 2. Fetch new data from MySQL (past 7 days)
+    # # 2. Fetch new data from MySQL (past 7 days)
     query_new_data = """
         SELECT 
-            date, feature1, feature2, actual_value 
-        FROM your_table 
+            date, product_name, total_quantity
+        FROM Sales 
         WHERE date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
         ORDER BY date;
     """
-    new_df = get_latest_data_from_mysql(host, user, password, database, query_new_data)
+    # new_df = get_latest_data_from_mysql(host, user, password, database, query_new_data)
     
     # 3. [Optional] Fetch reference data from MySQL (e.g., for drift detection)
     #    For example, reference might be the training dataset or a stable historical window.
-    query_ref_data = """
-        SELECT 
-            date, feature1, feature2, actual_value
-        FROM your_table 
-        WHERE date >= DATE_SUB(CURDATE(), INTERVAL 14 DAY)
-          AND date < DATE_SUB(CURDATE(), INTERVAL 7 DAY)
-        ORDER BY date;
-    """
-    ref_df = get_latest_data_from_mysql(host, user, password, database, query_ref_data)
+    # query_ref_data = """
+    #     SELECT 
+    #         date, feature1, feature2, actual_value
+    #     FROM your_table 
+    #     WHERE date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+    #       AND date < CURDATE()
+    #     ORDER BY date;
+    # """
+    ref_df = get_latest_data_from_cloud_sql(
+    instance_connection_string=instance_conn_str,
+    user=os.getenv("MYSQL_USER"),
+    password=os.getenv("MYSQL_PASSWORD"),
+    database=os.getenv("MYSQL_DATABASE"),
+    query=query_ref_data
+)
 
     # 4. Load current model
     logging.info(f"Loading model from {model_pickle_path}...")
-    current_model = load_model(model_pickle_path)
+    current_model = load_model(,'model.pkl')
 
     # 5. Preprocess new data (minimal example)
     new_features = new_df[["feature1", "feature2"]]  # adapt as needed

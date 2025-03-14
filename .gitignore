@@ -10,3 +10,5 @@ __pycache__/
 /data
 /logs
 temp_env/
+
+ML_Models/.env
