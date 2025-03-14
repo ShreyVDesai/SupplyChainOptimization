@@ -30,7 +30,6 @@ import os
 from typing import Dict, Tuple
 
 from dotenv import load_dotenv
-from google.cloud import storage
 
 load_dotenv()
 
@@ -655,95 +654,6 @@ def remove_duplicate_records(df: pl.DataFrame) -> pl.DataFrame:
         raise
 
 
-def extracting_time_series_and_lagged_features(
-    df: pl.DataFrame,
-) -> pl.DataFrame:
-    """
-    For each row, computes additional time-series features:
-      - day_of_week, is_weekend, etc.
-      - lag_1, lag_7, rolling_mean_7 of 'Total Quantity'
-    """
-    try:
-        if df.is_empty():
-            logger.warning(
-                "Input DataFrame is empty, returning an empty schema."
-            )
-            return pl.DataFrame(
-                schema={
-                    "Date": pl.Date,
-                    "Product Name": pl.Utf8,
-                    "Total Quantity": pl.Float64,
-                    "day_of_week": pl.Int32,
-                    "is_weekend": pl.Int8,
-                    "day_of_month": pl.Int32,
-                    "day_of_year": pl.Int32,
-                    "month": pl.Int32,
-                    "week_of_year": pl.Int32,
-                    "lag_1": pl.Float64,
-                    "lag_7": pl.Float64,
-                    "rolling_mean_7": pl.Float64,
-                }
-            )
-
-        # Ensure Date column is datetime type for feature extraction
-        if "Date" in df.columns:
-            df = df.with_columns(pl.col("Date").cast(pl.Datetime))
-
-            df = df.with_columns(
-                pl.col("Date").dt.weekday().alias("day_of_week"),
-                (pl.col("Date").dt.weekday() > 5)
-                .cast(pl.Int8)
-                .alias("is_weekend"),
-                pl.col("Date").dt.day().alias("day_of_month"),
-                pl.col("Date").dt.ordinal_day().alias("day_of_year"),
-                pl.col("Date").dt.month().alias("month"),
-                pl.col("Date").dt.week().alias("week_of_year"),
-            )
-        else:
-            logger.warning(
-                "Date column not found, skipping datetime feature extraction"
-            )
-            return df
-    except Exception as e:
-        logger.error(
-            f"Error extracting datetime features during feature engineering: {e}"
-        )
-        raise e
-
-    try:
-        # Only proceed with time series features if we have Total Quantity
-        if "Total Quantity" in df.columns:
-            # Sort by (Product Name, Date) for coherent time series ordering
-            df = df.sort(["Product Name", "Date"]).with_columns(
-                [
-                    pl.col("Total Quantity")
-                    .shift(1)
-                    .over("Product Name")
-                    .alias("lag_1"),
-                    pl.col("Total Quantity")
-                    .shift(7)
-                    .over("Product Name")
-                    .alias("lag_7"),
-                    pl.col("Total Quantity")
-                    .rolling_mean(window_size=7)
-                    .over("Product Name")
-                    .alias("rolling_mean_7"),
-                ]
-            )
-        else:
-            logger.warning(
-                "Total Quantity column not found, skipping lagged features"
-            )
-            raise KeyError
-    except Exception as e:
-        logger.error(
-            f"Error calculating lagged features during feature engineering: {e}"
-        )
-        raise e
-
-    return df
-
-
 def process_file(
     source_bucket_name: str,
     blob_name: str,
@@ -830,9 +740,6 @@ def process_file(
 
         logger.info("Aggregating dataset to daily level...")
         df = aggregate_daily_products(df)
-
-        logger.info("Performing Feature Engineering on Aggregated Data...")
-        df = extracting_time_series_and_lagged_features(df)
 
         # Generate a consistent name for the output file (without timestamp)
         # This ensures we overwrite the existing file instead of creating a new one
