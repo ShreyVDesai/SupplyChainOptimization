@@ -26,7 +26,7 @@ jobs:
 
       - name: Upload Cloud Run Source Code to GCS
         run: |
-          gsutil cp GCP_Scripts\\GCS_to_SQL\\gcs_to_sql.zip gs://utility_cloud_run_functions/
+          gsutil cp GCP_Scripts/GCS_to_SQL/gcs_to_sql.zip gs://utility_cloud_run_functions/
 
       - name: Deploy Cloud Run Service
         run: |
