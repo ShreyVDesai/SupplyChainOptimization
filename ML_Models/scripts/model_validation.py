@@ -166,31 +166,35 @@ def send_email(
 #     conn.close()
 #     return df
 
+
 def compute_rmse(y_true, y_pred):
     """Computes Root Mean Squared Error."""
     return math.sqrt(mean_squared_error(y_true, y_pred))
+
 
 def compute_mape(y_true, y_pred):
     """
     Computes Mean Absolute Percentage Error.
     y_true: array-like of actual values
     y_pred: array-like of predicted values
-    Returns MAPE in percentage. 
+    Returns MAPE in percentage.
     Ignores zero or near-zero actual values to avoid division-by-zero errors.
     """
     y_true, y_pred = np.array(y_true), np.array(y_pred)
     mask = y_true != 0
     return np.mean(np.abs((y_true[mask] - y_pred[mask]) / y_true[mask])) * 100
 
+
 def ks_test_drift(ref_data, new_data, alpha=0.05):
     """
     Performs the Kolmogorov–Smirnov test to detect distribution drift.
     Returns True if drift is detected, else False.
-    
+
     alpha (float): significance level. If p-value < alpha => drift.
     """
     stat, p_value = ks_2samp(ref_data, new_data)
     return p_value < alpha  # True => drift
+
 
 # -----------------------
 # 2. DRIFT DETECTION
@@ -207,30 +211,33 @@ def check_data_drift(ref_df, new_df, numeric_cols=None, alpha=0.05):
         - list_of_drifts: list of columns that show drift
     """
     if numeric_cols is None:
-        numeric_cols = ref_df.select_dtypes(include=[np.number]).columns.tolist()
-    
+        numeric_cols = ref_df.select_dtypes(
+            include=[np.number]
+        ).columns.tolist()
+
     drift_detected_cols = []
     for col in numeric_cols:
         if col not in new_df.columns:
             continue  # skip if col missing in new_df
         ref_values = ref_df[col].dropna()
         new_values = new_df[col].dropna()
-        
+
         if len(ref_values) < 2 or len(new_values) < 2:
             continue  # skip if not enough data for test
-        
+
         drift_found = ks_test_drift(ref_values, new_values, alpha)
         if drift_found:
             drift_detected_cols.append(col)
-    
+
     return (len(drift_detected_cols) > 0, drift_detected_cols)
+
 
 def check_concept_drift(ref_errors, new_errors, alpha=0.05):
     """
-    Performs concept drift detection by comparing the distribution of 
+    Performs concept drift detection by comparing the distribution of
     residuals (errors) between reference data and new data.
     If the error distributions differ significantly (K-S test), we assume concept drift.
-    
+
     alpha (float): significance level. If p-value < alpha => concept drift.
     Returns True if concept drift is detected, else False.
     """
@@ -289,7 +296,7 @@ def main():
     password = os.getenv("MYSQL_PASSWORD")
     database = os.getenv("MYSQL_DATABASE")
     model_pickle_path = os.getenv("MODEL_PICKLE_PATH", "model.pkl")
-    
+
     # Performance thresholds (example)
     rmse_threshold = float(os.getenv("RMSE_THRESHOLD", 20.0))
     mape_threshold = float(os.getenv("MAPE_THRESHOLD", 50.0))     # in percentage
@@ -423,7 +430,9 @@ def main():
         logging.warning("Triggering retraining due to performance or drift issues...")
         # trigger_retraining()  # Implement your retraining logic here
     else:
-        logging.info("Model performance and data distribution are within expected ranges.")
+        logging.info(
+            "Model performance and data distribution are within expected ranges."
+        )
 
 if __name__ == "__main__":
     main()

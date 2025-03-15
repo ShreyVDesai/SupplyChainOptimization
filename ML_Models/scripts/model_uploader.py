@@ -10,8 +10,11 @@ except ImportError:  # Fallback if `logger` not found
 
 load_dotenv()
 
-def upload_pickle_to_gcs(local_pickle_path: str, bucket_name: str, destination_blob_name: str) -> None:
-    
+
+def upload_pickle_to_gcs(
+    local_pickle_path: str, bucket_name: str, destination_blob_name: str
+) -> None:
+
     # Uploads a local pickle file to Google Cloud Storage (GCS).
 
     # Args:
@@ -21,7 +24,7 @@ def upload_pickle_to_gcs(local_pickle_path: str, bucket_name: str, destination_b
 
     # Raises:
     #     Exception: If any error occurs during the process.
-    
+
     # If you're using a custom method to set up local credentials, uncomment
     # your existing function if needed.
     # setup_gcp_credentials()
@@ -30,7 +33,7 @@ def upload_pickle_to_gcs(local_pickle_path: str, bucket_name: str, destination_b
         logger.info(
             "Starting upload of pickle file to GCS. Bucket: %s, Blob: %s",
             bucket_name,
-            destination_blob_name
+            destination_blob_name,
         )
 
         # Initialize a storage client
@@ -39,13 +42,19 @@ def upload_pickle_to_gcs(local_pickle_path: str, bucket_name: str, destination_b
         blob = bucket.blob(destination_blob_name)
 
         # Option A: Upload from local file path
-        blob.upload_from_filename(local_pickle_path, content_type="application/octet-stream")
+        blob.upload_from_filename(
+            local_pickle_path, content_type="application/octet-stream"
+        )
 
         # If you had the pickle file in memory, you could do:
         # with open(local_pickle_path, "rb") as f:
         #     blob.upload_from_file(f, content_type="application/octet-stream")
 
-        logger.info("Pickle file uploaded successfully to gs://%s/%s", bucket_name, destination_blob_name)
+        logger.info(
+            "Pickle file uploaded successfully to gs://%s/%s",
+            bucket_name,
+            destination_blob_name,
+        )
 
     except Exception as e:
         logger.error("Error uploading pickle file to GCS. Error: %s", e)

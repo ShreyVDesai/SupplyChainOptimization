@@ -20,15 +20,17 @@ x-airflow-common:
     GOOGLE_APPLICATION_CREDENTIALS: /opt/airflow/gcp-key.json
 
   volumes: &airflow-common-volumes
-    - ./dags:/opt/airflow/dags
-    - ./logs:/opt/airflow/logs
-    - ./plugins:/opt/airflow/plugins
-    - ./Data_Pipeline/scripts:/app/scripts
-    - ./secret/gcp-key.json:/opt/airflow/gcp-key.json
+    - /opt/airflow/dags:/opt/airflow/dags
+    - /opt/airflow/logs:/opt/airflow/logs
+    - /opt/airflow/plugins:/opt/airflow/plugins
+    - /opt/airflow/Data_Pipeline/scripts:/app/scripts
+    # - ./secret/gcp-key.json:/opt/airflow/gcp-key.json
+    # - /opt/airflow/gcp-key.json:/opt/airflow/gcp-key.json
+    - /opt/airflow/gcp-key.json:/opt/airflow/gcp-key.json:ro
     - /var/run/docker.sock:/var/run/docker.sock
-  user: "${AIRFLOW_UID:-50000}:${DOCKER_GID:-80}"
+  user: "${AIRFLOW_UID:-50000}:${DOCKER_GID:-0}"
   group_add:
-    - "${DOCKER_GID:-80}"
+    - "${DOCKER_GID:-0}"
   depends_on: &airflow-common-depends-on
     redis:
       condition: service_healthy
@@ -37,14 +39,15 @@ x-airflow-common:
 
 services:
   data-pipeline:
-    build:
-      context: ./Data_Pipeline
-      dockerfile: Dockerfile
-    platform: linux/amd64
+    # build:
+    #   context: ./Data_Pipeline
+    #   dockerfile: Dockerfile
+    image: us-central1-docker.pkg.dev/primordial-veld-450618-n4/airflow-docker-image/data-pipeline:latest
+    # platform: linux/arm64
     container_name: data-pipeline-container
     volumes:
       - ./Data_Pipeline/scripts:/app/scripts
-      - ./secret:/app/secret
+      - /opt/airflow/gcp-key.json:/app/secret/gcp-key.json:ro
     environment:
       GOOGLE_APPLICATION_CREDENTIALS: /app/secret/gcp-key.json
     working_dir: /app/scripts
@@ -55,7 +58,7 @@ services:
 
   postgres:
     image: postgres:15
-    platform: linux/amd64
+    # platform: linux/arm64
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -70,7 +73,7 @@ services:
 
   redis:
     image: redis:latest
-    platform: linux/amd64
+    # platform: linux/arm64
     ports:
       - 6379:6379
     healthcheck:
