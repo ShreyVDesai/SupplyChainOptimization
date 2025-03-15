@@ -9,8 +9,9 @@ logger = logging.getLogger(__name__)
 import math
 import numpy as np
 import pandas as pd
-from google.cloud.sql.connector import Connector
-import sqlalchemy
+# # from google.cloud.sql.connector import Connector
+# import sqlalchemy
+from utils import get_latest_data_from_cloud_sql
 
 from sklearn.metrics import mean_squared_error
 from scipy.stats import ks_2samp
@@ -247,7 +248,7 @@ def check_concept_drift(ref_errors, new_errors, alpha=0.05):
 
 
 
-def get_latest_data_from_cloud_sql(host, user, password, database, query, port ='3306'):
+# def get_latest_data_from_cloud_sql(host, user, password, database, query, port ='3306'):
     """
     Connects to a Google Cloud SQL instance using TCP (public IP or Cloud SQL Proxy)
     and returns query results as a DataFrame.
@@ -307,19 +308,16 @@ def main():
     query_new_data = """
         SELECT 
             date, product_name, total_quantity
-        FROM Sales 
+        FROM SALES
         WHERE date BETWEEN 
-            (SELECT DATE_SUB(MAX(date), INTERVAL 13 DAY) FROM Sales)
-        AND (SELECT DATE_SUB(MAX(date), INTERVAL 7 DAY) FROM Sales)
+            (SELECT DATE_SUB(MAX(date), INTERVAL 13 DAY) FROM SALES)
+        AND (SELECT DATE_SUB(MAX(date), INTERVAL 7 DAY) FROM SALES)
         ORDER BY date;
     """
-    # query_new_data = "SELECT * FROM Sales"
+    # query_new_data = "SELECT * FROM SALES"
     new_df = get_latest_data_from_cloud_sql(
     # instance_connection_string=instance_conn_str,
-    host = os.getenv("MYSQL_HOST"),
-    user=os.getenv("MYSQL_USER"),
-    password=os.getenv("MYSQL_PASSWORD"),
-    database=os.getenv("MYSQL_DATABASE"),
+    
     query=query_new_data
 )
     
@@ -328,18 +326,13 @@ def main():
     query_ref_data = """
         SELECT 
             date, product_name, total_quantity
-        FROM Sales 
+        FROM SALES
         WHERE date BETWEEN 
-            (SELECT DATE_SUB(MAX(date), INTERVAL 6 DAY) FROM Sales)
-        AND (SELECT MAX(date) FROM Sales)
+            (SELECT DATE_SUB(MAX(date), INTERVAL 6 DAY) FROM SALES)
+        AND (SELECT MAX(date) FROM SALES)
         ORDER BY date;
     """
     ref_df = get_latest_data_from_cloud_sql(
-    # instance_connection_string=instance_conn_str,
-    host = os.getenv("MYSQL_HOST"),
-    user=os.getenv("MYSQL_USER"),
-    password=os.getenv("MYSQL_PASSWORD"),
-    database=os.getenv("MYSQL_DATABASE"),
     query=query_ref_data
 )
 
