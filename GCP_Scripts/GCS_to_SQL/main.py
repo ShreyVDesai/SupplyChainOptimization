@@ -8,7 +8,7 @@ from google.cloud.sql.connector import Connector, IPTypes
 from sqlalchemy.dialects.mysql import insert
 import pymysql
 from sqlalchemy import text
-import numpy as np
+import numpy as np 
 
 def interpolate_missing_dates_for_product(df, product_name, last_date_sql):
     # Filter the dataframe for the specific product
