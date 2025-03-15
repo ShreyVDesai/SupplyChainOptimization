@@ -2,7 +2,7 @@ name: Deploy to Compute Engine
 
 on:
   push:
-    branches: ml-models-test-added
+    branches: main
   workflow_dispatch:
     inputs:
       deployment_target:
