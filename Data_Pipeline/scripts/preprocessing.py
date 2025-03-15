@@ -33,17 +33,17 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Reference product names (correct names from the dataset)
-REFERENCE_PRODUCT_NAMES = [
-    "milk",
-    "coffee",
-    "wheat",
-    "chocolate",
-    "beef",
-    "sugar",
-    "corn",
-    "soybeans",
-]
+# # Reference product names (correct names from the dataset)
+# REFERENCE_PRODUCT_NAMES = [
+#     "milk",
+#     "coffee",
+#     "wheat",
+#     "chocolate",
+#     "beef",
+#     "sugar",
+#     "corn",
+#     "soybeans",
+# ]
 
 
 def convert_feature_types(df: pl.DataFrame) -> pl.DataFrame:
@@ -695,8 +695,8 @@ def process_file(
         logger.info("Standardizing Product Names...")
         df = standardize_product_name(df)
 
-        logger.info("Filtering invalid product names...")
-        df = filter_invalid_products(df, REFERENCE_PRODUCT_NAMES)
+        # logger.info("Filtering invalid product names...")
+        # df = filter_invalid_products(df, REFERENCE_PRODUCT_NAMES)
 
         # Check if DataFrame became empty after filtering
         if df.is_empty():
@@ -744,7 +744,7 @@ def process_file(
         # Generate a consistent name for the output file (without timestamp)
         # This ensures we overwrite the existing file instead of creating a new one
         base_name = os.path.splitext(os.path.basename(blob_name))[0]
-        dest_name = f"processed_{base_name}.csv"
+        dest_name = f"{base_name}.csv"
 
         logger.info(
             f"Uploading cleaned data to GCS → {dest_name} (will overwrite if exists)"

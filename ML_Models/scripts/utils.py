@@ -8,79 +8,57 @@ import io
 import smtplib
 from email.message import EmailMessage
 import polars as pl
+from Data_Pipeline.scripts.logger import logger
 
 
-def extracting_time_series_and_lagged_features(
-    df: pl.DataFrame,
-) -> pl.DataFrame:
+def extracting_time_series_and_lagged_features_pd(df: pd.DataFrame) -> pd.DataFrame:
     """
-    For each row, computes additional time-series features:
-      - day_of_week, is_weekend, etc.
-      - lag_1, lag_7, rolling_mean_7 of 'Total Quantity'
+    For each row, compute additional time-series features:
+      - day_of_week, is_weekend, day_of_month, day_of_year, month, week_of_year
+      - lag_1, lag_7, and rolling_mean_7 of 'Total Quantity'
     """
-    try:
-        if df.is_empty():
-            return pl.DataFrame(
-                schema={
-                    "Date": pl.Date,
-                    "Product Name": pl.Utf8,
-                    "Total Quantity": pl.Float64,
-                    "day_of_week": pl.Int32,
-                    "is_weekend": pl.Int8,
-                    "day_of_month": pl.Int32,
-                    "day_of_year": pl.Int32,
-                    "month": pl.Int32,
-                    "week_of_year": pl.Int32,
-                    "lag_1": pl.Float64,
-                    "lag_7": pl.Float64,
-                    "rolling_mean_7": pl.Float64,
-                }
-            )
+    # If the DataFrame is empty, return an empty DataFrame with the expected columns.
+    if df.empty:
+        return pd.DataFrame(
+            columns=[
+                "Date", "Product Name", "Total Quantity", "day_of_week",
+                "is_weekend", "day_of_month", "day_of_year", "month",
+                "week_of_year", "lag_1", "lag_7", "rolling_mean_7"
+            ]
+        )
 
-        # Ensure Date column is datetime type for feature extraction
-        if "Date" in df.columns:
-            df = df.with_columns(pl.col("Date").cast(pl.Datetime))
+    # Ensure the 'Date' column is in datetime format
+    if "Date" in df.columns:
+        df["Date"] = pd.to_datetime(df["Date"])
+        
+        # Create date-based features
+        df["day_of_week"] = df["Date"].dt.dayofweek  # Monday=0, Sunday=6
+        df["is_weekend"] = df["day_of_week"].isin([5, 6]).astype(int)
+        df["day_of_month"] = df["Date"].dt.day
+        df["day_of_year"] = df["Date"].dt.dayofyear
+        df["month"] = df["Date"].dt.month
+        # Using isocalendar to get week of year (as integer)
+        df["week_of_year"] = df["Date"].dt.isocalendar().week.astype(int)
+    else:
+        return df
 
-            df = df.with_columns(
-                pl.col("Date").dt.weekday().alias("day_of_week"),
-                (pl.col("Date").dt.weekday() > 5)
-                .cast(pl.Int8)
-                .alias("is_weekend"),
-                pl.col("Date").dt.day().alias("day_of_month"),
-                pl.col("Date").dt.ordinal_day().alias("day_of_year"),
-                pl.col("Date").dt.month().alias("month"),
-                pl.col("Date").dt.week().alias("week_of_year"),
-            )
-        else:
-            return df
-    except Exception as e:
-        raise e
-
-    try:
-        # Only proceed with time series features if we have Total Quantity
-        if "Total Quantity" in df.columns:
-            # Sort by (Product Name, Date) for coherent time series ordering
-            df = df.sort(["Product Name", "Date"]).with_columns(
-                [
-                    pl.col("Total Quantity")
-                    .shift(1)
-                    .over("Product Name")
-                    .alias("lag_1"),
-                    pl.col("Total Quantity")
-                    .shift(7)
-                    .over("Product Name")
-                    .alias("lag_7"),
-                    pl.col("Total Quantity")
-                    .rolling_mean(window_size=7)
-                    .over("Product Name")
-                    .alias("rolling_mean_7"),
-                ]
-            )
-        else:
-            raise KeyError
-    except Exception as e:
-        raise e
-
+    # Check if 'Total Quantity' exists and then compute lag and rolling features
+    if "Total Quantity" in df.columns:
+        # Sort by product and date
+        df = df.sort_values(by=["Product Name", "Date"]).reset_index(drop=True)
+        
+        # Compute lag features by grouping by 'Product Name'
+        df["lag_1"] = df.groupby("Product Name")["Total Quantity"].shift(1)
+        df["lag_7"] = df.groupby("Product Name")["Total Quantity"].shift(7)
+        
+        # Compute a rolling mean of the previous 7 days.
+        # Note: We shift by 1 to ensure that the rolling window uses data strictly before the current row.
+        df["rolling_mean_7"] = df.groupby("Product Name")["Total Quantity"].transform(
+            lambda x: x.shift(1).rolling(window=7, min_periods=1).mean()
+        )
+    else:
+        raise KeyError("Column 'Total Quantity' not found in DataFrame.")
+    
     return df
 
 

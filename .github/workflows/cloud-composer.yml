@@ -2,7 +2,7 @@ name: Deploy to Compute Engine
 
 on:
   push:
-    branches: main
+    branches: ml-models-meet
   workflow_dispatch:
     inputs:
       deployment_target:
