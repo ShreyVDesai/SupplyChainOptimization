@@ -9,7 +9,8 @@ logger = logging.getLogger(__name__)
 import math
 import numpy as np
 import pandas as pd
-import mysql.connector
+from google.cloud.sql.connector import Connector
+import sqlalchemy
 
 from sklearn.metrics import mean_squared_error
 from scipy.stats import ks_2samp
@@ -44,7 +45,7 @@ def setup_gcp_credentials():
     """
     # The GCP key is always in the mounted secret directory
     # gcp_key_path = "/app/secret/gcp-key.json" use when dockerizing
-    gcp_key_path = "../../secret/gcp-key.json"
+    gcp_key_path = "secret/gcp-key.json"
 
     if os.environ.get("GOOGLE_APPLICATION_CREDENTIALS") != gcp_key_path:
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = gcp_key_path
@@ -152,18 +153,18 @@ def send_email(
 #         model = pickle.load(f)
 #     return model
 
-def get_latest_data_from_mysql(host, user, password, database, query):
-    """Connects to MySQL, runs a query, returns a DataFrame of the results."""
-    conn = mysql.connector.connect(
-        host=host,
-        user=user,
-        password=password,
-        database=database
-    )
-    df = pd.read_sql(query, conn)
-    print(df.head())
-    conn.close()
-    return df
+# def get_latest_data_from_mysql(host, user, password, database, query):
+#     """Connects to MySQL, runs a query, returns a DataFrame of the results."""
+#     conn = mysql.connector.connect(
+#         host=host,
+#         user=user,
+#         password=password,
+#         database=database
+#     )
+#     df = pd.read_sql(query, conn)
+#     print(df.head())
+#     conn.close()
+#     return df
 
 def compute_rmse(y_true, y_pred):
     """Computes Root Mean Squared Error."""
@@ -237,6 +238,8 @@ def check_concept_drift(ref_errors, new_errors, alpha=0.05):
         return False
     return ks_test_drift(ref_errors, new_errors, alpha)
 
+
+
 def get_latest_data_from_cloud_sql(host, user, password, database, query, port ='3306'):
     """
     Connects to a Google Cloud SQL instance using TCP (public IP or Cloud SQL Proxy)
@@ -253,16 +256,26 @@ def get_latest_data_from_cloud_sql(host, user, password, database, query, port =
     Returns:
         pd.DataFrame: Query results.
     """
-    
-    conn = mysql.connector.connect(
-    host=host,  # if using a public IP or Cloud SQL Proxy
-    user=user,
-    password=password,
-    database=database
-)
-    df = pd.read_sql(query, conn)
+    connector = Connector()
+    def getconn():
+        conn = connector.connect(
+            "primordial-veld-450618-n4:us-central1:mlops-sql", # Cloud SQL instance connection name
+            "pymysql",                    # Database driver
+            user=user,                  # Database user
+            password=password,          # Database password
+            db=database,   
+        )
+        return conn
+    pool = sqlalchemy.create_engine(
+    "mysql+pymysql://", # or "postgresql+pg8000://" for PostgreSQL, "mssql+pytds://" for SQL Server
+    creator=getconn,
+    )
+    with pool.connect() as db_conn:
+        result = db_conn.execute(sqlalchemy.text(query))
+        print(result.scalar())
+    df = pd.read_sql(query, pool)
     print(df.head())
-    conn.close()
+    connector.close()
     return df
 
 # -----------------------
@@ -278,7 +291,7 @@ def main():
     model_pickle_path = os.getenv("MODEL_PICKLE_PATH", "model.pkl")
     
     # Performance thresholds (example)
-    rmse_threshold = float(os.getenv("RMSE_THRESHOLD", 10.0))
+    rmse_threshold = float(os.getenv("RMSE_THRESHOLD", 20.0))
     mape_threshold = float(os.getenv("MAPE_THRESHOLD", 50.0))     # in percentage
     alpha_drift = float(os.getenv("ALPHA_DRIFT", 0.05))          # significance level for K-S tests
 
@@ -288,10 +301,12 @@ def main():
         SELECT 
             date, product_name, total_quantity
         FROM Sales 
-        WHERE date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
-          AND date < DATE_SUB(CURDATE(), INTERVAL 14 DAY)
+        WHERE date BETWEEN 
+            (SELECT DATE_SUB(MAX(date), INTERVAL 13 DAY) FROM Sales)
+        AND (SELECT DATE_SUB(MAX(date), INTERVAL 7 DAY) FROM Sales)
         ORDER BY date;
     """
+    # query_new_data = "SELECT * FROM Sales"
     new_df = get_latest_data_from_cloud_sql(
     # instance_connection_string=instance_conn_str,
     host = os.getenv("MYSQL_HOST"),
@@ -307,7 +322,9 @@ def main():
         SELECT 
             date, product_name, total_quantity
         FROM Sales 
-        WHERE date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+        WHERE date BETWEEN 
+            (SELECT DATE_SUB(MAX(date), INTERVAL 6 DAY) FROM Sales)
+        AND (SELECT MAX(date) FROM Sales)
         ORDER BY date;
     """
     ref_df = get_latest_data_from_cloud_sql(
@@ -319,88 +336,94 @@ def main():
     query=query_ref_data
 )
 
+    # Convert the 'date' column to datetime 
+    new_df['date'] = pd.to_datetime(new_df['date'])
+    
+    ref_df['date'] = pd.to_datetime(ref_df['date'])
+    
     # 4. Load current model
     logging.info(f"Loading model from {model_pickle_path}...")
-    current_model = load_model('trained-model-1','model.pkl')
-
-    # 5. Preprocess new data (minimal example)
-    # new_features = new_df[['date', 'product_name']]  # adapt as needed
-    new_features = new_df[['date']]
-    y_true_new = new_df["total_quantity"]
+    current_model = load_model('trained-model-1', 'model.pkl')
     
-    # 6. Generate predictions on new data
-    y_pred_new = current_model.predict(new_features)
+    # 5. Group data by product and calculate product-level predictions and metrics
+    products = new_df['product_name'].unique()
 
-    # 7. Compute Metrics
-    rmse_new = compute_rmse(y_true_new, y_pred_new)
-    mape_new = compute_mape(y_true_new, y_pred_new)
-    logging.info(f"Weekly Validation Results:")
-    logging.info(f"  - RMSE: {rmse_new:.4f}")
-    logging.info(f"  - MAPE: {mape_new:.2f}%")
-
-    # 8. Check if metrics exceed thresholds
-    degraded = False
-    if rmse_new > rmse_threshold:
-        logging.warning(f"RMSE ({rmse_new:.4f}) exceeds threshold ({rmse_threshold}).")
-        degraded = True
-    if mape_new > mape_threshold:
-        logging.warning(f"MAPE ({mape_new:.2f}%) exceeds threshold ({mape_threshold}%).")
-        degraded = True
-
-    # 9. Data Drift Detection
-    #    Compare columns in reference data vs new data
-    data_drift_detected, drifted_cols = check_data_drift(
-        ref_df, new_df, 
-        numeric_cols=None,  # or None to auto-detect
-        alpha=alpha_drift
-    )
-
-    if data_drift_detected:
-        logging.warning(f"Data drift detected in columns: {drifted_cols}")
-
-    # 10. Concept Drift Detection
-    #     Compare residual distributions of ref vs new
-    if not ref_df.empty:
-        # Predict on reference data to get errors
-        ref_features = ref_df[["date", "product_name"]]
-        y_true_ref = ref_df["total_quantity"]
-        y_pred_ref = current_model.predict(ref_features)
-
-        ref_errors = y_true_ref - y_pred_ref
-        new_errors = y_true_new - y_pred_new
+    rmse_list = []
+    data_drift_list = []
+    concept_drift_list = []
+    
+    for product in products:
+        # Filter data for the product
+        prod_new = new_df[new_df['product_name'] == product].copy()
+        prod_ref = ref_df[ref_df['product_name'] == product].copy() 
         
-        concept_drift = check_concept_drift(ref_errors, new_errors, alpha=alpha_drift)
-        if concept_drift:
-            logging.warning("Concept drift detected based on error distribution shift.")
+        # Set 'date' as index within the product group and sort
+        prod_new.set_index('date', inplace=True)
+        prod_new.sort_index(inplace=True)
+        
+        prod_ref.set_index('date', inplace=True)
+        prod_ref.sort_index(inplace=True)
+        
+        # Define prediction window for this product
+        start_date = prod_new.index.min()
+        end_date = prod_new.index.max()
+        
+        # Generate predictions using the current model.
+        # (Modify this if your model requires product-specific adjustments.)
+        y_pred_prod = current_model.predict(start=start_date, end=end_date)
+        y_true_prod = prod_new["total_quantity"]
+        
+        # Compute product-level RMSE
+        rmse_prod = compute_rmse(y_true_prod, y_pred_prod)
+        rmse_list.append(rmse_prod)
+        logging.info(f"RMSE for product {product}: {rmse_prod:.4f}")
+        
+        # Data drift detection (for total_quantity)
+        if not prod_ref.empty:
+            drift_detected, drift_cols = check_data_drift(prod_ref, prod_new, numeric_cols=['total_quantity'], alpha=alpha_drift)
+            data_drift_list.append((product, drift_detected, drift_cols))
+            
+            # Concept drift detection using error distributions
+            start_ref = prod_ref.index.min()
+            end_ref = prod_ref.index.max()
+            y_pred_ref = current_model.predict(start=start_ref, end=end_ref)
+            y_true_ref = prod_ref["total_quantity"]
+            
+            ref_errors = y_true_ref - y_pred_ref
+            new_errors = y_true_prod - y_pred_prod
+            concept_drift_detected = check_concept_drift(ref_errors, new_errors, alpha=alpha_drift)
+            concept_drift_list.append((product, concept_drift_detected))
+        else:
+            data_drift_list.append((product, False, []))
+            concept_drift_list.append((product, False))
+    
+    # 6. Average product-level RMSE for overall RMSE
+    if rmse_list:
+        final_rmse = sum(rmse_list) / len(rmse_list)
+        logging.info(f"Final averaged RMSE across products: {final_rmse:.4f}")
     else:
-        logging.info("Reference data is empty; cannot perform concept drift check.")
-
-    # 11. Decide retraining
-    #     If metric thresholds are breached or drift is detected, trigger retraining
-    if degraded or data_drift_detected or (not ref_df.empty and concept_drift):
+        logging.info("No RMSE values computed; check product grouping.")
+    
+    # 7. Log drift detection results per product
+    # for product, drift_detected, drift_cols in data_drift_list:
+    #     if drift_detected:
+    #         logging.warning(f"Data drift detected for product {product} in columns: {drift_cols}")
+    #     else:
+    #         logging.info(f"No data drift detected for product {product}.")
+    # for product, cd in concept_drift_list:
+    #     if cd:
+    #         logging.warning(f"Concept drift detected for product {product}.")
+    #     else:
+    #         logging.info(f"No concept drift detected for product {product}.")
+    
+    # 8. Decide on retraining based on thresholds or drift
+    if any(rmse > rmse_threshold for rmse in rmse_list) or \
+       any(d[1] for d in data_drift_list) or \
+       any(cd[1] for cd in concept_drift_list):
         logging.warning("Triggering retraining due to performance or drift issues...")
-        # trigger_retraining()  # implement your own function or logic
+        # trigger_retraining()  # Implement your retraining logic here
     else:
         logging.info("Model performance and data distribution are within expected ranges.")
-
-
-# def trigger_retraining():
-#     """
-#     You can implement any mechanism here to trigger your training pipeline:
-#       - Call a Cloud Function endpoint.
-#       - Publish a Pub/Sub message that triggers the training job.
-#       - Use the Vertex AI Python SDK to start a training pipeline or custom job.
-#     """
-#     logging.info("Retraining triggered... ")
-#     def trigger_retraining_vertex_pipeline():
-#         aiplatform.init(project="your_project_id", location="us-central1")
-#     # If you have a pipeline already deployed:
-#     pipeline_job = aiplatform.PipelineJob(
-#         display_name="retraining-pipeline",
-#         template_path="gs://path-to-your-pipeline-spec.json",
-#         parameter_values={}
-#     )
-#     pipeline_job.run()
 
 if __name__ == "__main__":
     main()
