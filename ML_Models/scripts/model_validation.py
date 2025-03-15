@@ -11,9 +11,9 @@ import numpy as np
 import pandas as pd
 # # from google.cloud.sql.connector import Connector
 # import sqlalchemy
-from utils import get_latest_data_from_cloud_sql
+from utils import get_latest_data_from_cloud_sql, compute_rmse
 
-from sklearn.metrics import mean_squared_error
+
 from scipy.stats import ks_2samp
 
 
@@ -28,9 +28,6 @@ from scipy.stats import ks_2samp
 #     # from ML_Models.scripts.logger import logger
 #     raise
 
-import io
-import smtplib
-from email.message import EmailMessage
 
 from dotenv import load_dotenv
 from google.cloud import storage
@@ -93,59 +90,7 @@ def load_model(bucket_name: str, file_name: str):
 
 
 
-def send_email(
-    emailid,
-    body,
-    subject="Automated Email",
-    smtp_server="smtp.gmail.com",
-    smtp_port=587,
-    sender="talksick530@gmail.com",
-    username="talksick530@gmail.com",
-    password="celm dfaq qllh ymjv",
-    attachment=None,
-):
-    """
-    Sends an email to the given email address with a message body.
-    If an attachment (pandas DataFrame) is provided, it will be converted to CSV and attached.
 
-    Parameters:
-      emailid (str): Recipient email address.
-      body (str): Email text content.
-      subject (str): Subject of the email.
-      smtp_server (str): SMTP server address.
-      smtp_port (int): SMTP server port.
-      sender (str): Sender's email address.
-      username (str): Username for SMTP login.
-      password (str): Password for SMTP login.
-      attachment (pd.DataFrame, optional): If provided, attached as a CSV file.
-    """
-    msg = EmailMessage()
-    msg["Subject"] = subject
-    msg["From"] = sender
-    msg["To"] = emailid
-    msg.set_content(body)
-
-    # If an attachment is provided and it's a DataFrame, attach it as a CSV
-    # file.
-    if attachment is not None and isinstance(attachment, pd.DataFrame):
-        csv_buffer = io.StringIO()
-        attachment.to_csv(csv_buffer, index=False)
-        # Encode the CSV content to bytes to avoid calling set_text_content.
-        csv_bytes = csv_buffer.getvalue().encode("utf-8")
-        msg.add_attachment(
-            csv_bytes, maintype="text", subtype="csv", filename="anomalies.csv"
-        )
-
-    try:
-        with smtplib.SMTP(smtp_server, smtp_port) as server:
-            server.starttls()
-            if username and password:
-                server.login(username, password)
-            server.send_message(msg)
-        logger.info(f"Email sent successfully to: {emailid}")
-    except Exception as e:
-        logger.error(f"Failed to send email: {e}")
-        raise
 
 # def load_model(pickle_path: str):
 #  
@@ -168,9 +113,7 @@ def send_email(
 #     return df
 
 
-def compute_rmse(y_true, y_pred):
-    """Computes Root Mean Squared Error."""
-    return math.sqrt(mean_squared_error(y_true, y_pred))
+
 
 
 def compute_mape(y_true, y_pred):
