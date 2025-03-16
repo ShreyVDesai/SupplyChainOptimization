@@ -18,6 +18,10 @@ jobs:
     # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
     - uses: actions/checkout@v4
 
+    - uses: 'google-github-actions/auth@v2'
+      with:
+        credentials_json: '${{ secrets.GCP_CLOUD_RUN_SA_KEY }}'
+
     # Setup gcloud CLI
     - uses: google-github-actions/setup-gcloud@v0
       with:
@@ -34,3 +38,13 @@ jobs:
     - name: Deploy via GCS
       run: |
         gsutil cp GCS_TO_SQL.zip gs://utility_cloud_run_functions/
+
+    - name: Deploy Cloud Run Service
+      run: |
+        gcloud run deploy test-cloud-run-function \
+          --source gs://utility_cloud_run_functions/GCS_TO_SQL.zip \
+          --region us-central1 \
+          --allow-unauthenticated \
+          --memory 512Mi \
+          --timeout 120s \
+          --entry-point main
