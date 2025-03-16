@@ -11,3 +11,8 @@ __pycache__/
 /logs
 temp_env/
 .qodo
+
+ML_Models/experiments/experiments/mlruns/
+*.pkl
+SCO_LOG
+ML_Models/.env

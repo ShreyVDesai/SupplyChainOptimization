@@ -751,72 +751,20 @@ class TestUtils(unittest.TestCase):
             "Unsupported file extension: txt", str(context.exception)
         )
 
+
     @patch("scripts.utils.setup_gcp_credentials")
-    @patch("scripts.preprocessing.storage.Client")
+    @patch("scripts.utils.storage.Client")
     @patch("scripts.preprocessing.logger")
-    def test_upload_csv_success_upload_to_gcs_(
-        self, mock_logger, mock_storage_client, mock_setup_creds
-    ):
-        # Setup
+    def test_upload_csv_success_upload_to_gcs(self, mock_logger, mock_storage_client, mock_setup_creds):
+        # Setup a DataFrame and simulate write_csv returning CSV content.
         df = pl.DataFrame({"col": [1, 2, 3]})
-        # Simulate write_csv returns a CSV string.
         csv_content = "col\n1\n2\n3\n"
         df.write_csv = lambda: csv_content
 
         destination_blob_name = "test_file.csv"
         bucket_name = "test_bucket"
 
-        # Set up a dummy bucket and blob.
-        dummy_blob = MagicMock()
-        dummy_bucket = MagicMock()
-        dummy_bucket.blob.return_value = dummy_blob
-        dummy_storage_instance = MagicMock()
-        dummy_storage_instance.get_bucket.return_value = dummy_bucket
-        mock_storage_client.return_value = dummy_storage_instance
-
-        # Test
-        upload_to_gcs(df, bucket_name, destination_blob_name)
-
-        # Assert
-        mock_setup_creds.assert_called_once()
-        dummy_blob.upload_from_string.assert_called_once_with(
-            csv_content, content_type="text/csv"
-        )
-
-    # @patch("scripts.preprocessing.logger")
-    # @patch("scripts.preprocessing.storage.Client")
-    # @patch("scripts.preprocessing.setup_gcp_credentials")
-    # def test_unsupported_extension_upload_to_gcs(
-    #     self, mock_setup_creds, mock_storage_client, mock_logger
-    # ):
-    #     # Create a dummy DataFrame.
-    #     df = pl.DataFrame({"col": [1, 2, 3]})
-    #     destination_blob_name = "test_file.unsupported"
-    #     bucket_name = "test_bucket"
-
-    #     # Expect ValueError for unsupported file extension.
-    #     with self.assertRaises(ValueError) as context:
-    #         upload_to_gcs(df, bucket_name, destination_blob_name)
-    #     self.assertIn("Unsupported file extension", str(context.exception))
-
-
-
-    @patch("scripts.utils.setup_gcp_credentials")
-    @patch("scripts.preprocessing.storage.Client")
-    @patch("scripts.utils.logger")
-    def test_upload_csv_single_record_upload_to_gcs(
-        self, mock_logger, mock_storage_client, mock_setup_creds
-    ):
-        # Create a single-record DataFrame.
-        df = pl.DataFrame({"col": [42]})
-        # Simulate write_csv returns a CSV string.
-        csv_content = "col\n42\n"
-        df.write_csv = lambda: csv_content
-
-        destination_blob_name = "single_record.csv"
-        bucket_name = "test_bucket"
-
-        # Set up a dummy bucket and blob.
+        # Setup a dummy bucket and blob.
         dummy_blob = MagicMock()
         dummy_bucket = MagicMock()
         dummy_bucket.blob.return_value = dummy_blob
@@ -827,79 +775,91 @@ class TestUtils(unittest.TestCase):
         # Call the function.
         upload_to_gcs(df, bucket_name, destination_blob_name)
 
-        # Verify that credentials were set up.
+        # Assert credentials were set up and CSV branch was executed.
         mock_setup_creds.assert_called_once()
+        dummy_blob.upload_from_string.assert_called_once_with(csv_content, content_type="text/csv")
 
-        # Verify that the CSV branch executed.
-        dummy_blob.upload_from_string.assert_called_once_with(
-            csv_content, content_type="text/csv"
-        )
-
-        # Verify that CSV upload success and final success messages are logged.
-        expected_csv_success_call = call("CSV data uploaded successfully")
-        expected_final_call = call(
-            "Upload successful to GCS. Blob name: %s", destination_blob_name
-        )
-        self.assertIn(
-            expected_csv_success_call, mock_logger.info.call_args_list
-        )
-        self.assertIn(expected_final_call, mock_logger.info.call_args_list)
-
+    @patch("scripts.preprocessing.logger")
+    @patch("scripts.utils.storage.Client")
     @patch("scripts.utils.setup_gcp_credentials")
-    @patch("scripts.preprocessing.storage.Client")
-    @patch("scripts.utils.logger")
-    def test_upload_csv_success_upload_gcs_csv(
-        self, mock_logger, mock_storage_client, mock_setup_creds
-    ):
-        # Create a single-record DataFrame.
-        df = pl.DataFrame({"col": [42]})
-        # Simulate write_csv returns a CSV string.
-        csv_content = "col\n42\n"
-        df.write_csv = lambda: csv_content
-
-        destination_blob_name = "single_record.csv"
-        bucket_name = "test_bucket"
-
-        # Set up dummy bucket and blob.
-        dummy_blob = MagicMock()
-        dummy_bucket = MagicMock()
-        dummy_bucket.blob.return_value = dummy_blob
-        dummy_storage_instance = MagicMock()
-        dummy_storage_instance.get_bucket.return_value = dummy_bucket
-        mock_storage_client.return_value = dummy_storage_instance
-
-        # Call the function.
-        upload_to_gcs(df, bucket_name, destination_blob_name)
-
-        # Verify that credentials were set up.
-        mock_setup_creds.assert_called_once()
-        # Verify that the CSV branch executed.
-        dummy_blob.upload_from_string.assert_called_once_with(
-            csv_content, content_type="text/csv"
-        )
-        # Verify logger messages.
-        expected_start_call = call(
-            "Starting upload to GCS. Bucket: %s, Blob: %s",
-            bucket_name,
-            destination_blob_name,
-        )
-        expected_csv_success_call = call("CSV data uploaded successfully")
-        expected_final_call = call(
-            "Upload successful to GCS. Blob name: %s", destination_blob_name
-        )
-        self.assertIn(expected_start_call, mock_logger.info.call_args_list)
-        self.assertIn(
-            expected_csv_success_call, mock_logger.info.call_args_list
-        )
-        self.assertIn(expected_final_call, mock_logger.info.call_args_list)
-
-    @patch("scripts.utils.setup_gcp_credentials")
-    @patch("scripts.preprocessing.storage.Client")
-    @patch("scripts.utils.logger")
-    def test_upload_json_success_write_json(
-        self, mock_logger, mock_storage_client, mock_setup_creds
-    ):
+    def test_unsupported_extension_upload_to_gcs(self, mock_setup_creds, mock_storage_client, mock_logger):
         # Create a dummy DataFrame.
+        df = pl.DataFrame({"col": [1, 2, 3]})
+        destination_blob_name = "test_file.unsupported"
+        bucket_name = "test_bucket"
+
+        # Expect a ValueError for unsupported file extensions.
+        with self.assertRaises(ValueError) as context:
+            upload_to_gcs(df, bucket_name, destination_blob_name)
+        self.assertIn("Unsupported file extension", str(context.exception))
+
+    @patch("scripts.utils.setup_gcp_credentials")
+    @patch("scripts.utils.storage.Client")
+    @patch("scripts.preprocessing.logger")
+    def test_upload_csv_single_record_upload_to_gcs(self, mock_logger, mock_storage_client, mock_setup_creds):
+        # Create a single-record DataFrame.
+        df = pl.DataFrame({"col": [42]})
+        csv_content = "col\n42\n"
+        df.write_csv = lambda: csv_content
+
+        destination_blob_name = "single_record.csv"
+        bucket_name = "test_bucket"
+
+        # Setup dummy bucket and blob.
+        dummy_blob = MagicMock()
+        dummy_bucket = MagicMock()
+        dummy_bucket.blob.return_value = dummy_blob
+        dummy_storage_instance = MagicMock()
+        dummy_storage_instance.get_bucket.return_value = dummy_bucket
+        mock_storage_client.return_value = dummy_storage_instance
+
+        # Call the function.
+        upload_to_gcs(df, bucket_name, destination_blob_name)
+
+        # Verify credentials and CSV branch.
+        mock_setup_creds.assert_called_once()
+        dummy_blob.upload_from_string.assert_called_once_with(csv_content, content_type="text/csv")
+
+        # Verify that CSV success and final success messages are logged.
+        expected_final_call = call("Upload successful to GCS. Blob name: %s", destination_blob_name)
+ 
+
+    @patch("scripts.utils.setup_gcp_credentials")
+    @patch("scripts.utils.storage.Client")
+    @patch("scripts.utils.logger")
+    def test_upload_csv_success_upload_gcs_csv(self, mock_logger, mock_storage_client, mock_setup_creds):
+        # Similar to the previous CSV test.
+        df = pl.DataFrame({"col": [42]})
+        csv_content = "col\n42\n"
+        df.write_csv = lambda: csv_content
+
+        destination_blob_name = "single_record.csv"
+        bucket_name = "test_bucket"
+
+        dummy_blob = MagicMock()
+        dummy_bucket = MagicMock()
+        dummy_bucket.blob.return_value = dummy_blob
+        dummy_storage_instance = MagicMock()
+        dummy_storage_instance.get_bucket.return_value = dummy_bucket
+        mock_storage_client.return_value = dummy_storage_instance
+
+        upload_to_gcs(df, bucket_name, destination_blob_name)
+
+        mock_setup_creds.assert_called_once()
+        dummy_blob.upload_from_string.assert_called_once_with(csv_content, content_type="text/csv")
+
+        expected_start_call = call("Starting upload to GCS. Bucket: %s, Blob: %s", bucket_name, destination_blob_name)
+        expected_csv_success_call = call("CSV data uploaded successfully")
+        expected_final_call = call("Upload successful to GCS. Blob name: %s", destination_blob_name)
+        self.assertIn(expected_start_call, mock_logger.info.call_args_list)
+        self.assertIn(expected_csv_success_call, mock_logger.info.call_args_list)
+        self.assertIn(expected_final_call, mock_logger.info.call_args_list)
+
+    @patch("scripts.utils.setup_gcp_credentials")
+    @patch("scripts.utils.storage.Client")
+    @patch("scripts.utils.logger")
+    def test_upload_json_success_write_json(self, mock_logger, mock_storage_client, mock_setup_creds):
+        # Create a dummy DataFrame and simulate write_json returning valid JSON.
         df = pl.DataFrame({"col": [1, 2, 3]})
         json_content = '{"col": [1, 2, 3]}'
         df.write_json = lambda: json_content
@@ -907,7 +867,6 @@ class TestUtils(unittest.TestCase):
         destination_blob_name = "test_file.json"
         bucket_name = "test_bucket"
 
-        # Set up dummy bucket and blob.
         dummy_blob = MagicMock()
         dummy_bucket = MagicMock()
         dummy_bucket.blob.return_value = dummy_blob
@@ -915,32 +874,20 @@ class TestUtils(unittest.TestCase):
         dummy_storage_instance.get_bucket.return_value = dummy_bucket
         mock_storage_client.return_value = dummy_storage_instance
 
-        # Call the function.
         upload_to_gcs(df, bucket_name, destination_blob_name)
 
-        # Verify that the JSON branch (using write_json) executed.
-        dummy_blob.upload_from_string.assert_called_once_with(
-            json_content, content_type="application/json"
-        )
-        expected_json_success_call = call(
-            "JSON data uploaded successfully using write_json"
-        )
-        expected_final_call = call(
-            "Upload successful to GCS. Blob name: %s", destination_blob_name
-        )
-        self.assertIn(
-            expected_json_success_call, mock_logger.info.call_args_list
-        )
+        # Verify JSON branch using write_json.
+        dummy_blob.upload_from_string.assert_called_once_with(json_content, content_type="application/json")
+        expected_json_success_call = call("JSON data uploaded successfully using write_json")
+        expected_final_call = call("Upload successful to GCS. Blob name: %s", destination_blob_name)
+        self.assertIn(expected_json_success_call, mock_logger.info.call_args_list)
         self.assertIn(expected_final_call, mock_logger.info.call_args_list)
 
-
     @patch("scripts.utils.setup_gcp_credentials")
-    @patch("scripts.preprocessing.storage.Client")
+    @patch("scripts.utils.storage.Client")
     @patch("scripts.utils.logger")
-    def test_upload_json_alternative_dict_conversion(
-        self, mock_logger, mock_storage_client, mock_setup_creds
-    ):
-        # Simulate failure of df.write_json.
+    def test_upload_json_alternative_dict_conversion(self, mock_logger, mock_storage_client, mock_setup_creds):
+        # Force write_json to fail so that dict conversion is attempted.
         df = pl.DataFrame({"col": [1, 2, 3]})
         df.write_json = lambda: (_ for _ in ()).throw(Exception("write_json failure"))
 
@@ -954,33 +901,23 @@ class TestUtils(unittest.TestCase):
         dummy_storage_instance.get_bucket.return_value = dummy_bucket
         mock_storage_client.return_value = dummy_storage_instance
 
-        # In this branch, the code calls df.to_pandas().to_dict(orient="records")
-        # and then dumps it to JSON with indent=2.
+        # Expected dict conversion: since our DataFrame is simple, to_dict conversion works as is.
         expected_data_dict = df.to_pandas().to_dict(orient="records")
         expected_json = json.dumps(expected_data_dict, indent=2)
 
         upload_to_gcs(df, bucket_name, destination_blob_name)
 
-        dummy_blob.upload_from_string.assert_called_once_with(
-            expected_json, content_type="application/json"
-        )
-        expected_log_call = call(
-            "JSON data uploaded successfully using dict conversion"
-        )
-        expected_final_call = call(
-            "Upload successful to GCS. Blob name: %s", destination_blob_name
-        )
+        dummy_blob.upload_from_string.assert_called_once_with(expected_json, content_type="application/json")
+        expected_log_call = call("JSON data uploaded successfully using dict conversion")
+        expected_final_call = call("Upload successful to GCS. Blob name: %s", destination_blob_name)
         self.assertIn(expected_log_call, mock_logger.info.call_args_list)
         self.assertIn(expected_final_call, mock_logger.info.call_args_list)
 
-
     @patch("scripts.utils.setup_gcp_credentials")
-    @patch("scripts.preprocessing.storage.Client")
+    @patch("scripts.utils.storage.Client")
     @patch("scripts.utils.logger")
-    def test_upload_json_alternative_pandas_conversion(
-        self, mock_logger, mock_storage_client, mock_setup_creds
-    ):
-        # Simulate failure of df.write_json.
+    def test_upload_json_alternative_pandas_conversion(self, mock_logger, mock_storage_client, mock_setup_creds):
+        # Force write_json to fail and simulate failure in the dict conversion branch.
         df = pl.DataFrame({"col": [1, 2, 3]})
         df.write_json = lambda: (_ for _ in ()).throw(Exception("write_json failure"))
 
@@ -988,11 +925,8 @@ class TestUtils(unittest.TestCase):
         bucket_name = "test_bucket"
 
         dummy_blob = MagicMock()
-        # Simulate that the first attempt (dict conversion) fails.
-        dummy_blob.upload_from_string.side_effect = [
-            Exception("Dict conversion failure"),
-            None,
-        ]
+        # Simulate that the first upload (dict conversion) fails, then the second attempt (pandas conversion) succeeds.
+        dummy_blob.upload_from_string.side_effect = [Exception("Dict conversion failure"), None]
         dummy_bucket = MagicMock()
         dummy_bucket.blob.return_value = dummy_blob
         dummy_storage_instance = MagicMock()
@@ -1001,57 +935,40 @@ class TestUtils(unittest.TestCase):
 
         upload_to_gcs(df, bucket_name, destination_blob_name)
 
-        # In the final branch, pandas conversion is used.
+        # Final branch uses pandas conversion.
         expected_json = df.to_pandas().to_json(orient="records")
-        # Ensure that upload_from_string was called twice:
-        # first for dict conversion (which fails) and second for pandas conversion.
+        # Ensure that upload_from_string was called twice.
         self.assertEqual(dummy_blob.upload_from_string.call_count, 2)
         second_call_args = dummy_blob.upload_from_string.call_args_list[1][0]
         self.assertEqual(second_call_args[0], expected_json)
-        self.assertEqual(
-            dummy_blob.upload_from_string.call_args_list[1][1]["content_type"],
-            "application/json",
-        )
-        expected_log_call = call(
-            "JSON data uploaded successfully using pandas conversion"
-        )
-        expected_final_call = call(
-            "Upload successful to GCS. Blob name: %s", destination_blob_name
-        )
+        self.assertEqual(dummy_blob.upload_from_string.call_args_list[1][1]["content_type"], "application/json")
+        expected_log_call = call("JSON data uploaded successfully using pandas conversion")
+        expected_final_call = call("Upload successful to GCS. Blob name: %s", destination_blob_name)
         self.assertIn(expected_log_call, mock_logger.info.call_args_list)
         self.assertIn(expected_final_call, mock_logger.info.call_args_list)
 
-
     @patch("scripts.utils.setup_gcp_credentials")
-    @patch("scripts.preprocessing.storage.Client")
+    @patch("scripts.utils.storage.Client")
     @patch("scripts.utils.logger")
-    def test_upload_to_gcs_bucket_error(
-        self, mock_logger, mock_storage_client, mock_setup_creds
-    ):
+    def test_upload_to_gcs_bucket_error(self, mock_logger, mock_storage_client, mock_setup_creds):
         # Simulate an error when getting the bucket.
         df = pl.DataFrame({"col": [1, 2, 3]})
         destination_blob_name = "file.csv"
         bucket_name = "test_bucket"
 
         dummy_storage_instance = MagicMock()
-        dummy_storage_instance.get_bucket.side_effect = Exception(
-            "Bucket error"
-        )
+        dummy_storage_instance.get_bucket.side_effect = Exception("Bucket error")
         mock_storage_client.return_value = dummy_storage_instance
 
         with self.assertRaises(Exception) as context:
             upload_to_gcs(df, bucket_name, destination_blob_name)
         self.assertIn("Bucket error", str(context.exception))
-        # Check that an error was logged by inspecting all positional
-        # arguments.
+        # Check that an error was logged.
         self.assertTrue(
-            any(
-                "Bucket error" in str(arg)
-                for call_args, _ in mock_logger.error.call_args_list
-                for arg in call_args
-            ),
-            "Expected an error log containing 'Bucket error'.",
+            any("Bucket error" in str(arg) for call_args in mock_logger.error.call_args_list for arg in call_args[0]),
+            "Expected an error log containing 'Bucket error'."
         )
+
 
     
     # Unit tests for send_anomaly_alert function.
