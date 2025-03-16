@@ -10,3 +10,4 @@ __pycache__/
 /data
 /logs
 temp_env/
+.qodo
