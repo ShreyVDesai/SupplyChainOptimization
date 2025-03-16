@@ -28,9 +28,9 @@ jobs:
     - name: Create a ZIP file
       run: |
         mkdir cloud_run_files_to_zip
-        cp GCP_Scripts/GCS_to_SQL/* my_files_to_zip/
-        zip -r GCS_TO_SQL.zip my_files_to_zip/
+        cp GCP_Scripts/GCS_to_SQL/* cloud_run_files_to_zip/
+        zip -r GCS_TO_SQL.zip cloud_run_files_to_zip/
 
     - name: Deploy via GCS
       run: |
-        gsutil cp my_files_to_zip.zip gs://utility_cloud_run_functions/
+        gsutil cp GCS_TO_SQL.zip gs://utility_cloud_run_functions/
