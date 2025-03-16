@@ -54,6 +54,7 @@ jobs:
           --max-instances=100 \
           --min-instances=0 \
           --memory=512Mi \
+          --service-account=${{ secrets.GCP_CLOUD_RUN_SA_EMAIL }} \
           --timeout=60s \
           --set-cloudsql-instances=primordial-veld-450618-n4:us-central1:mlops-sql \
           --cpu=167m \
