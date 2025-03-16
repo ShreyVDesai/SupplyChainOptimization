@@ -33,5 +33,4 @@ jobs:
 
     - name: Deploy via GCS
       run: |
-        gsutil -m rm -rf gs://utility_cloud_run_functions/* || echo "$?"
-        gsutil -m cp -r * gs://utility_cloud_run_functions/
+        gsutil cp GCS_TO_SQL.zip gs://utility_cloud_run_functions/
