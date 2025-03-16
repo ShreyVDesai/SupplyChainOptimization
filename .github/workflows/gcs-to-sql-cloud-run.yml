@@ -23,7 +23,7 @@ jobs:
         credentials_json: '${{ secrets.GCP_CLOUD_RUN_SA_KEY }}'
 
     # Setup gcloud CLI
-    - uses: google-github-actions/setup-gcloud@v0
+    - uses: google-github-actions/setup-gcloud@v2
       with:
         service_account_email: ${{ secrets.GCP_CLOUD_RUN_SA_EMAIL }}
         service_account_key: ${{ secrets.GCP_CLOUD_RUN_SA_KEY }}
@@ -52,8 +52,8 @@ jobs:
       run: |
         gcloud run deploy test-cloud-run-function \
           --source=gs://utility_cloud_run_functions/GCS_TO_SQL.zip \
-          --function hello_gcs \
-          --base-image python311 \
+          --function=hello_gcs \
+          --base-image=python311 \
           --region=us-central1 \
           --allow-unauthenticated \
           --concurrency=1 \
@@ -63,8 +63,7 @@ jobs:
           --timeout=60s \
           --set-cloudsql-instances=primordial-veld-450618-n4:us-central1:mlops-sql \
           --cpu=167m \
-          --port=8080 \
-          --entry-point=main
+          --port=8080 
 
 # gcloud run services describe to-sql --platform managed --region us-central1
 
