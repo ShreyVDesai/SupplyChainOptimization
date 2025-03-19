@@ -80,7 +80,12 @@ jobs:
       # Retrieve the SSH private key from Terraform output
       - name: Retrieve SSH Private Key
         id: get_ssh_key
-        run: echo "key=$(terraform -chdir=terraform output -raw -no-color ssh_private_key)" >> $GITHUB_OUTPUT
+        run: |
+          key=$(terraform -chdir=terraform output -raw -no-color ssh_private_key)
+          echo "key<<EOF" >> $GITHUB_OUTPUT
+          echo "$key" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
 
       - name: Write SSH Key to File
         run: |
