@@ -18,7 +18,6 @@ resource "google_compute_instance" "airflow_server" {
   }
 
   metadata = {
-    # You can provide your SSH public key in the format "user:ssh-rsa AAAA...".
-    ssh-keys = "ubuntu:${file("~/.ssh/id_rsa.pub")}"
+    ssh-keys = "ubuntu:${tls_private_key.ssh_key.public_key_openssh}"
   }
 }
