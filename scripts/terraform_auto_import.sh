@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+cd terraform
+
 # Use environment variables provided by the workflow.
 # (Ensure these variables are set in your workflow's env or via "Set Terraform Variables")
 PROJECT_ID="${TF_VAR_project_id}"
