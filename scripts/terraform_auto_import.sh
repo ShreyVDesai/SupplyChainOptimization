@@ -110,7 +110,7 @@ import_if_exists "Firewall Rule" "$FIREWALL_NAME" \
 ### **Compute Instance**
 import_if_exists "Compute Instance" "$VM_NAME" \
   "gcloud compute instances list --project=${PROJECT_ID} --zone=${VM_ZONE} --filter='name=${VM_NAME}' --format='value(name)'" \
-  "terraform import google_compute_instance.airflow_vm projects/${PROJECT_ID}/zones/${VM_ZONE}/instances/${VM_NAME}"
+  "terraform import google_compute_instance.airflow_template projects/${PROJECT_ID}/zones/${VM_ZONE}/instances/${VM_NAME}"
 
 ### **VPC**
 import_if_exists "VPC" "$VPC_NAME" \
