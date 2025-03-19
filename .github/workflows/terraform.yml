@@ -73,8 +73,8 @@ jobs:
 
       - name: Terraform Auto-Import, Plan, and Apply
         run:
-          chmod +x scripts/terraform_auto_import.sh
-          scripts/terraform_auto_import.sh
+          chmod +x terraform_auto_import.sh
+          terraform_auto_import.sh
 
       # - name: Terraform Plan
       #   working-directory: ./terraform
@@ -87,10 +87,7 @@ jobs:
       - name: Retrieve SSH Private Key
         id: get_ssh_key
         working-directory: ./terraform
-        run: |
-          key=$(terraform output -raw -no-color ssh_private_key)
-          echo "key=$key" >> $GITHUB_OUTPUT
-
+        run: echo "key=$(terraform output -raw -no-color ssh_private_key)" >> $GITHUB_OUTPUT
 
 
       - name: Write SSH Key to File
