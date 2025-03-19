@@ -166,15 +166,21 @@ jobs:
             mkdir -p /opt/airflow
             echo "airflow dir created."
             echo "🚀 Ensuring GCP Key File exists..."
-            if [ -d /opt/airflow/gcp-key.json ]; then
-                echo "⚠️ Found directory at /opt/airflow/gcp-key.json. Removing it..."
-                sudo rm -rf /opt/airflow/gcp-key.json
+            if [ -f /opt/airflow/gcp-key.json ]; then
+                echo "⚠️ GCP Key File already exists, removing it..."
+                sudo rm -f /opt/airflow/gcp-key.json
             fi
             echo "🚀 Creating GCP Key File..."
             echo '${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}' | jq . > /opt/airflow/gcp-key.json
             chmod 644 /opt/airflow/gcp-key.json
             sudo chown ubuntu:docker /opt/airflow/gcp-key.json
             echo "✅ GCP Key File Created."
+
+            echo "🚀 Activating service account on VM..."
+            gcloud auth activate-service-account --key-file /opt/airflow/gcp-key.json
+
+            echo "🚀 Configuring Docker for Artifact Registry..."
+            gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
 
             echo "🚀 Fixing Airflow log directory permissions..."
             sudo mkdir -p /opt/airflow/logs
