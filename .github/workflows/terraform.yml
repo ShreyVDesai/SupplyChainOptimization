@@ -67,28 +67,20 @@ jobs:
         with:
           terraform_version: 1.3.0
 
+      # Initialize Terraform by specifying the ./terraform folder
       - name: Terraform Init
-        working-directory: ./terraform
-        run: terraform init
+        run: terraform -chdir=terraform init
 
+      # Run your auto-import script (plan/apply inside it).
       - name: Terraform Auto-Import, Plan, and Apply
-        run:
-          chmod +x terraform_auto_import.sh
-          terraform_auto_import.sh
+        run: |
+          chmod +x scripts/terraform_auto_import.sh
+          scripts/terraform_auto_import.sh
 
-      # - name: Terraform Plan
-      #   working-directory: ./terraform
-      #   run: terraform plan -out=tfplan
-
-      # - name: Terraform Apply
-      #   working-directory: ./terraform
-      #   run: terraform apply -auto-approve tfplan
-
+      # Retrieve the SSH private key from Terraform output
       - name: Retrieve SSH Private Key
         id: get_ssh_key
-        working-directory: ./terraform
-        run: echo "key=$(terraform output -raw -no-color ssh_private_key)" >> $GITHUB_OUTPUT
-
+        run: echo "key=$(terraform -chdir=terraform output -raw -no-color ssh_private_key)" >> $GITHUB_OUTPUT
 
       - name: Write SSH Key to File
         run: |
