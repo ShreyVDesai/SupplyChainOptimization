@@ -10,7 +10,7 @@ resource "google_compute_instance_template" "airflow_template" {
   }
 
   network_interface {
-    network    = google_compute_network.vpc.self_link
+    network    = google_compute_network.airflow_vpc.self_link
     subnetwork = google_compute_subnetwork.airflow_subnet.self_link
     access_config {} # Public IP
   }
