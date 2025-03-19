@@ -76,13 +76,13 @@ jobs:
           chmod +x scripts/terraform_auto_import.sh
           scripts/terraform_auto_import.sh
 
-      - name: Terraform Plan
-        working-directory: ./terraform
-        run: terraform plan -out=tfplan
+      # - name: Terraform Plan
+      #   working-directory: ./terraform
+      #   run: terraform plan -out=tfplan
 
-      - name: Terraform Apply
-        working-directory: ./terraform
-        run: terraform apply -auto-approve tfplan
+      # - name: Terraform Apply
+      #   working-directory: ./terraform
+      #   run: terraform apply -auto-approve tfplan
 
       - name: Retrieve SSH Private Key
         id: get_ssh_key
