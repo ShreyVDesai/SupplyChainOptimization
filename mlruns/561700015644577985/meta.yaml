@@ -1,0 +1,6 @@
+artifact_location: mlflow-artifacts:/561700015644577985
+creation_time: 1742409622463
+experiment_id: '561700015644577985'
+last_update_time: 1742409622463
+lifecycle_stage: active
+name: LSTM
