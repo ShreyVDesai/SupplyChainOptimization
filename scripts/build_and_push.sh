@@ -10,7 +10,7 @@ IMAGE_TAG=$(date +'%Y%m%d-%H%M%S')
 GCP_LOCATION="${GCP_LOCATION:-us-central1}"
 REPO_URI="${GCP_LOCATION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}"
 
-echo "🚀 Docker build triggered (image missing or code changed)."
+echo "Docker build triggered (image missing or code changed)."
 echo "Building image: ${REPO_URI}/${IMAGE_NAME}:${IMAGE_TAG}"
 
 # Build the Docker image with --no-cache to ensure a fresh build.
