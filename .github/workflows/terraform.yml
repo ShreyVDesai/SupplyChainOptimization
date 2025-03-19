@@ -87,10 +87,11 @@ jobs:
       - name: Retrieve SSH Private Key
         id: get_ssh_key
         working-directory: ./terraform
-        run: echo "::set-output name=key::$(terraform output -raw ssh_private_key)"
-        
+        run: echo "key=$(terraform output -raw ssh_private_key)" >> $GITHUB_OUTPUT
+
       - name: Write SSH Key to File
         run: |
+          mkdir -p ~/.ssh
           echo "${{ steps.get_ssh_key.outputs.key }}" > ~/.ssh/github-actions-key
           chmod 600 ~/.ssh/github-actions-key
 
