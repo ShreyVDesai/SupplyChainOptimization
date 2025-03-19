@@ -1,19 +1,18 @@
-resource "google_compute_instance" "airflow_vm" {
-  name         = var.vm_name
+resource "google_compute_instance_template" "airflow_template" {
+  name         = "airflow-template"
   machine_type = var.machine_type
-  zone         = var.zone
+  region       = var.region
 
-  boot_disk {
-    initialize_params {
-      image = "ubuntu-os-cloud/ubuntu-2204-lts"
-      size  = 50
-    }
+  disk {
+    source_image = "projects/primordial-veld-450618-n4/global/images/my-airflow-image" # Custom image
+    auto_delete  = true
+    boot         = true
   }
 
   network_interface {
-    network    = google_compute_network.vpc.self_link
-    subnetwork = google_compute_subnetwork.airflow_subnet.self_link
-    access_config {} # Assigns a public IP
+    network = google_compute_network.vpc.name
+    subnetwork = google_compute_subnetwork.airflow_subnet.name
+    access_config {} # Public IP
   }
 
   metadata_startup_script = <<EOT
@@ -24,13 +23,33 @@ sudo systemctl start docker
 sudo usermod -aG docker ubuntu
 docker-compose -f /opt/airflow/docker-compose.yaml up -d
 EOT
-
-  tags = ["airflow-server"]
 }
 
-# Create an image after VM creation
-resource "google_compute_image" "airflow_image" {
-  name       = "airflow-vm-image"
-  source_disk = google_compute_instance.airflow_vm.boot_disk[0].device_name
-  depends_on = [google_compute_instance.airflow_vm]
+resource "google_compute_instance_group_manager" "airflow_mig" {
+  name               = "airflow-mig"
+  base_instance_name = "airflow-instance"
+  version {
+    instance_template = google_compute_instance_template.airflow_template.self_link
+  }
+  target_size = 1
+
+  auto_healing_policies {
+    health_check      = google_compute_health_check.airflow_health_check.id
+    initial_delay_sec = 300
+  }
+}
+
+resource "google_compute_autoscaler" "airflow_autoscaler" {
+  name   = "airflow-autoscaler"
+  target = google_compute_instance_group_manager.airflow_mig.id
+
+  autoscaling_policy {
+    max_replicas    = 5
+    min_replicas    = 1
+    cooldown_period = 60
+
+    cpu_utilization {
+      target = 0.6
+    }
+  }
 }

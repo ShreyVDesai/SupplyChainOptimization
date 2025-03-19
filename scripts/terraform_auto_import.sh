@@ -60,7 +60,6 @@
 # echo "Waiting for VM to fully initialize..."
 # sleep 60
 
-
 #!/bin/bash
 set -e
 
@@ -100,7 +99,7 @@ import_if_exists() {
 
 ### **Artifact Registry**
 import_if_exists "Artifact Registry" "$ARTIFACT_REPO" \
-  "gcloud artifacts repositories list --project=${PROJECT_ID} --location=${REGION} --filter='name=${ARTIFACT_REPO}' --format='value(name)'" \
+  "gcloud artifacts repositories list --project=${PROJECT_ID} --location=${REGION} --format='value(name)' | grep ${ARTIFACT_REPO}" \
   "terraform import google_artifact_registry_repository.airflow_docker projects/${PROJECT_ID}/locations/${REGION}/repositories/${ARTIFACT_REPO}"
 
 ### **Firewall**
@@ -110,7 +109,7 @@ import_if_exists "Firewall Rule" "$FIREWALL_NAME" \
 
 ### **Compute Instance**
 import_if_exists "Compute Instance" "$VM_NAME" \
-  "gcloud compute instances list --project=${PROJECT_ID} --zones=${VM_ZONE} --filter='name=${VM_NAME}' --format='value(name)'" \
+  "gcloud compute instances list --project=${PROJECT_ID} --zone=${VM_ZONE} --filter='name=${VM_NAME}' --format='value(name)'" \
   "terraform import google_compute_instance.airflow_vm projects/${PROJECT_ID}/zones/${VM_ZONE}/instances/${VM_NAME}"
 
 ### **VPC**
@@ -137,6 +136,11 @@ import_if_exists "Backend Service" "$BACKEND_SERVICE_NAME" \
 import_if_exists "Health Check" "$HEALTH_CHECK_NAME" \
   "gcloud compute health-checks list --project=${PROJECT_ID} --filter='name=${HEALTH_CHECK_NAME}' --format='value(name)'" \
   "terraform import google_compute_health_check.airflow_health_check projects/${PROJECT_ID}/global/healthChecks/${HEALTH_CHECK_NAME}"
+
+### **Instance Group for Auto-scaling**
+import_if_exists "Instance Group" "airflow-mig" \
+  "gcloud compute instance-groups managed list --project=${PROJECT_ID} --filter='name=airflow-mig' --format='value(name)'" \
+  "terraform import google_compute_instance_group_manager.airflow_mig projects/${PROJECT_ID}/regions/${REGION}/instanceGroupManagers/airflow-mig"
 
 echo "Running Terraform plan and apply..."
 terraform plan -out=tfplan
