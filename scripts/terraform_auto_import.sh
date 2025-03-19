@@ -103,13 +103,18 @@ import_if_exists() {
 
 ### **Artifact Registry**
 import_if_exists "Artifact Registry" "$ARTIFACT_REPO" \
-  "gcloud artifacts repositories list --project=${PROJECT_ID} --location=${REGION} --filter='name=${ARTIFACT_REPO}' --format='value(name)'" \
+  "gcloud artifacts repositories list --project=${PROJECT_ID} --location=${REGION} --format='value(name)' | grep -w ${ARTIFACT_REPO}" \
   "terraform import google_artifact_registry_repository.airflow_docker projects/${PROJECT_ID}/locations/${REGION}/repositories/${ARTIFACT_REPO}"
 
 ### **Firewall**
 import_if_exists "Firewall Rule" "$FIREWALL_NAME" \
   "gcloud compute firewall-rules list --project=${PROJECT_ID} --filter='name=${FIREWALL_NAME}' --format='value(name)'" \
   "terraform import google_compute_firewall.airflow_server projects/${PROJECT_ID}/global/firewalls/${FIREWALL_NAME}"
+
+import_if_exists "Firewall Rule" "allow-http" \
+  "gcloud compute firewall-rules list --project=${PROJECT_ID} --filter='name=allow-http' --format='value(name)'" \
+  "terraform import google_compute_firewall.allow_http projects/${PROJECT_ID}/global/firewalls/allow-http"
+
 
 ### **Compute Instance**
 import_if_exists "Compute Instance" "$VM_NAME" \
@@ -141,10 +146,10 @@ import_if_exists "Health Check" "$HEALTH_CHECK_NAME" \
   "gcloud compute health-checks list --project=${PROJECT_ID} --filter='name=${HEALTH_CHECK_NAME}' --format='value(name)'" \
   "terraform import google_compute_health_check.airflow_health_check projects/${PROJECT_ID}/global/healthChecks/${HEALTH_CHECK_NAME}"
 
-### **Instance Group for Auto-scaling**
 import_if_exists "Instance Group" "airflow-mig" \
   "gcloud compute instance-groups managed list --project=${PROJECT_ID} --filter='name=airflow-mig' --format='value(name)'" \
   "terraform import google_compute_instance_group_manager.airflow_mig projects/${PROJECT_ID}/regions/${REGION}/instanceGroupManagers/airflow-mig"
+
 
 echo "Running Terraform plan and apply..."
 terraform plan -out=tfplan
@@ -153,16 +158,3 @@ terraform apply -auto-approve tfplan
 # Wait for VM to be fully initialized
 echo "Waiting for VM to fully initialize..."
 sleep 60
-
-### **Create Image from VM (Only if it doesn't exist)**
-image_exists=$(gcloud compute images list --project="${PROJECT_ID}" --filter="name=${IMAGE_NAME}" --format="value(name)")
-
-if [ -z "$image_exists" ]; then
-  echo "Creating Image from VM..."
-  gcloud compute images create "${IMAGE_NAME}" \
-    --source-disk="${VM_NAME}" \
-    --source-disk-zone="${VM_ZONE}" \
-    --project="${PROJECT_ID}"
-else
-  echo "Image already exists. Skipping image creation."
-fi
