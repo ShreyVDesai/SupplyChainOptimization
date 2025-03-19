@@ -7,7 +7,7 @@ resource "google_compute_backend_service" "airflow_backend" {
   health_checks         = [google_compute_health_check.airflow_health_check.self_link]
 
   backend {
-    group = google_compute_instance_group_manager.airflow_mig.instance_group
+    group = google_compute_instance_group_manager.airflow_mig.self_link
   }
 }
 
