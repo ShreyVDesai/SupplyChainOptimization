@@ -1,6 +1,6 @@
 import os
 import pickle
-
+import io
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -250,12 +250,12 @@ def main():
     
     query_new_data = """
         SELECT 
-            date, product_name, total_quantity
+            sale_date, product_name, total_quantity
         FROM SALES
-        WHERE date BETWEEN 
-            (SELECT DATE_SUB(MAX(date), INTERVAL 13 DAY) FROM SALES)
-        AND (SELECT DATE_SUB(MAX(date), INTERVAL 7 DAY) FROM SALES)
-        ORDER BY date;
+        WHERE sale_date BETWEEN 
+            (SELECT DATE_SUB(MAX(sale_date), INTERVAL 13 DAY) FROM SALES)
+        AND (SELECT DATE_SUB(MAX(sale_date), INTERVAL 7 DAY) FROM SALES)
+        ORDER BY sale_date;
     """
     # query_new_data = "SELECT * FROM SALES"
     new_df = get_latest_data_from_cloud_sql(
@@ -268,21 +268,21 @@ def main():
     #    For example, reference might be the training dataset or a stable historical window.
     query_ref_data = """
         SELECT 
-            date, product_name, total_quantity
+            sale_date, product_name, total_quantity
         FROM SALES
-        WHERE date BETWEEN 
-            (SELECT DATE_SUB(MAX(date), INTERVAL 6 DAY) FROM SALES)
-        AND (SELECT MAX(date) FROM SALES)
-        ORDER BY date;
+        WHERE sale_date BETWEEN 
+            (SELECT DATE_SUB(MAX(sale_date), INTERVAL 6 DAY) FROM SALES)
+        AND (SELECT MAX(sale_date) FROM SALES)
+        ORDER BY sale_date;
     """
     ref_df = get_latest_data_from_cloud_sql(
     query=query_ref_data
 )
 
     # Convert the 'date' column to datetime 
-    new_df['date'] = pd.to_datetime(new_df['date'])
+    new_df['sale_date'] = pd.to_datetime(new_df['sale_date'])
     
-    ref_df['date'] = pd.to_datetime(ref_df['date'])
+    ref_df['sale_date'] = pd.to_datetime(ref_df['sale_date'])
     
     # 4. Load current model
     logging.info(f"Loading model from {model_pickle_path}...")
@@ -301,10 +301,10 @@ def main():
         prod_ref = ref_df[ref_df['product_name'] == product].copy() 
         
         # Set 'date' as index within the product group and sort
-        prod_new.set_index('date', inplace=True)
+        prod_new.set_index('sale_date', inplace=True)
         prod_new.sort_index(inplace=True)
         
-        prod_ref.set_index('date', inplace=True)
+        prod_ref.set_index('sale_date', inplace=True)
         prod_ref.sort_index(inplace=True)
         
         # Define prediction window for this product
