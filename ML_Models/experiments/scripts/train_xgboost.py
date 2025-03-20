@@ -5,6 +5,7 @@ import optuna
 import pickle
 from xgboost import XGBRegressor
 from sklearn.metrics import mean_squared_error
+import shap
 
 def compute_rmse(y_true, y_pred):
     """Computes Root Mean Squared Error."""
@@ -247,9 +248,13 @@ def save_model(model):
     
     print("Model saved as final_model.pkl")
 
+
+
+
 # ==========================================
 # 6. Main Pipeline
 # ==========================================
+
 
 def main():
     # 1. Load data
@@ -284,6 +289,7 @@ def main():
     
     # ----- Step 2: Automatic Time-Based Train/Validation/Test Split -----
     train_df, valid_df, test_df = get_train_valid_test_split(df_train, train_frac=0.7, valid_frac=0.1)
+    print(train_df)
     
     # ----- Step 3: Hyperparameter Tuning using Optuna -----
     print("Starting hyperparameter tuning with Optuna...")
@@ -292,6 +298,19 @@ def main():
     # ----- Step 4: Train Final Model on Train+Validation -----
     train_valid_df = pd.concat([train_df, valid_df], ignore_index=True)
     final_model = model_training(train_valid_df, valid_df, feature_columns, target_column, params=best_params)
+
+    # Initialize SHAP explainer (TreeExplainer is used for tree-based models like XGBoost)
+    explainer = shap.TreeExplainer(final_model)
+
+    # Calculate SHAP values for the validation set
+    shap_values = explainer.shap_values(valid_df[feature_columns])
+
+    # Plot summary plot (global feature importance)
+    shap.summary_plot(shap_values, valid_df[feature_columns])
+
+    # Plot a SHAP value for a single prediction (local explanation)
+    shap.initjs()
+    shap.force_plot(explainer.expected_value, shap_values[0], valid_df[feature_columns].iloc[0])
     
     # Compute and print training, validation, and test RMSE.
     train_rmse = compute_rmse(train_df[target_column], final_model.predict(train_df[feature_columns]))
