@@ -23,11 +23,27 @@ resource "google_compute_instance" "airflow_vm" {
 
   metadata_startup_script = <<EOT
 #!/bin/bash
+# Update the system and install Docker
 sudo apt update -y
-sudo apt install -y docker.io docker-compose
+sudo apt install -y docker.io
+
+# Install Docker Compose (latest version)
+if ! command -v docker-compose &> /dev/null; then
+    echo "❌ Docker Compose not found. Installing..."
+    sudo curl -L "https://github.com/docker/compose/releases/download/$(curl -s https://api.github.com/repos/docker/compose/releases/latest | jq -r .tag_name)/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    sudo chmod +x /usr/local/bin/docker-compose
+fi
+
+# Start Docker service and add user to Docker group
 sudo systemctl start docker
 sudo usermod -aG docker ubuntu
+
+# Wait for Docker service to start (add a small delay)
+sleep 5
+
+# Run Docker Compose to start Airflow
 docker-compose -f /opt/airflow/docker-compose.yaml up -d
+
 EOT
 
   tags = ["airflow-server"]
@@ -35,11 +51,7 @@ EOT
   lifecycle {
     ignore_changes = [
       # Ignore differences in startup script if formatting or computed defaults change
-      metadata_startup_script,
-      # # If the computed SSH key string (or order) differs, ignore that as well
-      # metadata["ssh-keys"],
-      # Sometimes the boot disk's source attribute is computed and might differ
-      boot_disk[0].source,
+      metadata_startup_script
     ]
   }
 }
