@@ -146,10 +146,14 @@ import_if_exists "Health Check" "$HEALTH_CHECK_NAME" \
   "gcloud compute health-checks list --project=${PROJECT_ID} --filter='name=${HEALTH_CHECK_NAME}' --format='value(name)'" \
   "terraform import google_compute_health_check.airflow_health_check projects/${PROJECT_ID}/global/healthChecks/${HEALTH_CHECK_NAME}"
 
-### **Autoscaler**
-import_if_exists "Autoscaler" "airflow-autoscaler" \
-  "gcloud compute autoscalers list --project=${PROJECT_ID} --zones=${VM_ZONE} --filter='name=airflow-autoscaler' --format='value(name)'" \
-  "terraform import google_compute_autoscaler.airflow_autoscaler projects/${PROJECT_ID}/zones/${VM_ZONE}/autoscalers/airflow-autoscaler"
+# Check if Autoscaler exists using the beta command
+autoscaler_exists=$(gcloud beta compute autoscalers list --project="${PROJECT_ID}" --zones="${VM_ZONE}" --filter="name=airflow-autoscaler" --format="value(name)")
+if [ -n "$autoscaler_exists" ]; then
+  echo "Autoscaler exists. Importing into Terraform..."
+  terraform import google_compute_autoscaler.airflow_autoscaler "projects/${PROJECT_ID}/zones/${VM_ZONE}/autoscalers/airflow-autoscaler"
+else
+  echo "Autoscaler does not exist. Terraform will create it."
+fi
 
 ### **Instance Group Manager**
 import_if_exists "Instance Group" "airflow-mig" \
