@@ -13,4 +13,8 @@ resource "google_compute_autoscaler" "airflow_autoscaler" {
       target = 0.6  # 60% CPU utilization threshold
     }
   }
+
+  lifecycle {
+    ignore_changes = [autoscaling_policy]  # Use with caution—ensure you really want to ignore updates here.
+  }
 }
