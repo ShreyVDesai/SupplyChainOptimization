@@ -119,7 +119,7 @@ jobs:
         run: |
           chmod +x scripts/sync_files.sh
           ./scripts/sync_files.sh
-          
+
       - name: Deploy Airflow on Compute Engine
         run: |
           VM_NAME="airflow-server"
@@ -143,6 +143,7 @@ jobs:
             else
               echo "✅ Docker is already installed."
             fi
+            echo "🚀 Ensuring Docker Compose is installed..."
             if ! command -v docker-compose &> /dev/null; then
               echo "❌ Docker Compose not found. Installing latest version..."
               DOCKER_COMPOSE_VERSION=\$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep -Po '"tag_name": "\K.*?(?=")')
@@ -152,6 +153,9 @@ jobs:
             else
               echo "✅ Docker Compose is already installed."
             fi
+            # Check Docker Compose version for verification
+            docker compose --version
+            
             # Give user Docker permissions
             echo "🔄 Adding user to Docker group..."
             sudo usermod -aG docker \$USER
@@ -194,6 +198,7 @@ jobs:
             docker compose up -d --remove-orphans
             echo "✅ Airflow successfully started!"
           EOF
+
       - name: Get Airflow Webserver IP
         run: |
           VM_NAME="airflow-server"
