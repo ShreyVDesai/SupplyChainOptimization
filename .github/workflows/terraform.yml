@@ -78,7 +78,7 @@ jobs:
           chmod +x scripts/terraform_auto_import.sh
           scripts/terraform_auto_import.sh
 
-            - name: Retrieve SSH Private Key
+      - name: Retrieve SSH Private Key
         id: get_ssh_key
         run: |
           key=$(terraform -chdir=terraform output -raw -no-color ssh_private_key)
