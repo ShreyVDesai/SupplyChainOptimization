@@ -1,0 +1,5 @@
+mlflow  # For model tracking and management
+optuna  # For hyperparameter optimization
+
+shap # For model interpretability
+ipython  # For interactive computing and visualization

@@ -40,7 +40,7 @@ def extracting_time_series_and_lagged_features(df: pd.DataFrame) -> pd.DataFrame
     return df
 
 # Load & Process Data
-df = pd.read_csv("C:/Users/svaru/Downloads/processed_good_transactions_20190103_20241231.csv")
+df = pd.read_csv("C:/Users/svaru/Downloads/test.csv")
 df['Date'] = pd.to_datetime(df['Date'])
 df = extracting_time_series_and_lagged_features(df)
 
@@ -76,7 +76,6 @@ def plot_loss(history):
     plt.ylabel('Loss')
     plt.legend()
     plt.title('Model Loss during Training')
-    plt.show()
 
 
 # Hyperparameter Optimization with MLflow & Optuna
@@ -162,7 +161,7 @@ def objective(trial):
         return rmse
 
 study = optuna.create_study(direction="minimize")
-study.optimize(objective, n_trials=20)
+study.optimize(objective, n_trials=15)
 
 best_params = study.best_params
 print("Best Parameters:", best_params)
