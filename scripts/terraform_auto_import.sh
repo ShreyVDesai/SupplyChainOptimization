@@ -156,6 +156,13 @@ import_if_exists "Image" "$IMAGE_NAME" \
   "gcloud compute images list --project=${PROJECT_ID} --filter='name=${IMAGE_NAME}' --format='value(name)'" \
   "terraform import google_compute_image.airflow_image projects/${PROJECT_ID}/global/images/${IMAGE_NAME}"
 
+
+### **Instance Template**
+import_if_exists "Instance Template" "airflow-template" \
+  "gcloud compute instance-templates list --project=${PROJECT_ID} --filter='name=airflow-template' --format='value(name)'" \
+  "terraform import google_compute_instance_template.airflow_template projects/${PROJECT_ID}/global/instanceTemplates/airflow-template"
+
+
 echo "Running Terraform plan and apply..."
 terraform plan -out=tfplan
 terraform apply -auto-approve tfplan
