@@ -5,6 +5,7 @@ import optuna
 import pickle
 from xgboost import XGBRegressor
 from sklearn.metrics import mean_squared_error
+from sklearn.preprocessing import MinMaxScaler, OneHotEncoder
 import shap
 
 def compute_rmse(y_true, y_pred):
@@ -159,14 +160,102 @@ def model_training(train_df: pd.DataFrame, valid_df: pd.DataFrame, feature_colum
 # 5. Iterative Forecasting Function (Updated to include dummy features)
 # ==========================================
 
+# def iterative_forecast(model, df_product: pd.DataFrame, forecast_days: int = 7, product_columns: list = None) -> pd.DataFrame:
+#     """
+#     Given a trained one-step forecasting model and historical data for a single product,
+#     iteratively forecast the next `forecast_days` days.
+    
+#     If `product_columns` (list of dummy feature names) is provided, they will be added
+#     to the feature set for prediction.
+#     Returns a DataFrame with forecast dates and predicted quantities.
+#     """
+#     history = df_product.copy().sort_values(by="Date").reset_index(drop=True)
+#     last_date = history["Date"].iloc[-1]
+#     forecasts = []
+    
+#     base_feature_columns = [
+#         "lag_1", "lag_7", "lag_14", "lag_30", 
+#         "rolling_mean_7", "rolling_mean_14", "rolling_std_7",
+#         "day_of_week", "is_weekend", "day_of_month", "day_of_year", "month", "week_of_year"
+#     ]
+    
+#     for _ in range(forecast_days):
+#         next_date = last_date + pd.Timedelta(days=1)
+#         feature_row = {
+#             "day_of_week": next_date.dayofweek,
+#             "is_weekend": int(next_date.dayofweek in [5, 6]),
+#             "day_of_month": next_date.day,
+#             "day_of_year": next_date.timetuple().tm_yday,
+#             "month": next_date.month,
+#             "week_of_year": next_date.isocalendar().week,
+#         }
+#         last_qty = history["Total Quantity"].iloc[-1]
+#         feature_row["lag_1"] = last_qty
+#         feature_row["lag_7"] = history.iloc[-7]["Total Quantity"] if len(history) >= 7 else last_qty
+#         feature_row["lag_14"] = history.iloc[-14]["Total Quantity"] if len(history) >= 14 else last_qty
+#         feature_row["lag_30"] = history.iloc[-30]["Total Quantity"] if len(history) >= 30 else last_qty
+        
+#         qty_list = history["Total Quantity"].tolist()
+#         feature_row["rolling_mean_7"] = np.mean(qty_list[-7:]) if len(qty_list) >= 7 else np.mean(qty_list)
+#         feature_row["rolling_mean_14"] = np.mean(qty_list[-14:]) if len(qty_list) >= 14 else np.mean(qty_list)
+#         feature_row["rolling_std_7"] = np.std(qty_list[-7:]) if len(qty_list) >= 7 else np.std(qty_list)
+        
+#         X_pred = pd.DataFrame([feature_row])[base_feature_columns]
+#         # Add product dummy features if provided:
+#         if product_columns is not None:
+#             current_product = df_product["Product Name"].iloc[0]
+#             dummy_features = {col: 0 for col in product_columns}
+#             product_dummy = f"prod_{current_product}"
+#             if product_dummy in dummy_features:
+#                 dummy_features[product_dummy] = 1
+#             else:
+#                 print(f"Warning: {product_dummy} not found in product_columns")
+#             for key, value in dummy_features.items():
+#                 X_pred[key] = value
+        
+#         next_qty = model.predict(X_pred)[0]
+#         # Round the predicted quantity to the nearest integer.
+#         next_qty = np.round(next_qty)
+#         forecasts.append({"Date": next_date, "Predicted Quantity": next_qty})
+        
+#         new_row = {
+#             "Date": next_date,
+#             "Product Name": df_product["Product Name"].iloc[0],
+#             "Total Quantity": next_qty,
+#             "lag_1": next_qty,
+#             "day_of_week": feature_row["day_of_week"],
+#             "is_weekend": feature_row["is_weekend"],
+#             "day_of_month": feature_row["day_of_month"],
+#             "day_of_year": feature_row["day_of_year"],
+#             "month": feature_row["month"],
+#             "week_of_year": feature_row["week_of_year"],
+#             "lag_7": feature_row["lag_7"],
+#             "lag_14": feature_row["lag_14"],
+#             "lag_30": feature_row["lag_30"],
+#             "rolling_mean_7": feature_row["rolling_mean_7"],
+#             "rolling_mean_14": feature_row["rolling_mean_14"],
+#             "rolling_std_7": feature_row["rolling_std_7"],
+#             "target": np.nan
+#         }
+#         history = pd.concat([history, pd.DataFrame([new_row])], ignore_index=True)
+#         last_date = next_date
+        
+#     return pd.DataFrame(forecasts)
+
+
 def iterative_forecast(model, df_product: pd.DataFrame, forecast_days: int = 7, product_columns: list = None) -> pd.DataFrame:
     """
-    Given a trained one-step forecasting model and historical data for a single product,
-    iteratively forecast the next `forecast_days` days.
-    
-    If `product_columns` (list of dummy feature names) is provided, they will be added
-    to the feature set for prediction.
-    Returns a DataFrame with forecast dates and predicted quantities.
+    Iteratively forecast the next `forecast_days` for a given product using a trained XGBoost model.
+    Ensures that missing product columns are handled correctly.
+
+    Parameters:
+    - model: Trained XGBoost model
+    - df_product: DataFrame containing historical data for a single product
+    - forecast_days: Number of days to forecast
+    - product_columns: List of all product dummy feature names from training
+
+    Returns:
+    - DataFrame with forecasted values
     """
     history = df_product.copy().sort_values(by="Date").reset_index(drop=True)
     last_date = history["Date"].iloc[-1]
@@ -180,6 +269,8 @@ def iterative_forecast(model, df_product: pd.DataFrame, forecast_days: int = 7, 
     
     for _ in range(forecast_days):
         next_date = last_date + pd.Timedelta(days=1)
+        
+        # Build feature row as a dictionary (avoiding fragmented DataFrame warning)
         feature_row = {
             "day_of_week": next_date.dayofweek,
             "is_weekend": int(next_date.dayofweek in [5, 6]),
@@ -188,56 +279,53 @@ def iterative_forecast(model, df_product: pd.DataFrame, forecast_days: int = 7, 
             "month": next_date.month,
             "week_of_year": next_date.isocalendar().week,
         }
+        
+        # Lag features
         last_qty = history["Total Quantity"].iloc[-1]
         feature_row["lag_1"] = last_qty
         feature_row["lag_7"] = history.iloc[-7]["Total Quantity"] if len(history) >= 7 else last_qty
         feature_row["lag_14"] = history.iloc[-14]["Total Quantity"] if len(history) >= 14 else last_qty
         feature_row["lag_30"] = history.iloc[-30]["Total Quantity"] if len(history) >= 30 else last_qty
-        
+
+        # Rolling statistics
         qty_list = history["Total Quantity"].tolist()
         feature_row["rolling_mean_7"] = np.mean(qty_list[-7:]) if len(qty_list) >= 7 else np.mean(qty_list)
         feature_row["rolling_mean_14"] = np.mean(qty_list[-14:]) if len(qty_list) >= 14 else np.mean(qty_list)
         feature_row["rolling_std_7"] = np.std(qty_list[-7:]) if len(qty_list) >= 7 else np.std(qty_list)
         
-        X_pred = pd.DataFrame([feature_row])[base_feature_columns]
-        # Add product dummy features if provided:
+        # Convert dictionary to DataFrame
+        X_pred = pd.DataFrame([feature_row])
+
+        # Handle product encoding (Ensure all product columns exist)
         if product_columns is not None:
             current_product = df_product["Product Name"].iloc[0]
-            dummy_features = {col: 0 for col in product_columns}
+            dummy_features = {col: 0 for col in product_columns}  # Initialize all product columns to 0
             product_dummy = f"prod_{current_product}"
+            
             if product_dummy in dummy_features:
-                dummy_features[product_dummy] = 1
-            else:
-                print(f"Warning: {product_dummy} not found in product_columns")
-            for key, value in dummy_features.items():
-                X_pred[key] = value
-        
+                dummy_features[product_dummy] = 1  # Set the correct product column
+            
+            # Merge product dummies with X_pred
+            X_pred = pd.concat([X_pred, pd.DataFrame([dummy_features])], axis=1)
+
+        # Ensure correct column order (same as training)
+        X_pred = X_pred[base_feature_columns + product_columns]  
+
+        # Make prediction
         next_qty = model.predict(X_pred)[0]
-        # Round the predicted quantity to the nearest integer.
-        next_qty = np.round(next_qty)
+        next_qty = np.round(next_qty)  # Round predicted quantity
+        
+        # Store forecasted value
         forecasts.append({"Date": next_date, "Predicted Quantity": next_qty})
         
-        new_row = {
-            "Date": next_date,
-            "Product Name": df_product["Product Name"].iloc[0],
-            "Total Quantity": next_qty,
-            "lag_1": next_qty,
-            "day_of_week": feature_row["day_of_week"],
-            "is_weekend": feature_row["is_weekend"],
-            "day_of_month": feature_row["day_of_month"],
-            "day_of_year": feature_row["day_of_year"],
-            "month": feature_row["month"],
-            "week_of_year": feature_row["week_of_year"],
-            "lag_7": feature_row["lag_7"],
-            "lag_14": feature_row["lag_14"],
-            "lag_30": feature_row["lag_30"],
-            "rolling_mean_7": feature_row["rolling_mean_7"],
-            "rolling_mean_14": feature_row["rolling_mean_14"],
-            "rolling_std_7": feature_row["rolling_std_7"],
-            "target": np.nan
-        }
+        # Update history with new prediction for next iteration
+        new_row = feature_row.copy()
+        new_row["Date"] = next_date
+        new_row["Product Name"] = df_product["Product Name"].iloc[0]
+        new_row["Total Quantity"] = next_qty
         history = pd.concat([history, pd.DataFrame([new_row])], ignore_index=True)
-        last_date = next_date
+        
+        last_date = next_date  # Move to the next day
         
     return pd.DataFrame(forecasts)
 
@@ -258,7 +346,7 @@ def save_model(model):
 
 def main():
     # 1. Load data
-    df = pd.read_csv("Data.csv")
+    df = pd.read_csv("data\\transactions_20230103_20241231.csv")
     
     # 2. Create features and target on original data (keep for forecasting)
     original_df = extract_features(df.copy())
@@ -289,7 +377,17 @@ def main():
     
     # ----- Step 2: Automatic Time-Based Train/Validation/Test Split -----
     train_df, valid_df, test_df = get_train_valid_test_split(df_train, train_frac=0.7, valid_frac=0.1)
+    
+
+    scaler = MinMaxScaler()
+    
+    # Fit on training set's numeric features, then transform train/valid/test
+    train_df[other_features] = scaler.fit_transform(train_df[other_features])
+    valid_df[other_features] = scaler.transform(valid_df[other_features])
+    test_df[other_features]  = scaler.transform(test_df[other_features])
+    print("+++++++++++++++++++++++++++++++++++++++++++++")
     print(train_df)
+    print("+++++++++++++++++++++++++++++++++++++++++++++")
     
     # ----- Step 3: Hyperparameter Tuning using Optuna -----
     print("Starting hyperparameter tuning with Optuna...")
