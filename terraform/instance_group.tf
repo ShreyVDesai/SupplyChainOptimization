@@ -3,7 +3,7 @@ resource "google_compute_instance_group_manager" "airflow_mig" {
   base_instance_name = "airflow-instance"
 
   version {
-    instance_template = google_compute_instance_template.airflow_template.self_link
+    instance_template = google_compute_instance.airflow_vm.self_link
   }
 
   target_size = 1
