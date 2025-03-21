@@ -17,8 +17,8 @@ resource "google_compute_instance" "airflow_vm" {
   }
 
   metadata = {
-    enable-oslogin = "FALSE"  # Ensure OS Login is disabled to use metadata SSH keys.
-    ssh-keys       = "ubuntu:${tls_private_key.ssh_key.public_key_openssh}"
+    block-project-ssh-keys = "true"
+    ssh-keys               = "ubuntu:${tls_private_key.main.public_key_openssh}"
   }
 
   metadata_startup_script = <<EOT
@@ -36,8 +36,8 @@ EOT
     ignore_changes = [
       # Ignore differences in startup script if formatting or computed defaults change
       metadata_startup_script,
-      # If the computed SSH key string (or order) differs, ignore that as well
-      metadata["ssh-keys"],
+      # # If the computed SSH key string (or order) differs, ignore that as well
+      # metadata["ssh-keys"],
       # Sometimes the boot disk's source attribute is computed and might differ
       boot_disk[0].source,
     ]
