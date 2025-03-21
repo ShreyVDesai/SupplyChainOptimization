@@ -148,8 +148,8 @@ import_if_exists "Health Check" "$HEALTH_CHECK_NAME" \
 
 ### **Instance Group Manager**
 import_if_exists "Instance Group" "airflow-mig" \
-  "gcloud compute instance-groups managed list --project=${PROJECT_ID} --filter='name=airflow-mig' --format='value(name)'" \
-  "terraform import google_compute_instance_group_manager.airflow_mig projects/${PROJECT_ID}/regions/${REGION}/instanceGroupManagers/airflow-mig"
+  "gcloud compute instance-groups managed list --project=${PROJECT_ID} --zones=${VM_ZONE} --filter='name=airflow-mig' --format='value(name)' 2>/dev/null" \
+  "terraform import google_compute_instance_group_manager.airflow_mig projects/${PROJECT_ID}/zones/${VM_ZONE}/instanceGroupManagers/airflow-mig"
 
 ### **Image**
 import_if_exists "Image" "$IMAGE_NAME" \
