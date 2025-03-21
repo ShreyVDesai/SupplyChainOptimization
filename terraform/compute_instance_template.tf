@@ -1,6 +1,6 @@
 resource "google_compute_instance_template" "airflow_template" {
   name         = "airflow-template"
-  machine_type = var.machine_type  # e.g., "e2-standard-4"
+  machine_type = var.machine_type
 
   disk {
     auto_delete  = true
@@ -11,9 +11,12 @@ resource "google_compute_instance_template" "airflow_template" {
   network_interface {
     network    = google_compute_network.airflow_vpc.self_link
     subnetwork = google_compute_subnetwork.airflow_subnet.self_link
-
-    access_config {}  # To assign an ephemeral external IP
+    access_config {}
   }
 
-  // Add metadata, service account settings, etc. as needed.
+  # Add any other required configuration here.
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
