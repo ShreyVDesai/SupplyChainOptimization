@@ -15,5 +15,6 @@ ML_Models/experiments/experiments/mlruns/
 *.pkl
 SCO_LOG
 ML_Models/.env
-
-/Data.csv
+ML_Models/experiments/scripts/mlruns/
+*.h5
+.qodo
