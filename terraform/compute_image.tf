@@ -1,4 +1,4 @@
-# Stop the VM using a null_resource. This runs a gcloud command to stop the instance.
+# Stop the VM using a null_resource.
 resource "null_resource" "stop_airflow_vm" {
   depends_on = [google_compute_instance.airflow_vm]
 
@@ -9,7 +9,7 @@ resource "null_resource" "stop_airflow_vm" {
 
 # Optional: Wait for a while to ensure the instance has fully stopped.
 resource "time_sleep" "wait_for_instance_stop" {
-  depends_on    = [null_resource.stop_airflow_vm]
+  depends_on     = [null_resource.stop_airflow_vm]
   create_duration = "60s"
 }
 
@@ -21,5 +21,14 @@ resource "google_compute_image" "airflow_image" {
 
   lifecycle {
     ignore_changes = [source_disk]
+  }
+}
+
+# Start the VM again after the image is created.
+resource "null_resource" "start_airflow_vm" {
+  depends_on = [google_compute_image.airflow_image]
+
+  provisioner "local-exec" {
+    command = "gcloud compute instances start ${google_compute_instance.airflow_vm.name} --zone ${var.zone}"
   }
 }
