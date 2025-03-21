@@ -148,10 +148,29 @@ import_if_exists "Health Check" "$HEALTH_CHECK_NAME" \
   "gcloud compute health-checks list --project=${PROJECT_ID} --filter='name=${HEALTH_CHECK_NAME}' --format='value(name)'" \
   "terraform import google_compute_health_check.airflow_health_check projects/${PROJECT_ID}/global/healthChecks/${HEALTH_CHECK_NAME}"
 
-### Autoscaler (using beta command)
+### Autoscaler
 import_if_exists "Autoscaler" "airflow-autoscaler" \
-  "gcloud beta compute autoscalers list --project=${PROJECT_ID} --zones=${VM_ZONE} --filter='name=airflow-autoscaler' --format='value(name)' 2>/dev/null || true" \
+  "gcloud compute autoscalers list --project=${PROJECT_ID} --zones=${VM_ZONE} --filter='name=airflow-autoscaler' --format='value(name)' 2>/dev/null || true" \
   "terraform import google_compute_autoscaler.airflow_autoscaler projects/${PROJECT_ID}/zones/${VM_ZONE}/autoscalers/airflow-autoscaler"
+
+
+### URL Map
+import_if_exists "URL Map" "airflow-url-map" \
+  "gcloud compute url-maps list --project=${PROJECT_ID} --filter='name=airflow-url-map' --format='value(name)'" \
+  "terraform import google_compute_url_map.airflow_url_map projects/${PROJECT_ID}/global/urlMaps/airflow-url-map"
+
+
+### Target HTTP Proxy
+import_if_exists "Target HTTP Proxy" "airflow-http-proxy" \
+  "gcloud compute target-http-proxies list --project=${PROJECT_ID} --filter='name=airflow-http-proxy' --format='value(name)'" \
+  "terraform import google_compute_target_http_proxy.airflow_http_proxy projects/${PROJECT_ID}/global/targetHttpProxies/airflow-http-proxy"
+
+
+### Global Forwarding Rule
+import_if_exists "Global Forwarding Rule" "airflow-forwarding-rule" \
+  "gcloud compute forwarding-rules list --global --project=${PROJECT_ID} --filter='name=airflow-forwarding-rule' --format='value(name)'" \
+  "terraform import google_compute_global_forwarding_rule.airflow_forwarding_rule projects/${PROJECT_ID}/global/forwardingRules/airflow-forwarding-rule"
+
 
 ### Instance Group Manager
 import_if_exists "Instance Group" "airflow-mig" \
