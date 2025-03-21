@@ -149,9 +149,18 @@ import_if_exists "Health Check" "$HEALTH_CHECK_NAME" \
   "terraform import google_compute_health_check.airflow_health_check projects/${PROJECT_ID}/global/healthChecks/${HEALTH_CHECK_NAME}"
 
 ### Autoscaler
-import_if_exists "Autoscaler" "airflow-autoscaler" \
-  "gcloud compute autoscalers list --project=${PROJECT_ID} --zones=${VM_ZONE} --filter='name=airflow-autoscaler' --format='value(name)' 2>/dev/null || true" \
-  "terraform import google_compute_autoscaler.airflow_autoscaler projects/${PROJECT_ID}/zones/${VM_ZONE}/autoscalers/airflow-autoscaler"
+echo "Checking if Autoscaler: airflow-autoscaler exists..."
+autoscaler_exists=$(gcloud compute instance-groups managed describe airflow-mig \
+  --zone=${VM_ZONE} \
+  --project=${PROJECT_ID} --format="value(autoscaler)")
+
+if [[ -n "$autoscaler_exists" ]]; then
+  echo "Autoscaler airflow-autoscaler exists. Importing into Terraform..."
+  terraform import google_compute_autoscaler.airflow_autoscaler \
+    projects/${PROJECT_ID}/zones/${VM_ZONE}/autoscalers/airflow-autoscaler || echo "Terraform import may have failed!"
+else
+  echo "Autoscaler airflow-autoscaler does not exist in ${VM_ZONE}. Terraform will create it."
+fi
 
 
 ### URL Map
