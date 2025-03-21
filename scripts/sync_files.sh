@@ -11,7 +11,11 @@ echo "🚀 Syncing project files to $VM_NAME..."
 EXTERNAL_IP=$(gcloud compute instances describe "$VM_NAME" --zone "$VM_ZONE" --format="get(networkInterfaces[0].accessConfigs[0].natIP)")
 echo "Fetched external IP: $EXTERNAL_IP"
 
-# Re-add SSH public key metadata (in case the VM reboot wiped it)
+# Fetch public key from Terraform output
+echo "🔐 Fetching SSH public key from Terraform..."
+PUBKEY=$(terraform -chdir=terraform output -raw ssh_public_key)
+
+# Re-add SSH public key metadata to VM
 echo "🔐 Updating VM SSH metadata with public key..."
 gcloud compute instances add-metadata "$VM_NAME" \
   --zone="$VM_ZONE" \
@@ -26,10 +30,10 @@ until nc -z "$EXTERNAL_IP" 22; do
   echo "SSH not available yet, waiting 5 seconds..."
   sleep 5
 done
-echo "SSH is now available on $EXTERNAL_IP:22"
+echo "✅ SSH is now available on $EXTERNAL_IP:22"
 
 # Prepare remote directory
-ssh -o StrictHostKeyChecking=no -t -i ~/.ssh/github-actions-key "${REMOTE_USER}@${EXTERNAL_IP}" <<EOF
+ssh -o StrictHostKeyChecking=no -t -i ~/.ssh/github-actions-key "${REMOTE_USER}@${EXTERNAL_IP}" << EOF
   sudo mkdir -p /opt/airflow
   sudo chown -R ${REMOTE_USER}:${REMOTE_USER} /opt/airflow
   sudo chmod -R 775 /opt/airflow
