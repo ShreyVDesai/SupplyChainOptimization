@@ -71,14 +71,14 @@ jobs:
       - name: Terraform Init
         run: terraform -chdir=terraform init
 
+
       # Run your auto-import script (plan/apply inside it).
       - name: Terraform Auto-Import, Plan, and Apply
         run: |
           chmod +x scripts/terraform_auto_import.sh
           scripts/terraform_auto_import.sh
 
-      # Retrieve the SSH private key from Terraform output
-      - name: Retrieve SSH Private Key
+            - name: Retrieve SSH Private Key
         id: get_ssh_key
         run: |
           key=$(terraform -chdir=terraform output -raw -no-color ssh_private_key)
@@ -86,12 +86,24 @@ jobs:
           echo "$key" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-
       - name: Retrieve & Write SSH Private Key to File
         run: |
           mkdir -p ~/.ssh
           terraform -chdir=terraform output -raw ssh_private_key > ~/.ssh/github-actions-key
           chmod 600 ~/.ssh/github-actions-key
+
+      - name: Retrieve SSH Public Key
+        id: get_ssh_pub_key
+        run: |
+          terraform -chdir=terraform output -raw ssh_public_key > ~/.ssh/github-actions-key.pub
+
+      - name: Update VM Metadata with SSH Key
+        run: |
+          PUBKEY=$(cat ~/.ssh/github-actions-key.pub)
+          gcloud compute instances add-metadata ${{ env.VM_NAME }} \
+            --zone=${{ env.VM_ZONE }} \
+            --metadata="ssh-keys=${{ env.REMOTE_USER }}:$PUBKEY"
+
 
 
       # Optionally, keep your Docker build & push and deployment steps here if needed.
