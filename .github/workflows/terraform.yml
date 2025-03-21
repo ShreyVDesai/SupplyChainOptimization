@@ -100,10 +100,10 @@ jobs:
       - name: Update VM Metadata with SSH Key
         run: |
           PUBKEY=$(cat ~/.ssh/github-actions-key.pub)
-          gcloud compute instances add-metadata ${{ env.VM_NAME }} \
-            --zone=${{ env.VM_ZONE }} \
-            --metadata="ssh-keys=${{ env.REMOTE_USER }}:$PUBKEY"
-
+          echo "${{ env.REMOTE_USER }}:$PUBKEY" > /tmp/ssh-keys
+          gcloud compute instances add-metadata "${{ env.VM_NAME }}" \
+            --zone="${{ env.VM_ZONE }}" \
+            --metadata-from-file ssh-keys=/tmp/ssh-keys
 
       # Optionally, keep your Docker build & push and deployment steps here if needed.
       - name: Check if Docker Build is Needed
