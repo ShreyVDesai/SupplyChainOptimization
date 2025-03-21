@@ -1,4 +1,5 @@
 resource "google_compute_instance_template" "airflow_template" {
+  count = var.create_instance_template ? 1 : 0
   name         = "airflow-template"
   machine_type = var.machine_type
 

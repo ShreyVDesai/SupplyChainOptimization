@@ -39,3 +39,8 @@ variable "disk_size_gb" {
   type        = number
   default     = 50
 }
+
+variable "create_instance_template" {
+  type    = bool
+  default = false
+}
