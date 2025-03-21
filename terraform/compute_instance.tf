@@ -31,4 +31,15 @@ docker-compose -f /opt/airflow/docker-compose.yaml up -d
 EOT
 
   tags = ["airflow-server"]
+
+  lifecycle {
+    ignore_changes = [
+      # Ignore differences in startup script if formatting or computed defaults change
+      metadata_startup_script,
+      # If the computed SSH key string (or order) differs, ignore that as well
+      metadata["ssh-keys"],
+      # Sometimes the boot disk's source attribute is computed and might differ
+      boot_disk[0].source,
+    ]
+  }
 }
