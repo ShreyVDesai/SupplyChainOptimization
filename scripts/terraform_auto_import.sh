@@ -80,11 +80,10 @@ VPC_NAME="airflow-vpc"
 SUBNET_NAME="airflow-subnet"
 LOAD_BALANCER_NAME="airflow-load-balancer"
 HEALTH_CHECK_NAME="airflow-health-check"
-BACKEND_SERVICE_NAME="airflow-backend-service"
+BACKEND_SERVICE_NAME="airflow-backend"
 IMAGE_NAME="my-airflow-image"
 
-# Remove gcloud components update; it is disabled in your environment.
-# gcloud components update
+# Note: We are not updating gcloud components because the component manager is disabled.
 
 # Function to import resources into Terraform if they exist.
 import_if_exists() {
@@ -104,67 +103,67 @@ import_if_exists() {
   fi
 }
 
-### **Artifact Registry**
+### Artifact Registry
 import_if_exists "Artifact Registry" "$ARTIFACT_REPO" \
   "gcloud artifacts repositories list --project=${PROJECT_ID} --location=${REGION} --format='value(name)' | grep -w ${ARTIFACT_REPO}" \
   "terraform import google_artifact_registry_repository.airflow_docker projects/${PROJECT_ID}/locations/${REGION}/repositories/${ARTIFACT_REPO}"
 
-### **Firewall Rule: allow-airflow-server**
+### Firewall Rule: allow-airflow-server
 import_if_exists "Firewall Rule" "$FIREWALL_NAME" \
   "gcloud compute firewall-rules list --project=${PROJECT_ID} --filter='name=${FIREWALL_NAME}' --format='value(name)'" \
   "terraform import google_compute_firewall.airflow_server projects/${PROJECT_ID}/global/firewalls/${FIREWALL_NAME}"
 
-### **Firewall Rule: allow-http**
+### Firewall Rule: allow-http
 import_if_exists "Firewall Rule" "allow-http" \
   "gcloud compute firewall-rules list --project=${PROJECT_ID} --filter='name=allow-http' --format='value(name)'" \
   "terraform import google_compute_firewall.allow_http projects/${PROJECT_ID}/global/firewalls/allow-http"
 
-### **Compute Instance (VM)**
+### Compute Instance (VM)
 import_if_exists "Compute Instance" "$VM_NAME" \
   "gcloud compute instances list --project=${PROJECT_ID} --zones=${VM_ZONE} --filter='name=${VM_NAME}' --format='value(name)'" \
   "terraform import google_compute_instance.airflow_vm projects/${PROJECT_ID}/zones/${VM_ZONE}/instances/${VM_NAME}"
 
-### **VPC**
+### VPC
 import_if_exists "VPC" "$VPC_NAME" \
   "gcloud compute networks list --project=${PROJECT_ID} --filter='name=${VPC_NAME}' --format='value(name)'" \
   "terraform import google_compute_network.airflow_vpc projects/${PROJECT_ID}/global/networks/${VPC_NAME}"
 
-### **Subnet**
+### Subnet
 import_if_exists "Subnet" "$SUBNET_NAME" \
   "gcloud compute networks subnets list --project=${PROJECT_ID} --filter='name=${SUBNET_NAME}' --format='value(name)'" \
   "terraform import google_compute_subnetwork.airflow_subnet projects/${PROJECT_ID}/regions/${REGION}/subnetworks/${SUBNET_NAME}"
 
-### **Load Balancer (Forwarding Rule)**
+### Load Balancer (Forwarding Rule)
 import_if_exists "Load Balancer" "$LOAD_BALANCER_NAME" \
   "gcloud compute forwarding-rules list --project=${PROJECT_ID} --filter='name=${LOAD_BALANCER_NAME}' --format='value(name)'" \
   "terraform import google_compute_global_forwarding_rule.airflow_forwarding_rule projects/${PROJECT_ID}/global/forwardingRules/${LOAD_BALANCER_NAME}"
 
-### **Backend Service for Load Balancer**
+### Backend Service for Load Balancer
 import_if_exists "Backend Service" "$BACKEND_SERVICE_NAME" \
   "gcloud compute backend-services list --project=${PROJECT_ID} --filter='name=${BACKEND_SERVICE_NAME}' --format='value(name)'" \
-  "terraform import google_compute_backend_service.airflow_backend_service projects/${PROJECT_ID}/global/backendServices/${BACKEND_SERVICE_NAME}"
+  "terraform import google_compute_backend_service.airflow_backend projects/${PROJECT_ID}/global/backendServices/${BACKEND_SERVICE_NAME}"
 
-### **Health Check for Load Balancer**
+### Health Check for Load Balancer
 import_if_exists "Health Check" "$HEALTH_CHECK_NAME" \
   "gcloud compute health-checks list --project=${PROJECT_ID} --filter='name=${HEALTH_CHECK_NAME}' --format='value(name)'" \
   "terraform import google_compute_health_check.airflow_health_check projects/${PROJECT_ID}/global/healthChecks/${HEALTH_CHECK_NAME}"
 
-### **Autoscaler**
+### Autoscaler (using beta command)
 import_if_exists "Autoscaler" "airflow-autoscaler" \
   "gcloud beta compute autoscalers list --project=${PROJECT_ID} --zones=${VM_ZONE} --filter='name=airflow-autoscaler' --format='value(name)' 2>/dev/null || true" \
   "terraform import google_compute_autoscaler.airflow_autoscaler projects/${PROJECT_ID}/zones/${VM_ZONE}/autoscalers/airflow-autoscaler"
 
-### **Instance Group Manager**
+### Instance Group Manager
 import_if_exists "Instance Group" "airflow-mig" \
   "gcloud compute instance-groups managed list --project=${PROJECT_ID} --zones=${VM_ZONE} --filter='name=airflow-mig' --format='value(name)' 2>/dev/null" \
   "terraform import google_compute_instance_group_manager.airflow_mig projects/${PROJECT_ID}/zones/${VM_ZONE}/instanceGroupManagers/airflow-mig"
 
-### **Image**
+### Image
 import_if_exists "Image" "$IMAGE_NAME" \
   "gcloud compute images list --project=${PROJECT_ID} --filter='name=${IMAGE_NAME}' --format='value(name)'" \
   "terraform import google_compute_image.airflow_image projects/${PROJECT_ID}/global/images/${IMAGE_NAME}"
 
-### **Instance Template**
+### Instance Template
 import_if_exists "Instance Template" "airflow-template" \
   "gcloud compute instance-templates list --project=${PROJECT_ID} --filter='name=airflow-template' --format='value(name)'" \
   "terraform import google_compute_instance_template.airflow_template projects/${PROJECT_ID}/global/instanceTemplates/airflow-template"
