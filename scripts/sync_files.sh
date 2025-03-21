@@ -13,10 +13,9 @@ echo "Fetched external IP: $EXTERNAL_IP"
 
 # Re-add SSH public key metadata (in case the VM reboot wiped it)
 echo "🔐 Updating VM SSH metadata with public key..."
-PUBKEY_CONTENT=$(awk '{print $1 " " $2}' ~/.ssh/github-actions-key.pub)
 gcloud compute instances add-metadata "$VM_NAME" \
   --zone="$VM_ZONE" \
-  --metadata="ssh-keys=${REMOTE_USER}:${PUBKEY_CONTENT}"
+  --metadata="ssh-keys=${REMOTE_USER}:${PUBKEY}"
 
 echo "⏳ Waiting 30s for SSH metadata to propagate..."
 sleep 30

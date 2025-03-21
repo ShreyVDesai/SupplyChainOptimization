@@ -95,15 +95,23 @@ jobs:
       - name: Retrieve SSH Public Key
         id: get_ssh_pub_key
         run: |
-          terraform -chdir=terraform output -raw ssh_public_key > ~/.ssh/github-actions-key.pub
+          PUB_KEY=$(terraform -chdir=terraform output -raw ssh_public_key)
+          echo "PUB_KEY=$PUB_KEY" >> $GITHUB_ENV
+
 
       - name: Update VM Metadata with SSH Key
         run: |
-          PUBKEY=$(cat ~/.ssh/github-actions-key.pub)
-          echo "${{ env.REMOTE_USER }}:$PUBKEY" > /tmp/ssh-keys
-          gcloud compute instances add-metadata "${{ env.VM_NAME }}" \
-            --zone="${{ env.VM_ZONE }}" \
-            --metadata-from-file ssh-keys=/tmp/ssh-keys
+          echo "🔐 Formatting SSH public key with username..."
+          echo "${{ env.REMOTE_USER }}:${{ env.PUB_KEY }}" > formatted-key
+
+          echo "📡 Updating SSH metadata on VM..."
+          gcloud compute instances add-metadata ${{ env.VM_NAME }} \
+            --zone=${{ env.VM_ZONE }} \
+            --metadata-from-file ssh-keys=formatted-key
+
+          echo "⏳ Waiting 30s for SSH metadata to propagate..."
+          sleep 30
+
 
       # Optionally, keep your Docker build & push and deployment steps here if needed.
       - name: Check if Docker Build is Needed
@@ -121,7 +129,15 @@ jobs:
         run: |
           chmod +x scripts/build_and_push.sh
           scripts/build_and_push.sh
-          
+
+
+      - name: Debug SSH Metadata
+        run: |
+          echo "🔎 Current SSH metadata on VM:"
+          gcloud compute instances describe ${{ env.VM_NAME }} \
+            --zone ${{ env.VM_ZONE }} \
+            --format="get(metadata.items)"
+
 
       - name: Sync Airflow Project Files to VM
         run: |
