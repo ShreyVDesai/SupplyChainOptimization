@@ -52,6 +52,7 @@ jobs:
         run: |
           python -m unittest discover -s Data_Pipeline/tests -p "test*.py"
 
+
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v1
         with:
@@ -61,7 +62,6 @@ jobs:
         run: |
           echo "TF_VAR_project_id=primordial-veld-450618-n4" >> $GITHUB_ENV
           echo "TF_VAR_region=us-central1" >> $GITHUB_ENV
-
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v2
         with:
@@ -71,13 +71,14 @@ jobs:
       - name: Terraform Init
         run: terraform -chdir=terraform init
 
-
       # Run your auto-import script (plan/apply inside it).
       - name: Terraform Auto-Import, Plan, and Apply
         run: |
           chmod +x scripts/terraform_auto_import.sh
           scripts/terraform_auto_import.sh
 
+
+      # Retrieve the SSH private key from Terraform output
       - name: Retrieve SSH Private Key
         id: get_ssh_key
         run: |
@@ -86,36 +87,12 @@ jobs:
           echo "$key" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
+
       - name: Retrieve & Write SSH Private Key to File
         run: |
           mkdir -p ~/.ssh
           terraform -chdir=terraform output -raw ssh_private_key > ~/.ssh/github-actions-key
           chmod 600 ~/.ssh/github-actions-key
-
-      - name: Retrieve SSH Public Key
-        id: get_ssh_pub_key
-        run: |
-          PUB_KEY=$(terraform -chdir=terraform output -raw ssh_public_key)
-          {
-            echo "PUB_KEY<<EOF"
-            echo "$PUB_KEY"
-            echo "EOF"
-          } >> "$GITHUB_ENV"
-
-
-
-      - name: Update VM Metadata with SSH Key
-        run: |
-          echo "🔐 Formatting SSH public key with username..."
-          echo "${{ env.REMOTE_USER }}:${{ env.PUB_KEY }}" > formatted-key
-
-          echo "📡 Updating SSH metadata on VM..."
-          gcloud compute instances add-metadata ${{ env.VM_NAME }} \
-            --zone=${{ env.VM_ZONE }} \
-            --metadata-from-file ssh-keys=formatted-key
-
-          echo "⏳ Waiting 30s for SSH metadata to propagate..."
-          sleep 30
 
 
       # Optionally, keep your Docker build & push and deployment steps here if needed.
@@ -125,9 +102,11 @@ jobs:
           chmod +x scripts/check_docker_build.sh
           scripts/check_docker_build.sh
 
+
       - name: Configure Docker for Artifact Registry
         run: |
           gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
 
       - name: Build & Push data-pipeline Image
         if: steps.detect-changes.outputs.build_required == 'true'
@@ -136,29 +115,19 @@ jobs:
           scripts/build_and_push.sh
 
 
-      - name: Debug SSH Metadata
-        run: |
-          echo "🔎 Current SSH metadata on VM:"
-          gcloud compute instances describe ${{ env.VM_NAME }} \
-            --zone ${{ env.VM_ZONE }} \
-            --format="get(metadata.items)"
-
-
       - name: Sync Airflow Project Files to VM
         run: |
           chmod +x scripts/sync_files.sh
           ./scripts/sync_files.sh
-
+          
       - name: Deploy Airflow on Compute Engine
         run: |
           VM_NAME="airflow-server"
           VM_ZONE="us-central1-a"
           echo "🚀 Deploying Airflow on $VM_NAME..."
-
           # Dynamically fetch the external IP of the VM
           EXTERNAL_IP=$(gcloud compute instances describe "$VM_NAME" --zone "$VM_ZONE" --format="get(networkInterfaces[0].accessConfigs[0].natIP)")
           echo "Fetched external IP: $EXTERNAL_IP"
-
           # Use the fetched external IP for SSH (Note: using unquoted EOF for variable expansion)
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/github-actions-key ${{ env.REMOTE_USER }}@$EXTERNAL_IP << EOF
             echo "🚀 Ensuring Docker is installed..."
@@ -174,7 +143,6 @@ jobs:
             else
               echo "✅ Docker is already installed."
             fi
-
             if ! command -v docker-compose &> /dev/null; then
               echo "❌ Docker Compose not found. Installing latest version..."
               DOCKER_COMPOSE_VERSION=\$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep -Po '"tag_name": "\K.*?(?=")')
@@ -184,18 +152,15 @@ jobs:
             else
               echo "✅ Docker Compose is already installed."
             fi
-
             # Give user Docker permissions
             echo "🔄 Adding user to Docker group..."
             sudo usermod -aG docker \$USER
             newgrp docker
             sudo systemctl restart docker
             echo "✅ User added to Docker group and Docker restarted."
-
             # Fix Docker socket perms
             sudo chmod 666 /var/run/docker.sock
             echo "✅ Docker socket permissions fixed."
-
             mkdir -p /opt/airflow
             echo "airflow dir created."
             echo "🚀 Ensuring GCP Key File exists..."
@@ -208,42 +173,32 @@ jobs:
             chmod 644 /opt/airflow/gcp-key.json
             sudo chown ubuntu:docker /opt/airflow/gcp-key.json
             echo "✅ GCP Key File Created."
-
             echo "🚀 Activating service account on VM..."
             gcloud auth activate-service-account --key-file /opt/airflow/gcp-key.json
-
             echo "🚀 Configuring Docker for Artifact Registry..."
             gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
-
             echo "🚀 Fixing Airflow log directory permissions..."
             sudo mkdir -p /opt/airflow/logs
             sudo chmod -R 777 /opt/airflow/logs
             sudo chown -R \$USER:\$USER /opt/airflow/logs
             
             cd /opt/airflow
-
             echo "🚀 Pulling the latest image from Artifact Registry..."
             gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
             docker compose pull || true
-
             echo "🚀 Stopping any running containers..."
             docker compose down || true
-
             # Remove postgres volume if you want to reset the DB (warning: this clears data)
             docker volume rm airflow_postgres-db-volume || true
-
             echo "🚀 Starting Airflow using Docker Compose..."
             docker compose up -d --remove-orphans
-
             echo "✅ Airflow successfully started!"
           EOF
-
       - name: Get Airflow Webserver IP
         run: |
           VM_NAME="airflow-server"
           VM_ZONE="us-central1-a"
           EXTERNAL_IP=$(gcloud compute instances describe "$VM_NAME" --zone "$VM_ZONE" --format="get(networkInterfaces[0].accessConfigs[0].natIP)")
           echo "Airflow UI is available at: http://$EXTERNAL_IP:8080"
-
       - name: Remove SSH Key
         run: rm -f ~/.ssh/github-actions-key ~/.ssh/github-actions-key.pub

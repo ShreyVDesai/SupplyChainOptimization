@@ -11,35 +11,25 @@ echo "🚀 Syncing project files to $VM_NAME..."
 EXTERNAL_IP=$(gcloud compute instances describe "$VM_NAME" --zone "$VM_ZONE" --format="get(networkInterfaces[0].accessConfigs[0].natIP)")
 echo "Fetched external IP: $EXTERNAL_IP"
 
-# Fetch public key from Terraform output
-echo "🔐 Fetching SSH public key from Terraform..."
-PUBKEY=$(terraform -chdir=terraform output -raw ssh_public_key)
-
-# Re-add SSH public key metadata to VM
-echo "🔐 Updating VM SSH metadata with public key..."
-gcloud compute instances add-metadata "$VM_NAME" \
-  --zone="$VM_ZONE" \
-  --metadata="ssh-keys=${REMOTE_USER}:${PUBKEY}"
-
-echo "⏳ Waiting 30s for SSH metadata to propagate..."
-sleep 30
-
 # Wait until SSH (port 22) is available
 echo "Waiting for SSH service to be available on port 22..."
+# 'nc' (netcat) is used to check if port 22 is open.
+# If not available, you may need to install it or use an alternative.
 until nc -z "$EXTERNAL_IP" 22; do
   echo "SSH not available yet, waiting 5 seconds..."
   sleep 5
 done
-echo "✅ SSH is now available on $EXTERNAL_IP:22"
+echo "SSH is now available on $EXTERNAL_IP:22"
 
-# Prepare remote directory
-ssh -o StrictHostKeyChecking=no -t -i ~/.ssh/github-actions-key "${REMOTE_USER}@${EXTERNAL_IP}" << EOF
+# SSH to prepare remote directory
+ssh -o StrictHostKeyChecking=no -t -i ~/.ssh/github-actions-key ${REMOTE_USER}@${EXTERNAL_IP} <<EOF
   sudo mkdir -p /opt/airflow
   sudo chown -R ${REMOTE_USER}:${REMOTE_USER} /opt/airflow
   sudo chmod -R 775 /opt/airflow
 EOF
 
-# Sync project files using rsync
-rsync -avz -e "ssh -o StrictHostKeyChecking=no -i ~/.ssh/github-actions-key" --exclude '.git' . "${REMOTE_USER}@${EXTERNAL_IP}":/opt/airflow
+
+# Rsync files to the remote /opt/airflow directory
+rsync -avz -e "ssh -o StrictHostKeyChecking=no -i ~/.ssh/github-actions-key" --exclude '.git' . "$REMOTE_USER@$EXTERNAL_IP":/opt/airflow
 
 echo "✅ Files synced successfully."
