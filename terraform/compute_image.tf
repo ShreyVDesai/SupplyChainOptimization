@@ -18,4 +18,8 @@ resource "google_compute_image" "airflow_image" {
   name        = "my-airflow-image"
   source_disk = google_compute_instance.airflow_vm.boot_disk[0].source
   depends_on  = [time_sleep.wait_for_instance_stop]
+
+  lifecycle {
+    ignore_changes = [source_disk]
+  }
 }
