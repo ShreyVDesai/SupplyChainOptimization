@@ -146,6 +146,11 @@ import_if_exists "Health Check" "$HEALTH_CHECK_NAME" \
   "gcloud compute health-checks list --project=${PROJECT_ID} --filter='name=${HEALTH_CHECK_NAME}' --format='value(name)'" \
   "terraform import google_compute_health_check.airflow_health_check projects/${PROJECT_ID}/global/healthChecks/${HEALTH_CHECK_NAME}"
 
+### **Autoscaler**
+import_if_exists "Autoscaler" "airflow-autoscaler" \
+  "gcloud compute autoscalers list --project=${PROJECT_ID} --zones=${VM_ZONE} --filter='name=airflow-autoscaler' --format='value(name)'" \
+  "terraform import google_compute_autoscaler.airflow_autoscaler projects/${PROJECT_ID}/zones/${VM_ZONE}/autoscalers/airflow-autoscaler"
+
 ### **Instance Group Manager**
 import_if_exists "Instance Group" "airflow-mig" \
   "gcloud compute instance-groups managed list --project=${PROJECT_ID} --zones=${VM_ZONE} --filter='name=airflow-mig' --format='value(name)' 2>/dev/null" \
@@ -156,12 +161,10 @@ import_if_exists "Image" "$IMAGE_NAME" \
   "gcloud compute images list --project=${PROJECT_ID} --filter='name=${IMAGE_NAME}' --format='value(name)'" \
   "terraform import google_compute_image.airflow_image projects/${PROJECT_ID}/global/images/${IMAGE_NAME}"
 
-
 ### **Instance Template**
 import_if_exists "Instance Template" "airflow-template" \
   "gcloud compute instance-templates list --project=${PROJECT_ID} --filter='name=airflow-template' --format='value(name)'" \
   "terraform import google_compute_instance_template.airflow_template projects/${PROJECT_ID}/global/instanceTemplates/airflow-template"
-
 
 echo "Running Terraform plan and apply..."
 terraform plan -out=tfplan

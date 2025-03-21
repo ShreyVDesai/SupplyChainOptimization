@@ -18,5 +18,8 @@ resource "google_compute_instance_template" "airflow_template" {
 
   lifecycle {
     create_before_destroy = true
+    ignore_changes = [
+      metadata_startup_script,
+    ]
   }
 }
