@@ -5,7 +5,7 @@ import optuna
 import pickle
 from xgboost import XGBRegressor
 from sklearn.metrics import mean_squared_error
-from sklearn.preprocessing import MinMaxScaler, OneHotEncoder
+from sklearn.preprocessing import OneHotEncoder
 import shap
 
 def compute_rmse(y_true, y_pred):
@@ -378,13 +378,6 @@ def main():
     # ----- Step 2: Automatic Time-Based Train/Validation/Test Split -----
     train_df, valid_df, test_df = get_train_valid_test_split(df_train, train_frac=0.7, valid_frac=0.1)
     
-
-    scaler = MinMaxScaler()
-    
-    # Fit on training set's numeric features, then transform train/valid/test
-    train_df[other_features] = scaler.fit_transform(train_df[other_features])
-    valid_df[other_features] = scaler.transform(valid_df[other_features])
-    test_df[other_features]  = scaler.transform(test_df[other_features])
     print("+++++++++++++++++++++++++++++++++++++++++++++")
     print(train_df)
     print("+++++++++++++++++++++++++++++++++++++++++++++")
