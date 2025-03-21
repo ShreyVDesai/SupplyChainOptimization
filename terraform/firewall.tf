@@ -4,7 +4,7 @@ resource "google_compute_firewall" "airflow_server" {
   
   allow {
     protocol = "tcp"
-    ports    = ["8080"]
+    ports    = ["22", "8080"]
   }
   
   source_ranges = ["0.0.0.0/0"]
