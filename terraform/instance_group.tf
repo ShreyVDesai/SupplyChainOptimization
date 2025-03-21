@@ -1,6 +1,7 @@
 resource "google_compute_instance_group_manager" "airflow_mig" {
   name               = "airflow-mig"
   base_instance_name = "airflow-instance"
+  zone = var.zone
 
   version {
     instance_template = google_compute_instance.airflow_vm.self_link
