@@ -87,10 +87,10 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
 
-      - name: Write SSH Key to File
+      - name: Retrieve & Write SSH Private Key to File
         run: |
           mkdir -p ~/.ssh
-          echo "${{ steps.get_ssh_key.outputs.key }}" > ~/.ssh/github-actions-key
+          terraform -chdir=terraform output -raw ssh_private_key > ~/.ssh/github-actions-key
           chmod 600 ~/.ssh/github-actions-key
 
 
@@ -127,7 +127,7 @@ jobs:
           echo "Fetched external IP: $EXTERNAL_IP"
 
           # Use the fetched external IP for SSH (Note: using unquoted EOF for variable expansion)
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/github-actions-key ${{ secrets.COMPUTE_ENGINE_USER }}@$EXTERNAL_IP << EOF
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/github-actions-key ${{ env.REMOTE_USER }}@$EXTERNAL_IP << EOF
             echo "🚀 Ensuring Docker is installed..."
             if ! command -v docker &> /dev/null; then
               echo "❌ Docker is not installed. Installing..."
