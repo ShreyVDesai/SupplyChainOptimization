@@ -22,11 +22,12 @@ done
 echo "SSH is now available on $EXTERNAL_IP:22"
 
 # SSH to prepare remote directory
-ssh -o StrictHostKeyChecking=no -t -i ~/.ssh/github-actions-key ubuntu@${EXTERNAL_IP} << 'EOF'
+ssh -o StrictHostKeyChecking=no -t -i ~/.ssh/github-actions-key ${REMOTE_USER}@${EXTERNAL_IP} <<EOF
   sudo mkdir -p /opt/airflow
-  sudo chown -R \$USER:\$USER /opt/airflow
+  sudo chown -R ${REMOTE_USER}:${REMOTE_USER} /opt/airflow
   sudo chmod -R 775 /opt/airflow
 EOF
+
 
 # Rsync files to the remote /opt/airflow directory
 rsync -avz -e "ssh -o StrictHostKeyChecking=no -i ~/.ssh/github-actions-key" --exclude '.git' . "$REMOTE_USER@$EXTERNAL_IP":/opt/airflow
