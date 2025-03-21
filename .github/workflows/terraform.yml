@@ -96,7 +96,12 @@ jobs:
         id: get_ssh_pub_key
         run: |
           PUB_KEY=$(terraform -chdir=terraform output -raw ssh_public_key)
-          echo "PUB_KEY=$PUB_KEY" >> $GITHUB_ENV
+          {
+            echo "PUB_KEY<<EOF"
+            echo "$PUB_KEY"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+
 
 
       - name: Update VM Metadata with SSH Key
