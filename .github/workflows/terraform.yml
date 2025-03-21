@@ -122,6 +122,10 @@ jobs:
           chmod +x scripts/build_and_push.sh
           scripts/build_and_push.sh
 
+
+      - name: Sleep to allow SSH metadata propagation
+        run: sleep 60
+
       - name: Sync Airflow Project Files to VM
         run: |
           chmod +x scripts/sync_files.sh
