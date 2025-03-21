@@ -16,6 +16,11 @@ resource "google_compute_instance" "airflow_vm" {
     access_config {} # Assigns a public IP
   }
 
+  metadata = {
+    enable-oslogin = "FALSE"
+    ssh-keys = "ubuntu:${file("~/.ssh/id_rsa.pub")}"
+  }
+
   metadata_startup_script = <<EOT
 #!/bin/bash
 sudo apt update -y
