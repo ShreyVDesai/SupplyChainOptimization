@@ -191,16 +191,16 @@ jobs:
 
             echo "🚀 Pulling the latest image from Artifact Registry..."
             gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
-            docker-compose pull || true
+            docker compose pull || true
 
             echo "🚀 Stopping any running containers..."
-            docker-compose down || true
+            docker compose down || true
 
             # Remove postgres volume if you want to reset the DB (warning: this clears data)
             docker volume rm airflow_postgres-db-volume || true
 
             echo "🚀 Starting Airflow using Docker Compose..."
-            docker-compose up -d --remove-orphans
+            docker compose up -d --remove-orphans
 
             echo "✅ Airflow successfully started!"
           EOF
