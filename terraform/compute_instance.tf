@@ -17,8 +17,8 @@ resource "google_compute_instance" "airflow_vm" {
   }
 
   metadata = {
-    enable-oslogin = "FALSE"  // if OS Login is disabled
-    ssh-keys       = "ubuntu:${file("~/.ssh/id_rsa.pub")}"
+    enable-oslogin = "FALSE"  # Ensure OS Login is disabled to use metadata SSH keys.
+    ssh-keys       = "ubuntu:${tls_private_key.ssh_key.public_key_openssh}"
   }
 
   metadata_startup_script = <<EOT
