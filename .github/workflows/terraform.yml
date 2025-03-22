@@ -364,7 +364,7 @@ jobs:
               sudo chmod +x /usr/local/bin/docker-compose
               sudo ln -sf /usr/local/bin/docker-compose /usr/bin/docker-compose
             fi
-            sudo usermod -aG docker \$USER
+            sudo usermod -aG docker ubuntu
             sudo systemctl restart docker
             sudo chmod 666 /var/run/docker.sock
             mkdir -p /opt/airflow
@@ -377,7 +377,7 @@ jobs:
             sudo chown ubuntu:docker /opt/airflow/gcp-key.json
             sudo mkdir -p /opt/airflow/logs
             sudo chmod -R 777 /opt/airflow/logs
-            sudo chown -R \$USER:\$USER /opt/airflow/logs
+            sudo chown -R ubuntu:ubuntu /opt/airflow/logs
           EOF
 
       # Capture a custom image from the baker instance
