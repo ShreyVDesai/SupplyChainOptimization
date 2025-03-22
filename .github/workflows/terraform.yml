@@ -1,3 +1,222 @@
+# name: Deploy to Compute Engine
+
+# on:
+#   push:
+#     branches: terraform-infra-meet
+#   workflow_dispatch:
+#     inputs:
+#       deployment_target:
+#         description: "Where to deploy Airflow"
+#         required: true
+#         default: "compute_engine"
+#         type: choice
+#         options:
+#           - local
+#           - compute_engine
+
+# jobs:
+#   deploy:
+#     runs-on: ubuntu-latest
+#     env:
+#       GCP_LOCATION: us-central1
+#       ARTIFACT_REGISTRY_NAME: airflow-docker-image
+#       REPO_FORMAT: docker
+#       DOCKER_IMAGE_NAME: data-pipeline
+#       DOCKER_IMAGE_TAG: latest
+#       VM_NAME: airflow-server
+#       VM_ZONE: us-central1-a
+#       MACHINE_TYPE: e2-standard-4
+#       REMOTE_USER: ubuntu
+
+#     steps:
+#       - name: Checkout Repository
+#         uses: actions/checkout@v3
+#         with:
+#           fetch-depth: 0
+
+#       - name: Set up Python
+#         uses: actions/setup-python@v4
+#         with:
+#           python-version: "3.10"
+
+#       - name: Install dependencies
+#         run: |
+#           python -m pip install --upgrade pip
+#           pip install -r Data_Pipeline/tests/requirements-test.txt
+
+#       - name: Set PYTHONPATH
+#         run: |
+#           echo "PYTHONPATH=$(pwd)/Data_Pipeline:$(pwd)" >> $GITHUB_ENV
+
+#       - name: Run Unit Tests
+#         run: |
+#           python -m unittest discover -s Data_Pipeline/tests -p "test*.py"
+
+
+#       - name: Authenticate with Google Cloud
+#         uses: google-github-actions/auth@v1
+#         with:
+#           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+#       - name: Set Terraform Variables
+#         run: |
+#           echo "TF_VAR_project_id=primordial-veld-450618-n4" >> $GITHUB_ENV
+#           echo "TF_VAR_region=us-central1" >> $GITHUB_ENV
+#       - name: Set up Terraform
+#         uses: hashicorp/setup-terraform@v2
+#         with:
+#           terraform_version: 1.3.0
+
+#       # Initialize Terraform by specifying the ./terraform folder
+#       - name: Terraform Init
+#         run: terraform -chdir=terraform init
+
+#       # Run your auto-import script (plan/apply inside it).
+#       - name: Terraform Auto-Import, Plan, and Apply
+#         run: |
+#           chmod +x scripts/terraform_auto_import.sh
+#           scripts/terraform_auto_import.sh
+
+
+#       # Retrieve the SSH private key from Terraform output
+#       - name: Retrieve SSH Private Key
+#         id: get_ssh_key
+#         run: |
+#           key=$(terraform -chdir=terraform output -raw -no-color ssh_private_key)
+#           echo "key<<EOF" >> $GITHUB_OUTPUT
+#           echo "$key" >> $GITHUB_OUTPUT
+#           echo "EOF" >> $GITHUB_OUTPUT
+
+
+#       - name: Retrieve & Write SSH Private Key to File
+#         run: |
+#           mkdir -p ~/.ssh
+#           terraform -chdir=terraform output -raw ssh_private_key > ~/.ssh/github-actions-key
+#           chmod 600 ~/.ssh/github-actions-key
+
+
+#       # Optionally, keep your Docker build & push and deployment steps here if needed.
+#       - name: Check if Docker Build is Needed
+#         id: detect-changes
+#         run: |
+#           chmod +x scripts/check_docker_build.sh
+#           scripts/check_docker_build.sh
+
+
+#       - name: Configure Docker for Artifact Registry
+#         run: |
+#           gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+          
+#       - name: Build & Push data-pipeline Image
+#         if: steps.detect-changes.outputs.build_required == 'true'
+#         run: |
+#           chmod +x scripts/build_and_push.sh
+#           scripts/build_and_push.sh
+
+
+#       - name: Sync Airflow Project Files to VM
+#         run: |
+#           chmod +x scripts/sync_files.sh
+#           ./scripts/sync_files.sh
+
+
+#       - name: Deploy Airflow on Compute Engine
+#         run: |
+#           VM_NAME="airflow-server"
+#           VM_ZONE="us-central1-a"
+#           echo "🚀 Deploying Airflow on $VM_NAME..."
+
+#           # Dynamically fetch the external IP of the VM
+#           EXTERNAL_IP=$(gcloud compute instances describe "$VM_NAME" --zone "$VM_ZONE" --format="get(networkInterfaces[0].accessConfigs[0].natIP)")
+#           echo "Fetched external IP: $EXTERNAL_IP"
+
+#           # SSH into the VM and run the deployment commands
+#           ssh -o StrictHostKeyChecking=no -i ~/.ssh/github-actions-key ${{ secrets.COMPUTE_ENGINE_USER }}@$EXTERNAL_IP << 'EOF'
+#             echo "🚀 Ensuring Docker is installed..."
+#             if ! command -v docker &> /dev/null; then
+#               echo "❌ Docker is not installed. Installing..."
+#               sudo apt-get update -y
+#               echo "🚀 Adding Docker repository..."
+#               sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common
+#               curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+#               sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+#               sudo apt-get update -y
+#               sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+#             else
+#               echo "✅ Docker is already installed."
+#             fi
+
+#             echo "🚀 Ensuring Docker Compose v2 is installed..."
+#             if ! docker compose version &> /dev/null; then
+#               echo "❌ Docker Compose v2 plugin not found. Installing latest version..."
+#               DOCKER_COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep -Po '"tag_name": "\K.*?(?=")')
+#               sudo mkdir -p /usr/local/lib/docker/cli-plugins
+#               sudo curl -SL "https://github.com/docker/compose/releases/download/v${DOCKER_COMPOSE_VERSION}/docker-compose-linux-$(uname -m)" -o /usr/local/lib/docker/cli-plugins/docker-compose
+#               sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+#             else
+#               echo "✅ Docker Compose v2 plugin is already installed."
+#             fi
+
+#             # Give user Docker permissions
+#             echo "🔄 Adding user to Docker group..."
+#             sudo usermod -aG docker $USER
+#             sudo systemctl restart docker
+#             echo "✅ User added to Docker group and Docker restarted."
+
+#             # Fix Docker socket permissions
+#             sudo chmod 666 /var/run/docker.sock
+#             echo "✅ Docker socket permissions fixed."
+
+#             mkdir -p /opt/airflow
+#             echo "airflow dir created."
+
+#             echo "🚀 Ensuring GCP Key File exists..."
+#             if [ -f /opt/airflow/gcp-key.json ]; then
+#                 echo "⚠️ Found file at /opt/airflow/gcp-key.json. Removing it..."
+#                 sudo rm -f /opt/airflow/gcp-key.json
+#             fi
+#             echo "🚀 Creating GCP Key File..."
+#             echo '${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}' | jq . > /opt/airflow/gcp-key.json
+#             chmod 644 /opt/airflow/gcp-key.json
+#             sudo chown ubuntu:docker /opt/airflow/gcp-key.json
+#             echo "✅ GCP Key File Created."
+
+#             echo "🚀 Fixing Airflow log directory permissions..."
+#             sudo mkdir -p /opt/airflow/logs
+#             sudo chmod -R 777 /opt/airflow/logs
+#             sudo chown -R $USER:$USER /opt/airflow/logs
+
+#             cd /opt/airflow
+
+#             echo "🚀 Pulling the latest image from Artifact Registry..."
+#             gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+#             docker compose pull || true
+
+#             echo "🚀 Stopping any running containers..."
+#             docker compose down || true
+
+#             # Remove the postgres volume if you want to reset the DB (warning: this clears data)
+#             docker volume rm airflow_postgres-db-volume || true
+
+#             echo "🚀 Starting Airflow using Docker Compose..."
+#             docker compose up -d --remove-orphans
+
+#             echo "✅ Airflow successfully started!"
+#           EOF
+
+          
+#       - name: Get Airflow Webserver IP
+#         run: |
+#           VM_NAME="airflow-server"
+#           VM_ZONE="us-central1-a"
+#           EXTERNAL_IP=$(gcloud compute instances describe "$VM_NAME" --zone "$VM_ZONE" --format="get(networkInterfaces[0].accessConfigs[0].natIP)")
+#           echo "Airflow UI is available at: http://$EXTERNAL_IP:8080"
+#       - name: Remove SSH Key
+#         run: rm -f ~/.ssh/github-actions-key ~/.ssh/github-actions-key.pub
+
+
+
 name: Deploy to Compute Engine
 
 on:
@@ -44,14 +263,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r Data_Pipeline/tests/requirements-test.txt
 
-      - name: Set PYTHONPATH
-        run: |
-          echo "PYTHONPATH=$(pwd)/Data_Pipeline:$(pwd)" >> $GITHUB_ENV
-
       - name: Run Unit Tests
         run: |
           python -m unittest discover -s Data_Pipeline/tests -p "test*.py"
-
 
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v1
@@ -62,76 +276,36 @@ jobs:
         run: |
           echo "TF_VAR_project_id=primordial-veld-450618-n4" >> $GITHUB_ENV
           echo "TF_VAR_region=us-central1" >> $GITHUB_ENV
+
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v2
         with:
           terraform_version: 1.3.0
 
-      # Initialize Terraform by specifying the ./terraform folder
+      # Initialize Terraform
       - name: Terraform Init
         run: terraform -chdir=terraform init
 
-      # Run your auto-import script (plan/apply inside it).
-      - name: Terraform Auto-Import, Plan, and Apply
-        run: |
-          chmod +x scripts/terraform_auto_import.sh
-          scripts/terraform_auto_import.sh
+      # Deploy the base instance and perform file sync (run this only once to update the base instance)
+      - name: Terraform Apply (Base Instance & File Sync)
+        run: terraform -chdir=terraform apply -auto-approve
 
-
-      # Retrieve the SSH private key from Terraform output
-      - name: Retrieve SSH Private Key
-        id: get_ssh_key
-        run: |
-          key=$(terraform -chdir=terraform output -raw -no-color ssh_private_key)
-          echo "key<<EOF" >> $GITHUB_OUTPUT
-          echo "$key" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-
-      - name: Retrieve & Write SSH Private Key to File
-        run: |
-          mkdir -p ~/.ssh
-          terraform -chdir=terraform output -raw ssh_private_key > ~/.ssh/github-actions-key
-          chmod 600 ~/.ssh/github-actions-key
-
-
-      # Optionally, keep your Docker build & push and deployment steps here if needed.
-      - name: Check if Docker Build is Needed
-        id: detect-changes
-        run: |
-          chmod +x scripts/check_docker_build.sh
-          scripts/check_docker_build.sh
-
-
-      - name: Configure Docker for Artifact Registry
-        run: |
-          gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
-
-          
-      - name: Build & Push data-pipeline Image
-        if: steps.detect-changes.outputs.build_required == 'true'
-        run: |
-          chmod +x scripts/build_and_push.sh
-          scripts/build_and_push.sh
-
-
-      - name: Sync Airflow Project Files to VM
+      # Run the sync_files.sh on the base instance
+      - name: Sync Files on Base Instance
         run: |
           chmod +x scripts/sync_files.sh
           ./scripts/sync_files.sh
 
-
-      - name: Deploy Airflow on Compute Engine
+      - name: Prepare Base Instance for Image Capture
         run: |
           VM_NAME="airflow-server"
           VM_ZONE="us-central1-a"
-          echo "🚀 Deploying Airflow on $VM_NAME..."
+          echo "🚀 Preparing $VM_NAME for image capture..."
 
           # Dynamically fetch the external IP of the VM
           EXTERNAL_IP=$(gcloud compute instances describe "$VM_NAME" --zone "$VM_ZONE" --format="get(networkInterfaces[0].accessConfigs[0].natIP)")
           echo "Fetched external IP: $EXTERNAL_IP"
 
-          # SSH into the VM and run the deployment commands
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/github-actions-key ${{ secrets.COMPUTE_ENGINE_USER }}@$EXTERNAL_IP << 'EOF'
             echo "🚀 Ensuring Docker is installed..."
             if ! command -v docker &> /dev/null; then
@@ -147,20 +321,20 @@ jobs:
               echo "✅ Docker is already installed."
             fi
 
-            echo "🚀 Ensuring Docker Compose v2 is installed..."
-            if ! docker compose version &> /dev/null; then
-              echo "❌ Docker Compose v2 plugin not found. Installing latest version..."
+            echo "🚀 Ensuring Docker Compose is installed..."
+            if ! command -v docker-compose &> /dev/null; then
+              echo "❌ Docker Compose not found. Installing latest version..."
               DOCKER_COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep -Po '"tag_name": "\K.*?(?=")')
-              sudo mkdir -p /usr/local/lib/docker/cli-plugins
-              sudo curl -SL "https://github.com/docker/compose/releases/download/v${DOCKER_COMPOSE_VERSION}/docker-compose-linux-$(uname -m)" -o /usr/local/lib/docker/cli-plugins/docker-compose
-              sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+              sudo curl -L "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+              sudo chmod +x /usr/local/bin/docker-compose
+              sudo ln -sf /usr/local/bin/docker-compose /usr/bin/docker-compose
             else
-              echo "✅ Docker Compose v2 plugin is already installed."
+              echo "✅ Docker Compose is already installed."
             fi
 
             # Give user Docker permissions
             echo "🔄 Adding user to Docker group..."
-            sudo usermod -aG docker $USER
+            sudo usermod -aG docker \$USER
             sudo systemctl restart docker
             echo "✅ User added to Docker group and Docker restarted."
 
@@ -168,6 +342,7 @@ jobs:
             sudo chmod 666 /var/run/docker.sock
             echo "✅ Docker socket permissions fixed."
 
+            # Prepare the Airflow directory
             mkdir -p /opt/airflow
             echo "airflow dir created."
 
@@ -185,32 +360,23 @@ jobs:
             echo "🚀 Fixing Airflow log directory permissions..."
             sudo mkdir -p /opt/airflow/logs
             sudo chmod -R 777 /opt/airflow/logs
-            sudo chown -R $USER:$USER /opt/airflow/logs
-
-            cd /opt/airflow
-
-            echo "🚀 Pulling the latest image from Artifact Registry..."
-            gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
-            docker compose pull || true
-
-            echo "🚀 Stopping any running containers..."
-            docker compose down || true
-
-            # Remove the postgres volume if you want to reset the DB (warning: this clears data)
-            docker volume rm airflow_postgres-db-volume || true
-
-            echo "🚀 Starting Airflow using Docker Compose..."
-            docker compose up -d --remove-orphans
-
-            echo "✅ Airflow successfully started!"
+            sudo chown -R \$USER:\$USER /opt/airflow/logs
           EOF
 
-          
+
+      # Capture a custom image from the base instance after file sync
+      - name: Capture Custom Image
+        run: terraform -chdir=terraform apply -auto-approve -target=google_compute_image.airflow_custom_image
+
+      # Update the instance template (or instances) to use the new custom image
+      - name: Update Instance Template
+        run: terraform -chdir=terraform apply -auto-approve -target=google_compute_instance_template.airflow_template
+
+      # Optionally, if you have an autoscaler or instance group, run that apply as well.
+      
       - name: Get Airflow Webserver IP
         run: |
           VM_NAME="airflow-server"
           VM_ZONE="us-central1-a"
           EXTERNAL_IP=$(gcloud compute instances describe "$VM_NAME" --zone "$VM_ZONE" --format="get(networkInterfaces[0].accessConfigs[0].natIP)")
           echo "Airflow UI is available at: http://$EXTERNAL_IP:8080"
-      - name: Remove SSH Key
-        run: rm -f ~/.ssh/github-actions-key ~/.ssh/github-actions-key.pub

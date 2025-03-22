@@ -5,7 +5,7 @@ resource "google_compute_instance" "airflow_vm" {
 
   boot_disk {
     initialize_params {
-      image = "ubuntu-os-cloud/ubuntu-2204-lts"
+      image = google_compute_image.airflow_image.self_link
       size  = 50
     }
   }
@@ -23,47 +23,26 @@ resource "google_compute_instance" "airflow_vm" {
 
   metadata_startup_script = <<EOT
 #!/bin/bash
-# Update the system and install Docker if it is not present
-if ! command -v docker &> /dev/null; then
-    echo "❌ Docker is not installed. Installing..."
-    sudo apt-get update -y
-    echo "🚀 Adding Docker repository..."
-    sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
-    sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu \$(lsb_release -cs) stable"
-    sudo apt-get update -y
-    sudo apt-get install -y docker-ce docker-ce-cli containerd.io
-else
-    echo "✅ Docker is already installed."
-fi
+# Change to the directory where your docker-compose.yml file is located.
+cd /opt/airflow
 
-# Install Docker Compose v2 as a Docker CLI plugin so that "docker compose" works
-if ! docker compose version &> /dev/null; then
-    echo "❌ Docker Compose plugin not found. Installing latest version..."
-    DOCKER_COMPOSE_VERSION=\$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep -Po '"tag_name": "\K.*?(?=")')
-    sudo mkdir -p /usr/local/lib/docker/cli-plugins
-    sudo curl -SL "https://github.com/docker/compose/releases/download/v\${DOCKER_COMPOSE_VERSION}/docker-compose-linux-\$(uname -m)" -o /usr/local/lib/docker/cli-plugins/docker-compose
-    sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
-else
-    echo "✅ Docker Compose plugin is already installed."
-fi
+gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+docker compose pull || true
 
-# Give user Docker permissions
-echo "🔄 Adding user to Docker group..."
-sudo usermod -aG docker \$USER
-sudo systemctl restart docker
-echo "✅ User added to Docker group and Docker restarted."
+echo "🚀 Stopping any running containers..."
+docker compose down || true
 
-# Fix Docker socket permissions
-sudo chmod 666 /var/run/docker.sock
-echo "✅ Docker socket permissions fixed."
+# Remove postgres volume if you want to reset the DB (warning: this clears data)
+docker volume rm airflow_postgres-db-volume || true
+
+echo "🚀 Starting Airflow using Docker Compose..."
+docker compose up -d --remove-orphans
 EOT
 
   tags = ["airflow-server"]
 
   lifecycle {
     ignore_changes = [
-      # Ignore differences in startup script if formatting or computed defaults change
       metadata_startup_script
     ]
   }
