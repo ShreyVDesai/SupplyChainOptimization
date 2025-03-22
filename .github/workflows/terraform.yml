@@ -263,6 +263,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r Data_Pipeline/tests/requirements-test.txt
 
+      - name: Set PYTHONPATH
+        run: |
+          echo "PYTHONPATH=$(pwd)/Data_Pipeline:$(pwd)" >> $GITHUB_ENV
+
       - name: Run Unit Tests
         run: |
           python -m unittest discover -s Data_Pipeline/tests -p "test*.py"
@@ -289,6 +293,24 @@ jobs:
       # Deploy the base instance and perform file sync (run this only once to update the base instance)
       - name: Terraform Apply (Base Instance & File Sync)
         run: terraform -chdir=terraform apply -auto-approve
+
+      - name: Check if Docker Build is Needed
+        id: detect-changes
+        run: |
+          chmod +x scripts/check_docker_build.sh
+          scripts/check_docker_build.sh
+
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+          
+      - name: Build & Push data-pipeline Image
+        if: steps.detect-changes.outputs.build_required == 'true'
+        run: |
+          chmod +x scripts/build_and_push.sh
+          scripts/build_and_push.sh
 
       # Run the sync_files.sh on the base instance
       - name: Sync Files on Base Instance
