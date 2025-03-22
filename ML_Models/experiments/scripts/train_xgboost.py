@@ -7,8 +7,10 @@ from xgboost import XGBRegressor
 from sklearn.metrics import mean_squared_error
 from sklearn.preprocessing import OneHotEncoder
 import shap
-from logger import logger
-from utils import send_email
+from Data_Pipeline.scripts.logger import logger
+from Data_Pipeline.scripts.utils import send_email
+# from logger import logger
+# from utils import send_email
 
 
 email = "svarunanusheel@gmail.com"
@@ -402,11 +404,11 @@ def iterative_forecast(model, df_product: pd.DataFrame, forecast_days: int = 7, 
 
 
 
-def save_model(model):
+def save_model(model, filename="final_model.pkl"):
     try:
-        with open("final_model.pkl", "wb") as f:
+        with open(filename, "wb") as f:
             pickle.dump(model, f)
-        logger.info("Model saved as final_model.pkl")
+        logger.info(f"Model saved as {filename}")
 
     except Exception as e:
         # Log the error and send an error email
@@ -440,10 +442,35 @@ def shap_analysis(model, valid_df, feature_columns):
         logger.error(f"An error occurred: {str(e)}")
         send_email(emailid=email, subject="SHAP Analysis Failure", body=f"An error occurred during SHAP analysis: {str(e)}")
 
+# TODO: logs
+# ---------------------------
+# 7. Hybrid Model Wrapper Class
+# ---------------------------
+class HybridTimeSeriesModel:
+    """
+    Wrapper class that contains a global model and product-specific models.
+    The predict method uses a product-specific model if available,
+    otherwise it falls back to the global model.
+    """
+    def __init__(self, global_model, product_models: dict, feature_columns: list, product_dummy_columns: list):
+        self.global_model = global_model
+        self.product_models = product_models  # dict: product -> model
+        self.feature_columns = feature_columns
+        self.product_dummy_columns = product_dummy_columns
 
+    def predict(self, product_name, X: pd.DataFrame):
+        """
+        Predict using the product-specific model if available; otherwise use the global model.
+        """
+        # Prepare X: assume X already has base features and product dummy columns in the correct order.
+        if product_name in self.product_models:
+            model = self.product_models[product_name]
+        else:
+            model = self.global_model
+        return model.predict(X)
 
 # ==========================================
-# 6. Main Pipeline
+# 8. Main Pipeline
 # ==========================================
 
 
@@ -517,6 +544,40 @@ def main():
         logger.info(rmse_per_product)
         # -------------------------------
         
+        # TODO: logs
+        # Identify biased products (RMSE more than 2 standard deviations from the mean)
+        mean_rmse = rmse_per_product.mean()
+        std_rmse = rmse_per_product.std()
+        threshold = mean_rmse + 2 * std_rmse
+        biased_products = rmse_per_product[rmse_per_product > threshold].index.tolist()
+        print("Biased products (to receive product-specific models):", biased_products)
+        
+
+        # Train product-specific models for biased products
+        product_specific_models = {}
+        for prod in biased_products:
+            prod_train_df = train_valid_df[train_valid_df["Product"] == prod].copy()
+            # Ensure there is enough data to train a product-specific model
+            if len(prod_train_df) < 30:
+                print(f"Not enough data to train a product-specific model for {prod}. Skipping.")
+                continue
+            # Train using the same hyperparameters (or retune if desired)
+            prod_model = model_training(prod_train_df, valid_df, feature_columns, target_column, params=best_params)
+            product_specific_models[prod] = prod_model
+            print(f"Trained product-specific model for {prod}.")
+        
+        # Create the hybrid model wrapper instance
+        hybrid_model = HybridTimeSeriesModel(global_model=final_model,
+                                            product_models=product_specific_models,
+                                            feature_columns=feature_columns,
+                                            product_dummy_columns=product_columns)
+        
+        # (Optional) Save the hybrid model to a pickle file
+        save_model(hybrid_model, filename="hybrid_model.pkl")
+        
+
+# #####################################
+
         # ----- Step 5: Iterative Forecasting for Each Product -----
         # For iterative forecasting, use the original_df (which still contains the original "Product Name").
         logger.info("Starting iterative forecasting for each product...")
