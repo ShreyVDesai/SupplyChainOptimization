@@ -298,6 +298,22 @@ jobs:
           chmod +x scripts/terraform_auto_import.sh
           scripts/terraform_auto_import.sh
 
+      # Retrieve the SSH private key from Terraform output
+      - name: Retrieve SSH Private Key
+        id: get_ssh_key
+        run: |
+          key=$(terraform -chdir=terraform output -raw -no-color ssh_private_key)
+          echo "key<<EOF" >> $GITHUB_OUTPUT
+          echo "$key" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Retrieve & Write SSH Private Key to File
+        run: |
+          mkdir -p ~/.ssh
+          terraform -chdir=terraform output -raw ssh_private_key > ~/.ssh/github-actions-key
+          chmod 600 ~/.ssh/github-actions-key
+
+
       - name: Check if Docker Build is Needed
         id: detect-changes
         run: |
