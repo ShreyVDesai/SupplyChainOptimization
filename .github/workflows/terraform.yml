@@ -216,7 +216,6 @@
 #         run: rm -f ~/.ssh/github-actions-key ~/.ssh/github-actions-key.pub
 
 
-
 name: Deploy to Compute Engine
 
 on:
@@ -242,7 +241,10 @@ jobs:
       REPO_FORMAT: docker
       DOCKER_IMAGE_NAME: data-pipeline
       DOCKER_IMAGE_TAG: latest
+      # Production instance (used by autoscaler/instance group)
       VM_NAME: airflow-server
+      # Baker instance used solely for image capture
+      BAKER_VM_NAME: airflow-server-baker
       VM_ZONE: us-central1-a
       MACHINE_TYPE: e2-standard-4
       REMOTE_USER: ubuntu
@@ -286,16 +288,15 @@ jobs:
         with:
           terraform_version: 1.3.0
 
-      # Initialize Terraform by specifying the ./terraform folder
+      # Initialize Terraform
       - name: Terraform Init
         run: terraform -chdir=terraform init
 
-      # Run your auto-import script (plan/apply inside it).
+      # Run auto-import, plan, and apply for existing resources
       - name: Terraform Auto-Import, Plan, and Apply
         run: |
           chmod +x scripts/terraform_auto_import.sh
           scripts/terraform_auto_import.sh
-      
 
       - name: Check if Docker Build is Needed
         id: detect-changes
@@ -303,93 +304,67 @@ jobs:
           chmod +x scripts/check_docker_build.sh
           scripts/check_docker_build.sh
 
-
       - name: Configure Docker for Artifact Registry
         run: |
           gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
 
-          
       - name: Build & Push data-pipeline Image
         if: steps.detect-changes.outputs.build_required == 'true'
         run: |
           chmod +x scripts/build_and_push.sh
           scripts/build_and_push.sh
 
-      # Run the sync_files.sh on the base instance
-      - name: Sync Files on Base Instance
+      # Run file sync on the baker instance
+      - name: Sync Files on Baker Instance
+        env:
+          VM_NAME: ${{ env.BAKER_VM_NAME }}
         run: |
           chmod +x scripts/sync_files.sh
           ./scripts/sync_files.sh
 
-      - name: Prepare Base Instance for Image Capture
+      # Prepare the baker instance for image capture (install Docker, set permissions, etc.)
+      - name: Prepare Baker Instance for Image Capture
+        env:
+          VM_NAME: ${{ env.BAKER_VM_NAME }}
+          VM_ZONE: ${{ env.VM_ZONE }}
         run: |
-          VM_NAME="airflow-server"
-          VM_ZONE="us-central1-a"
-          echo "🚀 Preparing $VM_NAME for image capture..."
-
-          # Dynamically fetch the external IP of the VM
+          echo "🚀 Preparing ${VM_NAME} for image capture..."
           EXTERNAL_IP=$(gcloud compute instances describe "$VM_NAME" --zone "$VM_ZONE" --format="get(networkInterfaces[0].accessConfigs[0].natIP)")
           echo "Fetched external IP: $EXTERNAL_IP"
-
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/github-actions-key ${{ secrets.COMPUTE_ENGINE_USER }}@$EXTERNAL_IP << 'EOF'
             echo "🚀 Ensuring Docker is installed..."
             if ! command -v docker &> /dev/null; then
-              echo "❌ Docker is not installed. Installing..."
               sudo apt-get update -y
-              echo "🚀 Adding Docker repository..."
               sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common
               curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
               sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
               sudo apt-get update -y
               sudo apt-get install -y docker-ce docker-ce-cli containerd.io
-            else
-              echo "✅ Docker is already installed."
             fi
-
             echo "🚀 Ensuring Docker Compose is installed..."
             if ! command -v docker-compose &> /dev/null; then
-              echo "❌ Docker Compose not found. Installing latest version..."
               DOCKER_COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep -Po '"tag_name": "\K.*?(?=")')
               sudo curl -L "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
               sudo chmod +x /usr/local/bin/docker-compose
               sudo ln -sf /usr/local/bin/docker-compose /usr/bin/docker-compose
-            else
-              echo "✅ Docker Compose is already installed."
             fi
-
-            # Give user Docker permissions
-            echo "🔄 Adding user to Docker group..."
             sudo usermod -aG docker \$USER
             sudo systemctl restart docker
-            echo "✅ User added to Docker group and Docker restarted."
-
-            # Fix Docker socket permissions
             sudo chmod 666 /var/run/docker.sock
-            echo "✅ Docker socket permissions fixed."
-
-            # Prepare the Airflow directory
             mkdir -p /opt/airflow
-            echo "airflow dir created."
-
-            echo "🚀 Ensuring GCP Key File exists..."
             if [ -f /opt/airflow/gcp-key.json ]; then
-                echo "⚠️ Found file at /opt/airflow/gcp-key.json. Removing it..."
-                sudo rm -f /opt/airflow/gcp-key.json
+              sudo rm -f /opt/airflow/gcp-key.json
             fi
             echo "🚀 Creating GCP Key File..."
             echo '${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}' | jq . > /opt/airflow/gcp-key.json
             chmod 644 /opt/airflow/gcp-key.json
             sudo chown ubuntu:docker /opt/airflow/gcp-key.json
-            echo "✅ GCP Key File Created."
-
-            echo "🚀 Fixing Airflow log directory permissions..."
             sudo mkdir -p /opt/airflow/logs
             sudo chmod -R 777 /opt/airflow/logs
             sudo chown -R \$USER:\$USER /opt/airflow/logs
           EOF
 
-
-      # Capture a custom image from the base instance after file sync
+      # Capture a custom image from the baker instance
       - name: Capture Custom Image
         run: terraform -chdir=terraform apply -auto-approve -target=google_compute_image.airflow_custom_image
 
@@ -398,7 +373,6 @@ jobs:
         run: terraform -chdir=terraform apply -auto-approve -target=google_compute_instance_template.airflow_template
 
       # Optionally, if you have an autoscaler or instance group, run that apply as well.
-      
       - name: Get Airflow Webserver IP
         run: |
           VM_NAME="airflow-server"
