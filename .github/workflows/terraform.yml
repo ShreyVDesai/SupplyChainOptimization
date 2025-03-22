@@ -216,6 +216,8 @@
 #         run: rm -f ~/.ssh/github-actions-key ~/.ssh/github-actions-key.pub
 
 
+
+
 name: Deploy to Compute Engine
 
 on:
@@ -338,6 +340,7 @@ jobs:
           chmod +x scripts/sync_files.sh
           ./scripts/sync_files.sh
 
+
       # Prepare the baker instance for image capture (install Docker, set permissions, etc.)
       - name: Prepare Baker Instance for Image Capture
         env:
@@ -379,6 +382,16 @@ jobs:
             sudo chmod -R 777 /opt/airflow/logs
             sudo chown -R ubuntu:ubuntu /opt/airflow/logs
           EOF
+
+      - name: Stop Baker Instance
+        env:
+          VM_NAME: ${{ env.BAKER_VM_NAME }}
+          VM_ZONE: ${{ env.VM_ZONE }}
+        run: |
+          echo "Stopping baker instance ${VM_NAME}..."
+          gcloud compute instances stop "${VM_NAME}" --zone "${VM_ZONE}" --quiet
+          # Wait to ensure the instance is fully stopped
+          sleep 100
 
       # Capture a custom image from the baker instance
       - name: Capture Custom Image
