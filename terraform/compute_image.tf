@@ -12,7 +12,7 @@ resource "time_sleep" "wait_for_baker_stop" {
 }
 
 resource "google_compute_image" "airflow_image" {
-  name        = "airflow-custom-image-${timestamp()}"
+  name = "airflow-custom-image-${replace(replace(replace(timestamp(), ":", ""), "T", "-"), "Z", "")}"
   source_disk = google_compute_instance.airflow_baker.boot_disk[0].source
   family      = "airflow-family"
   description = "Custom image with synced Airflow files and configuration"
