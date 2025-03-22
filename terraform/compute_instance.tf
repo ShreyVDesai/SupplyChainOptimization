@@ -23,27 +23,40 @@ resource "google_compute_instance" "airflow_vm" {
 
   metadata_startup_script = <<EOT
 #!/bin/bash
-# Update the system and install Docker
-sudo apt update -y
-sudo apt install -y docker.io
-
-# Install Docker Compose (latest version)
-if ! command -v docker-compose &> /dev/null; then
-    echo "❌ Docker Compose not found. Installing..."
-    sudo curl -L "https://github.com/docker/compose/releases/download/$(curl -s https://api.github.com/repos/docker/compose/releases/latest | jq -r .tag_name)/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-    sudo chmod +x /usr/local/bin/docker-compose
+# Update the system and install Docker if it is not present
+if ! command -v docker &> /dev/null; then
+    echo "❌ Docker is not installed. Installing..."
+    sudo apt-get update -y
+    echo "🚀 Adding Docker repository..."
+    sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+    sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu \$(lsb_release -cs) stable"
+    sudo apt-get update -y
+    sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+else
+    echo "✅ Docker is already installed."
 fi
 
-# Start Docker service and add user to Docker group
-sudo systemctl start docker
-sudo usermod -aG docker ubuntu
+# Install Docker Compose v2 as a Docker CLI plugin so that "docker compose" works
+if ! docker compose version &> /dev/null; then
+    echo "❌ Docker Compose plugin not found. Installing latest version..."
+    DOCKER_COMPOSE_VERSION=\$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep -Po '"tag_name": "\K.*?(?=")')
+    sudo mkdir -p /usr/local/lib/docker/cli-plugins
+    sudo curl -SL "https://github.com/docker/compose/releases/download/v\${DOCKER_COMPOSE_VERSION}/docker-compose-linux-\$(uname -m)" -o /usr/local/lib/docker/cli-plugins/docker-compose
+    sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+else
+    echo "✅ Docker Compose plugin is already installed."
+fi
 
-# Wait for Docker service to start (add a small delay)
-sleep 5
+# Give user Docker permissions
+echo "🔄 Adding user to Docker group..."
+sudo usermod -aG docker \$USER
+sudo systemctl restart docker
+echo "✅ User added to Docker group and Docker restarted."
 
-# Run Docker Compose to start Airflow
-docker-compose -f /opt/airflow/docker-compose.yaml up -d
-
+# Fix Docker socket permissions
+sudo chmod 666 /var/run/docker.sock
+echo "✅ Docker socket permissions fixed."
 EOT
 
   tags = ["airflow-server"]
